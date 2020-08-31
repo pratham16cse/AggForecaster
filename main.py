@@ -1,3 +1,5 @@
+import sys
+import os
 import numpy as np
 import torch
 from data.synthetic_dataset import create_synthetic_dataset, SyntheticDataset
@@ -10,8 +12,19 @@ import matplotlib.pyplot as plt
 import warnings
 import warnings; warnings.simplefilter('ignore')
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 random.seed(0)
+torch.manual_seed(0)
+np.random.seed(0)
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+outputs_dir = 'Outputs'
+os.makedirs(outputs_dir, exist_ok=True)
+
+epochs = 500
+print_every = 50
+learning_rate = 0.001
+
 
 # parameters
 batch_size = 100
@@ -34,6 +47,9 @@ def train_model(net,loss_type, learning_rate, epochs=1000, gamma = 0.001,
     
     optimizer = torch.optim.Adam(net.parameters(),lr=learning_rate)
     criterion = torch.nn.MSELoss()
+
+    best_metric_mse = np.inf
+    best_epoch = 0
     
     for epoch in range(epochs): 
         for i, data in enumerate(trainloader, 0):
@@ -60,7 +76,18 @@ def train_model(net,loss_type, learning_rate, epochs=1000, gamma = 0.001,
         if(verbose):
             if (epoch % print_every == 0):
                 print('epoch ', epoch, ' loss ',loss.item(),' loss shape ',loss_shape.item(),' loss temporal ',loss_temporal.item())
-                eval_model(net,testloader, gamma,verbose=1)
+                metric_mse, metric_dtw, metric_tdi = eval_model(net,testloader, gamma,verbose=1)
+
+                if metric_mse < best_metric_mse:
+                    best_metric_mse = metric_mse
+                    best_epoch = epoch
+                    torch.save(net.state_dict(), os.path.join(outputs_dir, 'state_dict_model.pt'))
+                    print('Model saved at epoch', epoch)
+
+    print('Best model found at epoch', best_epoch)
+    net.load_state_dict(torch.load(os.path.join(outputs_dir, 'state_dict_model.pt')))
+    net.eval()
+    metric_mse, metric_dtw, metric_tdi = eval_model(net,testloader, gamma,verbose=1)
   
 
 def eval_model(net,loader, gamma,verbose=1):   
@@ -102,18 +129,24 @@ def eval_model(net,loader, gamma,verbose=1):
         losses_dtw.append( loss_dtw )
         losses_tdi.append( loss_tdi )
 
-    print( ' Eval mse= ', np.array(losses_mse).mean() ,' dtw= ',np.array(losses_dtw).mean() ,' tdi= ', np.array(losses_tdi).mean()) 
+    metric_mse = np.array(losses_mse).mean()
+    metric_dtw = np.array(losses_dtw).mean()
+    metric_tdi = np.array(losses_tdi).mean()
+
+    print('Eval mse= ', metric_mse, ' dtw= ', metric_dtw, ' tdi= ', metric_tdi) 
+
+    return metric_mse, metric_dtw, metric_tdi
 
 
 encoder = EncoderRNN(input_size=1, hidden_size=128, num_grulstm_layers=1, batch_size=batch_size).to(device)
 decoder = DecoderRNN(input_size=1, hidden_size=128, num_grulstm_layers=1,fc_units=16, output_size=1).to(device)
 net_gru_dilate = Net_GRU(encoder,decoder, N_output, device).to(device)
-train_model(net_gru_dilate,loss_type='dilate',learning_rate=0.001, epochs=500, gamma=gamma, print_every=50, eval_every=50,verbose=1)
+train_model(net_gru_dilate,loss_type='dilate',learning_rate=learning_rate, epochs=epochs, gamma=gamma, print_every=print_every, eval_every=50,verbose=1)
 
 encoder = EncoderRNN(input_size=1, hidden_size=128, num_grulstm_layers=1, batch_size=batch_size).to(device)
 decoder = DecoderRNN(input_size=1, hidden_size=128, num_grulstm_layers=1,fc_units=16, output_size=1).to(device)
 net_gru_mse = Net_GRU(encoder,decoder, N_output, device).to(device)
-train_model(net_gru_mse,loss_type='mse',learning_rate=0.001, epochs=500, gamma=gamma, print_every=50, eval_every=50,verbose=1)
+train_model(net_gru_mse,loss_type='mse',learning_rate=learning_rate, epochs=epochs, gamma=gamma, print_every=print_every, eval_every=50,verbose=1)
 
 # Visualize results
 gen_test = iter(testloader)
