@@ -1,5 +1,6 @@
 import sys
 import os
+import argparse
 import numpy as np
 import torch
 from data.synthetic_dataset import create_synthetic_dataset, SyntheticDataset
@@ -21,9 +22,13 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 outputs_dir = 'Outputs'
 os.makedirs(outputs_dir, exist_ok=True)
 
-epochs = 500
-print_every = 50
+epochs = 20
+print_every = 1
 learning_rate = 0.001
+
+hidden_size = 128
+num_grulstm_layers = 1
+fc_units = 16
 
 
 # parameters
@@ -138,15 +143,33 @@ def eval_model(net,loader, gamma,verbose=1):
     return metric_mse, metric_dtw, metric_tdi
 
 
-encoder = EncoderRNN(input_size=1, hidden_size=128, num_grulstm_layers=1, batch_size=batch_size).to(device)
-decoder = DecoderRNN(input_size=1, hidden_size=128, num_grulstm_layers=1,fc_units=16, output_size=1).to(device)
+encoder = EncoderRNN(
+    input_size=1, hidden_size=hidden_size, num_grulstm_layers=num_grulstm_layers,
+    batch_size=batch_size
+).to(device)
+decoder = DecoderRNN(
+    input_size=1, hidden_size=hidden_size, num_grulstm_layers=num_grulstm_layers,
+    fc_units=fc_units, output_size=1
+).to(device)
 net_gru_dilate = Net_GRU(encoder,decoder, N_output, device).to(device)
-train_model(net_gru_dilate,loss_type='dilate',learning_rate=learning_rate, epochs=epochs, gamma=gamma, print_every=print_every, eval_every=50,verbose=1)
+train_model(
+    net_gru_dilate, loss_type='dilate', learning_rate=learning_rate,
+    epochs=epochs, gamma=gamma, print_every=print_every, eval_every=50, verbose=1
+)
 
-encoder = EncoderRNN(input_size=1, hidden_size=128, num_grulstm_layers=1, batch_size=batch_size).to(device)
-decoder = DecoderRNN(input_size=1, hidden_size=128, num_grulstm_layers=1,fc_units=16, output_size=1).to(device)
+encoder = EncoderRNN(
+    input_size=1, hidden_size=hidden_size, num_grulstm_layers=num_grulstm_layers,
+    batch_size=batch_size
+).to(device)
+decoder = DecoderRNN(
+    input_size=1, hidden_size=hidden_size, num_grulstm_layers=num_grulstm_layers,
+    fc_units=fc_units, output_size=1
+).to(device)
 net_gru_mse = Net_GRU(encoder,decoder, N_output, device).to(device)
-train_model(net_gru_mse,loss_type='mse',learning_rate=learning_rate, epochs=epochs, gamma=gamma, print_every=print_every, eval_every=50,verbose=1)
+train_model(
+    net_gru_mse, loss_type='mse', learning_rate=learning_rate,
+    epochs=epochs, gamma=gamma, print_every=print_every, eval_every=50,verbose=1
+)
 
 # Visualize results
 gen_test = iter(testloader)
