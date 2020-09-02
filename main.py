@@ -19,44 +19,24 @@ np.random.seed(0)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-outputs_dir = 'Outputs'
-os.makedirs(outputs_dir, exist_ok=True)
-
-epochs = 20
-print_every = 1
-learning_rate = 0.001
-
-hidden_size = 128
-num_grulstm_layers = 1
-fc_units = 16
-
 
 # parameters
-batch_size = 100
 N = 500
 N_input = 20
 N_output = 20  
 sigma = 0.01
-gamma = 0.01
-
-# Load synthetic dataset
-X_train_input,X_train_target,X_test_input,X_test_target,train_bkp,test_bkp = create_synthetic_dataset(N,N_input,N_output,sigma)
-dataset_train = SyntheticDataset(X_train_input,X_train_target, train_bkp)
-dataset_test  = SyntheticDataset(X_test_input,X_test_target, test_bkp)
-trainloader = DataLoader(dataset_train, batch_size=batch_size,shuffle=True, num_workers=1)
-testloader  = DataLoader(dataset_test, batch_size=batch_size,shuffle=False, num_workers=1)
 
 
 def train_model(net,loss_type, learning_rate, epochs=1000, gamma = 0.001,
                 print_every=50,eval_every=50, verbose=1, Lambda=1, alpha=0.5):
     
-    optimizer = torch.optim.Adam(net.parameters(),lr=learning_rate)
+    optimizer = torch.optim.Adam(net.parameters(),lr=args.learning_rate)
     criterion = torch.nn.MSELoss()
 
     best_metric_mse = np.inf
     best_epoch = 0
     
-    for epoch in range(epochs): 
+    for epoch in range(args.epochs): 
         for i, data in enumerate(trainloader, 0):
             inputs, target, _ = data
             inputs = torch.tensor(inputs, dtype=torch.float32).to(device)
@@ -72,27 +52,27 @@ def train_model(net,loss_type, learning_rate, epochs=1000, gamma = 0.001,
                 loss = loss_mse                   
  
             if (loss_type=='dilate'):    
-                loss, loss_shape, loss_temporal = dilate_loss(target,outputs,alpha, gamma, device)             
+                loss, loss_shape, loss_temporal = dilate_loss(target,outputs,alpha, args.gamma, device)
                   
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()          
         
         if(verbose):
-            if (epoch % print_every == 0):
+            if (epoch % args.print_every == 0):
                 print('epoch ', epoch, ' loss ',loss.item(),' loss shape ',loss_shape.item(),' loss temporal ',loss_temporal.item())
-                metric_mse, metric_dtw, metric_tdi = eval_model(net,testloader, gamma,verbose=1)
+                metric_mse, metric_dtw, metric_tdi = eval_model(net,testloader, args.gamma,verbose=1)
 
                 if metric_mse < best_metric_mse:
                     best_metric_mse = metric_mse
                     best_epoch = epoch
-                    torch.save(net.state_dict(), os.path.join(outputs_dir, 'state_dict_model.pt'))
+                    torch.save(net.state_dict(), os.path.join(args.saved_models_dir, 'state_dict_model.pt'))
                     print('Model saved at epoch', epoch)
 
     print('Best model found at epoch', best_epoch)
-    net.load_state_dict(torch.load(os.path.join(outputs_dir, 'state_dict_model.pt')))
+    net.load_state_dict(torch.load(os.path.join(args.saved_models_dir, 'state_dict_model.pt')))
     net.eval()
-    metric_mse, metric_dtw, metric_tdi = eval_model(net,testloader, gamma,verbose=1)
+    metric_mse, metric_dtw, metric_tdi = eval_model(net,testloader, args.gamma,verbose=1)
   
 
 def eval_model(net,loader, gamma,verbose=1):   
@@ -143,32 +123,85 @@ def eval_model(net,loader, gamma,verbose=1):
     return metric_mse, metric_dtw, metric_tdi
 
 
+
+
+parser = argparse.ArgumentParser()
+
+parser.add_argument('dataset_name', type=str, help='dataset_name')
+#parser.add_argument('model_name', type=str, help='model_name')
+
+parser.add_argument('--output_dir', type=str,
+                    help='Path to store all raw outputs', default='Outputs')
+parser.add_argument('--saved_models_dir', type=str,
+                    help='Path to store all saved models', default='saved_models')
+
+parser.add_argument('--epochs', type=int, default=500,
+                    help='number of training epochs')
+parser.add_argument('--print_every', type=int, default=50,
+                    help='Print test output after every print_every epochs')
+parser.add_argument('--learning_rate', type=float, default=0.001, nargs='+',
+                   help='Learning rate for the training algorithm')
+
+parser.add_argument('-hls', '--hidden_size', type=int, default=128, nargs='+',
+                   help='Number of units in RNN')
+parser.add_argument('--num_grulstm_layers', type=int, default=1, nargs='+',
+                   help='Number of layers in RNN')
+parser.add_argument('--fc_units', type=int, default=16, nargs='+',
+                   help='Number of fully connected units on top of RNN state')
+parser.add_argument('--batch_size', type=int, default=100,
+                    help='Input batch size')
+parser.add_argument('--gamma', type=float, default=0.01, nargs='+',
+                   help='gamma parameter of DILATE loss')
+
+#parser.add_argument('--patience', type=int, default=2,
+#                    help='Number of epochs to wait for \
+#                          before beginning cross-validation')
+#parser.add_argument('--seed', type=int,
+#                    help='Seed for parameter initialization',
+#                    default=42)
+
+args = parser.parse_args()
+
+args.model_names = ['DILATE', 'MSE']
+
+os.makedirs(args.output_dir, exist_ok=True)
+os.makedirs(args.saved_models_dir, exist_ok=True)
+
+
+# Load synthetic dataset
+X_train_input,X_train_target,X_test_input,X_test_target,train_bkp,test_bkp = create_synthetic_dataset(N,N_input,N_output,sigma)
+dataset_train = SyntheticDataset(X_train_input,X_train_target, train_bkp)
+dataset_test  = SyntheticDataset(X_test_input,X_test_target, test_bkp)
+trainloader = DataLoader(dataset_train, batch_size=args.batch_size,shuffle=True, num_workers=1)
+testloader  = DataLoader(dataset_test, batch_size=args.batch_size,shuffle=False, num_workers=1)
+
+
 encoder = EncoderRNN(
-    input_size=1, hidden_size=hidden_size, num_grulstm_layers=num_grulstm_layers,
-    batch_size=batch_size
+    input_size=1, hidden_size=args.hidden_size, num_grulstm_layers=args.num_grulstm_layers,
+    batch_size=args.batch_size
 ).to(device)
 decoder = DecoderRNN(
-    input_size=1, hidden_size=hidden_size, num_grulstm_layers=num_grulstm_layers,
-    fc_units=fc_units, output_size=1
+    input_size=1, hidden_size=args.hidden_size, num_grulstm_layers=args.num_grulstm_layers,
+    fc_units=args.fc_units, output_size=1
 ).to(device)
 net_gru_dilate = Net_GRU(encoder,decoder, N_output, device).to(device)
 train_model(
-    net_gru_dilate, loss_type='dilate', learning_rate=learning_rate,
-    epochs=epochs, gamma=gamma, print_every=print_every, eval_every=50, verbose=1
+    net_gru_dilate, loss_type='dilate', learning_rate=args.learning_rate,
+    epochs=args.epochs, gamma=args.gamma, print_every=args.print_every, eval_every=50, verbose=1
 )
 
 encoder = EncoderRNN(
-    input_size=1, hidden_size=hidden_size, num_grulstm_layers=num_grulstm_layers,
-    batch_size=batch_size
+    input_size=1, hidden_size=args.hidden_size, num_grulstm_layers=args.num_grulstm_layers,
+    batch_size=args.batch_size
 ).to(device)
 decoder = DecoderRNN(
-    input_size=1, hidden_size=hidden_size, num_grulstm_layers=num_grulstm_layers,
-    fc_units=fc_units, output_size=1
+    input_size=1, hidden_size=args.hidden_size, num_grulstm_layers=args.num_grulstm_layers,
+    fc_units=args.fc_units, output_size=1
 ).to(device)
 net_gru_mse = Net_GRU(encoder,decoder, N_output, device).to(device)
 train_model(
-    net_gru_mse, loss_type='mse', learning_rate=learning_rate,
-    epochs=epochs, gamma=gamma, print_every=print_every, eval_every=50,verbose=1
+    net_gru_mse, loss_type='mse', learning_rate=args.learning_rate,
+    epochs=args.epochs, gamma=args.gamma, print_every=args.print_every, eval_every=50,verbose=1
 )
 
 # Visualize results
@@ -181,23 +214,24 @@ criterion = torch.nn.MSELoss()
 
 nets = [net_gru_mse,net_gru_dilate]
 
-for ind in range(1,51):
-    plt.figure()
-    plt.rcParams['figure.figsize'] = (17.0,5.0)  
-    k = 1
-    for net in nets:
-        pred = net(test_inputs).to(device)
-
-        input = test_inputs.detach().cpu().numpy()[ind,:,:]
-        target = test_targets.detach().cpu().numpy()[ind,:,:]
-        preds = pred.detach().cpu().numpy()[ind,:,:]
-
-        plt.subplot(1,3,k)
-        plt.plot(range(0,N_input) ,input,label='input',linewidth=3)
-        plt.plot(range(N_input-1,N_input+N_output), np.concatenate([ input[N_input-1:N_input], target ]) ,label='target',linewidth=3)   
-        plt.plot(range(N_input-1,N_input+N_output),  np.concatenate([ input[N_input-1:N_input], preds ])  ,label='prediction',linewidth=3)       
-        plt.xticks(range(0,40,2))
-        plt.legend()
-        k = k+1
-
-    plt.show()
+#for ind in range(1,51):
+#    plt.figure()
+#    plt.rcParams['figure.figsize'] = (17.0,5.0)  
+#    k = 1
+#    for net in nets:
+#        pred = net(test_inputs).to(device)
+#
+#        input = test_inputs.detach().cpu().numpy()[ind,:,:]
+#        target = test_targets.detach().cpu().numpy()[ind,:,:]
+#        preds = pred.detach().cpu().numpy()[ind,:,:]
+#
+#        plt.subplot(1,3,k)
+#        plt.plot(range(0,N_input) ,input,label='input',linewidth=3)
+#        plt.plot(range(N_input-1,N_input+N_output), np.concatenate([ input[N_input-1:N_input], target ]) ,label='target',linewidth=3)   
+#        plt.plot(range(N_input-1,N_input+N_output),  np.concatenate([ input[N_input-1:N_input], preds ])  ,label='prediction',linewidth=3)       
+#        plt.xticks(range(0,40,2))
+#        plt.legend()
+#        k = k+1
+#
+#    plt.show()
+#
