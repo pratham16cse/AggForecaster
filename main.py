@@ -12,8 +12,10 @@ from tslearn.metrics import dtw, dtw_path
 import matplotlib.pyplot as plt
 import warnings
 import warnings; warnings.simplefilter('ignore')
+import json
 
 from models import inf_models
+import utils
 
 random.seed(0)
 torch.manual_seed(0)
@@ -29,7 +31,7 @@ N_output = 20
 sigma = 0.01
 
 
-def train_model(net, loss_type, saved_models_path, eval_every=50, verbose=1, Lambda=1, alpha=0.5):
+def train_model(net, loss_type, saved_models_path, output_dir, eval_every=50, verbose=1, Lambda=1, alpha=0.5):
     
     optimizer = torch.optim.Adam(net.parameters(),lr=args.learning_rate)
     criterion = torch.nn.MSELoss()
@@ -164,7 +166,7 @@ parser.add_argument('--gamma', type=float, default=0.01, nargs='+',
 args = parser.parse_args()
 
 args.base_model_names = ['seq2seqdilate', 'seq2seqmse']
-args.inference_model_names = ['DILATE', 'MSE', 'DualTPP']
+args.inference_model_names = ['DILATE', 'MSE']
 
 base_models = {}
 for name in args.base_model_names:
@@ -172,6 +174,8 @@ for name in args.base_model_names:
 
 os.makedirs(args.output_dir, exist_ok=True)
 os.makedirs(args.saved_models_dir, exist_ok=True)
+
+model2metrics = dict()
 
 
 # Load synthetic dataset
@@ -187,6 +191,8 @@ for base_model_name in args.base_model_names:
     saved_models_dir = os.path.join(args.saved_models_dir, base_model_name)
     os.makedirs(saved_models_dir, exist_ok=True)
     saved_models_path = os.path.join(saved_models_dir, 'state_dict_model.pt')
+    output_dir = os.path.join(args.output_dir, base_model_name)
+    os.makedirs(output_dir, exist_ok=True)
 
     if base_model_name in ['seq2seqmse']:
         loss_type = 'mse'
@@ -203,7 +209,7 @@ for base_model_name in args.base_model_names:
     ).to(device)
     net_gru = Net_GRU(encoder,decoder, N_output, device).to(device)
     train_model(
-        net_gru, loss_type, saved_models_path, eval_every=50, verbose=1
+        net_gru, loss_type, saved_models_path, output_dir, eval_every=50, verbose=1
     )
 
     base_models[base_model_name] = net_gru
@@ -232,10 +238,20 @@ for inf_model_name in args.inference_model_names:
     elif inf_model_name in ['DualTPP']:
         raise NotImplementedError
 
-    print('MSE metric for Inference model {}: {:f}'.format(inf_model_name, metric_mse.item()))
+    metric_mse = metric_mse.item()
+
+    print('MSE metric for Inference model {}: {:f}'.format(inf_model_name, metric_mse))
+
+    model2metrics = utils.add_metrics_to_dict(model2metrics, inf_model_name, metric_mse)
 
 
 # ----- End: Inference models ----- #
+
+for model_name, metrics_dict in model2metrics.items():
+    for metric, metric_val in metrics_dict.items():
+        model2metrics[model_name][metric] = str(metric_val)
+with open(os.path.join(args.output_dir, 'results_'+args.dataset_name+'.json'), 'w') as fp:
+    json.dump(model2metrics, fp)
 
 # Visualize results
 
