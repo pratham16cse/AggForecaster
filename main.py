@@ -29,8 +29,7 @@ N_output = 20
 sigma = 0.01
 
 
-def train_model(net,loss_type, learning_rate, epochs=1000, gamma = 0.001,
-                print_every=50,eval_every=50, verbose=1, Lambda=1, alpha=0.5):
+def train_model(net, loss_type, saved_models_path, eval_every=50, verbose=1, Lambda=1, alpha=0.5):
     
     optimizer = torch.optim.Adam(net.parameters(),lr=args.learning_rate)
     criterion = torch.nn.MSELoss()
@@ -68,11 +67,11 @@ def train_model(net,loss_type, learning_rate, epochs=1000, gamma = 0.001,
                 if metric_mse < best_metric_mse:
                     best_metric_mse = metric_mse
                     best_epoch = epoch
-                    torch.save(net.state_dict(), os.path.join(args.saved_models_dir, 'state_dict_model.pt'))
+                    torch.save(net.state_dict(), saved_models_path)
                     print('Model saved at epoch', epoch)
 
     print('Best model found at epoch', best_epoch)
-    net.load_state_dict(torch.load(os.path.join(args.saved_models_dir, 'state_dict_model.pt')))
+    net.load_state_dict(torch.load(saved_models_path))
     net.eval()
     metric_mse, metric_dtw, metric_tdi = eval_model(net,testloader, args.gamma,verbose=1)
   
@@ -164,7 +163,7 @@ parser.add_argument('--gamma', type=float, default=0.01, nargs='+',
 
 args = parser.parse_args()
 
-args.base_model_names = ['Seq2Seq_dilate', 'Seq2Seq_mse']
+args.base_model_names = ['seq2seqdilate', 'seq2seqmse']
 args.inference_model_names = ['DILATE', 'MSE', 'DualTPP']
 
 base_models = {}
@@ -185,9 +184,13 @@ testloader  = DataLoader(dataset_test, batch_size=args.batch_size,shuffle=False,
 
 # ----- Start: base models training ----- #
 for base_model_name in args.base_model_names:
-    if base_model_name in ['Seq2Seq_mse']:
+    saved_models_dir = os.path.join(args.saved_models_dir, base_model_name)
+    os.makedirs(saved_models_dir, exist_ok=True)
+    saved_models_path = os.path.join(saved_models_dir, 'state_dict_model.pt')
+
+    if base_model_name in ['seq2seqmse']:
         loss_type = 'mse'
-    elif base_model_name in ['Seq2Seq_dilate']:
+    elif base_model_name in ['seq2seqdilate']:
         loss_type = 'dilate'
 
     encoder = EncoderRNN(
@@ -200,8 +203,7 @@ for base_model_name in args.base_model_names:
     ).to(device)
     net_gru = Net_GRU(encoder,decoder, N_output, device).to(device)
     train_model(
-        net_gru, loss_type=loss_type, learning_rate=args.learning_rate,
-        epochs=args.epochs, gamma=args.gamma, print_every=args.print_every, eval_every=50, verbose=1
+        net_gru, loss_type, saved_models_path, eval_every=50, verbose=1
     )
 
     base_models[base_model_name] = net_gru
@@ -218,12 +220,12 @@ criterion = torch.nn.MSELoss()
 
 for inf_model_name in args.inference_model_names:
     if inf_model_name in ['DILATE']:
-        net = base_models['Seq2Seq_dilate']
+        net = base_models['seq2seqdilate']
         inf_net = inf_models.DILATE(net)
         pred = inf_net(test_inputs).to(device)
         metric_mse = criterion(test_targets, pred)
     elif inf_model_name in ['MSE']:
-        net = base_models['Seq2Seq_mse']
+        net = base_models['seq2seqmse']
         inf_net = inf_models.MSE(net)
         pred = inf_net(test_inputs).to(device)
         metric_mse = criterion(test_targets, pred)
