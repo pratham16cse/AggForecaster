@@ -166,7 +166,7 @@ parser.add_argument('--gamma', type=float, default=0.01, nargs='+',
 args = parser.parse_args()
 
 args.base_model_names = ['seq2seqdilate', 'seq2seqmse']
-args.inference_model_names = ['DILATE', 'MSE']
+args.inference_model_names = ['DILATE', 'MSE', 'seq2seqmse_dualtpp']
 
 base_models = {}
 for name in args.base_model_names:
@@ -235,8 +235,11 @@ for inf_model_name in args.inference_model_names:
         inf_net = inf_models.MSE(net)
         pred = inf_net(test_inputs).to(device)
         metric_mse = criterion(test_targets, pred)
-    elif inf_model_name in ['DualTPP']:
-        raise NotImplementedError
+    elif inf_model_name in ['seq2seqmse_dualtpp']:
+        net = base_models['seq2seqmse']
+        inf_net = inf_models.DualTPP('seq2seqmse', net)
+        pred = inf_net(test_inputs).to(device)
+        metric_mse = criterion(test_targets, pred)
 
     metric_mse = metric_mse.item()
 

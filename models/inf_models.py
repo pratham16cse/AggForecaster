@@ -24,9 +24,10 @@ class MSE(torch.nn.Module):
 
 class DualTPP(torch.nn.Module):
 	"""docstring for DualTPP"""
-	def __init__(self, arg):
+	def __init__(self, base_model_name, base_model):
 		super(DualTPP, self).__init__()
-		self.arg = arg
+		self.base_model_name = base_model_name
+		self.base_model = base_model
 
-	def forward(self,):
-		raise NotImplementedError
+	def forward(self, x):
+		return self.base_model(x)
