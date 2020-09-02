@@ -13,6 +13,8 @@ import matplotlib.pyplot as plt
 import warnings
 import warnings; warnings.simplefilter('ignore')
 
+from models import inf_models
+
 random.seed(0)
 torch.manual_seed(0)
 np.random.seed(0)
@@ -181,6 +183,7 @@ trainloader = DataLoader(dataset_train, batch_size=args.batch_size,shuffle=True,
 testloader  = DataLoader(dataset_test, batch_size=args.batch_size,shuffle=False, num_workers=1)
 
 
+# ----- Start: base models training ----- #
 for base_model_name in args.base_model_names:
     if base_model_name in ['Seq2Seq_mse']:
         loss_type = 'mse'
@@ -195,19 +198,44 @@ for base_model_name in args.base_model_names:
         input_size=1, hidden_size=args.hidden_size, num_grulstm_layers=args.num_grulstm_layers,
         fc_units=args.fc_units, output_size=1
     ).to(device)
-    net_gru_dilate = Net_GRU(encoder,decoder, N_output, device).to(device)
+    net_gru = Net_GRU(encoder,decoder, N_output, device).to(device)
     train_model(
-        net_gru_dilate, loss_type=loss_type, learning_rate=args.learning_rate,
+        net_gru, loss_type=loss_type, learning_rate=args.learning_rate,
         epochs=args.epochs, gamma=args.gamma, print_every=args.print_every, eval_every=50, verbose=1
     )
 
-# Visualize results
+    base_models[base_model_name] = net_gru
+# ----- End: base models training ----- #
+
+# ----- Start: Inference models ----- #
+
 gen_test = iter(testloader)
 test_inputs, test_targets, breaks = next(gen_test)
 
 test_inputs  = torch.tensor(test_inputs, dtype=torch.float32).to(device)
 test_targets = torch.tensor(test_targets, dtype=torch.float32).to(device)
 criterion = torch.nn.MSELoss()
+
+for inf_model_name in args.inference_model_names:
+    if inf_model_name in ['DILATE']:
+        net = base_models['Seq2Seq_dilate']
+        inf_net = inf_models.DILATE(net)
+        pred = inf_net(test_inputs).to(device)
+        metric_mse = criterion(test_targets, pred)
+    elif inf_model_name in ['MSE']:
+        net = base_models['Seq2Seq_mse']
+        inf_net = inf_models.MSE(net)
+        pred = inf_net(test_inputs).to(device)
+        metric_mse = criterion(test_targets, pred)
+    elif inf_model_name in ['DualTPP']:
+        raise NotImplementedError
+
+    print('MSE metric for Inference model {}: {:f}'.format(inf_model_name, metric_mse.item()))
+
+
+# ----- End: Inference models ----- #
+
+# Visualize results
 
 #nets = [net_gru_mse,net_gru_dilate]
 
