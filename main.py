@@ -24,12 +24,6 @@ np.random.seed(0)
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
-# parameters
-N = 500
-N_input = 20
-N_output = 20  
-sigma = 0.01
-
 
 def train_model(net, loss_type, saved_models_path, output_dir, eval_every=50, verbose=1, Lambda=1, alpha=0.5):
     
@@ -133,6 +127,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument('dataset_name', type=str, help='dataset_name')
 #parser.add_argument('model_name', type=str, help='model_name')
 
+parser.add_argument('--N_input', type=int, default=20,
+                    help='number of input steps')
+parser.add_argument('--N_output', type=int, default=20,
+                    help='number of output steps')
+
 parser.add_argument('--output_dir', type=str,
                     help='Path to store all raw outputs', default='Outputs')
 parser.add_argument('--saved_models_dir', type=str,
@@ -156,6 +155,12 @@ parser.add_argument('--batch_size', type=int, default=100,
 parser.add_argument('--gamma', type=float, default=0.01, nargs='+',
                    help='gamma parameter of DILATE loss')
 
+# Hierarchical model arguments
+parser.add_argument('--L', type=int, default=2,
+                    help='number of levels in the hierarchy, leaves inclusive')
+parser.add_argument('--K', type=int, default=2,
+                    help='number of bins to aggregate')
+
 #parser.add_argument('--patience', type=int, default=2,
 #                    help='Number of epochs to wait for \
 #                          before beginning cross-validation')
@@ -178,13 +183,9 @@ os.makedirs(args.saved_models_dir, exist_ok=True)
 model2metrics = dict()
 
 
-# Load synthetic dataset
-X_train_input,X_train_target,X_test_input,X_test_target,train_bkp,test_bkp = create_synthetic_dataset(N,N_input,N_output,sigma)
-dataset_train = SyntheticDataset(X_train_input,X_train_target, train_bkp)
-dataset_test  = SyntheticDataset(X_test_input,X_test_target, test_bkp)
-trainloader = DataLoader(dataset_train, batch_size=args.batch_size,shuffle=True, num_workers=1)
-testloader  = DataLoader(dataset_test, batch_size=args.batch_size,shuffle=False, num_workers=1)
-
+dataset = utils.get_processed_data(args)
+trainloader = dataset['trainloader']
+testloader = dataset['testloader']
 
 # ----- Start: base models training ----- #
 for base_model_name in args.base_model_names:
@@ -207,7 +208,7 @@ for base_model_name in args.base_model_names:
         input_size=1, hidden_size=args.hidden_size, num_grulstm_layers=args.num_grulstm_layers,
         fc_units=args.fc_units, output_size=1
     ).to(device)
-    net_gru = Net_GRU(encoder,decoder, N_output, device).to(device)
+    net_gru = Net_GRU(encoder,decoder, args.N_output, device).to(device)
     train_model(
         net_gru, loss_type, saved_models_path, output_dir, eval_every=50, verbose=1
     )
@@ -237,7 +238,8 @@ for inf_model_name in args.inference_model_names:
         metric_mse = criterion(test_targets, pred)
     elif inf_model_name in ['seq2seqmse_dualtpp']:
         net = base_models['seq2seqmse']
-        inf_net = inf_models.DualTPP('seq2seqmse', net)
+        base_models_dict = {0:net}
+        inf_net = inf_models.DualTPP('seq2seqmse', base_models_dict)
         pred = inf_net(test_inputs).to(device)
         metric_mse = criterion(test_targets, pred)
 

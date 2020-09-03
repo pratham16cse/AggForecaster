@@ -24,10 +24,19 @@ class MSE(torch.nn.Module):
 
 class DualTPP(torch.nn.Module):
 	"""docstring for DualTPP"""
-	def __init__(self, base_model_name, base_model):
+	def __init__(self, base_model_name, base_models_dict):
+		'''
+		base_model_name: str
+			model name from args.base_model_names list
+		base_models_dict: dict
+			key: level in the hierarchy
+			value: base model at the level 'key'
+		'''
 		super(DualTPP, self).__init__()
 		self.base_model_name = base_model_name
-		self.base_model = base_model
+		self.base_models_dict = base_models_dict
+
 
 	def forward(self, x):
-		return self.base_model(x)
+		bottom_level_model = self.base_models_dict[0]
+		return bottom_level_model(x)
