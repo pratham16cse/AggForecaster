@@ -50,6 +50,7 @@ def create_hierarchical_data(
 		level2data[level] = {
 			'trainloader': trainloader,
 			'testloader': testloader,
+			'N_output': test_target.shape[1]
 		}
 
 	return level2data

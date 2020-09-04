@@ -25,7 +25,10 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 
-def train_model(net, loss_type, saved_models_path, output_dir, eval_every=50, verbose=1, Lambda=1, alpha=0.5):
+def train_model(
+    net, loss_type, trainloader, testloader, saved_models_path, output_dir,
+    eval_every=50, verbose=1, Lambda=1, alpha=0.5
+):
     
     optimizer = torch.optim.Adam(net.parameters(),lr=args.learning_rate)
     criterion = torch.nn.MSELoss()
@@ -175,7 +178,7 @@ args.inference_model_names = ['DILATE', 'MSE', 'seq2seqmse_dualtpp']
 
 base_models = {}
 for name in args.base_model_names:
-    base_models[name] = None
+    base_models[name] = {}
 
 os.makedirs(args.output_dir, exist_ok=True)
 os.makedirs(args.saved_models_dir, exist_ok=True)
@@ -184,41 +187,48 @@ model2metrics = dict()
 
 
 dataset = utils.get_processed_data(args)
-trainloader = dataset['trainloader']
-testloader = dataset['testloader']
-
+level2data = dataset['level2data']
 # ----- Start: base models training ----- #
 for base_model_name in args.base_model_names:
-    saved_models_dir = os.path.join(args.saved_models_dir, base_model_name)
-    os.makedirs(saved_models_dir, exist_ok=True)
-    saved_models_path = os.path.join(saved_models_dir, 'state_dict_model.pt')
-    output_dir = os.path.join(args.output_dir, base_model_name)
-    os.makedirs(output_dir, exist_ok=True)
-
-    if base_model_name in ['seq2seqmse']:
-        loss_type = 'mse'
-    elif base_model_name in ['seq2seqdilate']:
-        loss_type = 'dilate'
-
-    encoder = EncoderRNN(
-        input_size=1, hidden_size=args.hidden_size, num_grulstm_layers=args.num_grulstm_layers,
-        batch_size=args.batch_size
-    ).to(device)
-    decoder = DecoderRNN(
-        input_size=1, hidden_size=args.hidden_size, num_grulstm_layers=args.num_grulstm_layers,
-        fc_units=args.fc_units, output_size=1
-    ).to(device)
-    net_gru = Net_GRU(encoder,decoder, args.N_output, device).to(device)
-    train_model(
-        net_gru, loss_type, saved_models_path, output_dir, eval_every=50, verbose=1
-    )
-
-    base_models[base_model_name] = net_gru
+    levels = range(args.L)
+    if base_model_name in ['seq2seqdilate']:
+        levels = [0]
+    for level in levels:
+        trainloader = level2data[level]['trainloader']
+        testloader = level2data[level]['testloader']
+        N_output = level2data[level]['N_output']
+    
+        saved_models_dir = os.path.join(args.saved_models_dir, base_model_name, str(level))
+        os.makedirs(saved_models_dir, exist_ok=True)
+        saved_models_path = os.path.join(saved_models_dir, 'state_dict_model.pt')
+        output_dir = os.path.join(args.output_dir, base_model_name)
+        os.makedirs(output_dir, exist_ok=True)
+    
+        if base_model_name in ['seq2seqmse']:
+            loss_type = 'mse'
+        elif base_model_name in ['seq2seqdilate']:
+            loss_type = 'dilate'
+    
+        encoder = EncoderRNN(
+            input_size=1, hidden_size=args.hidden_size, num_grulstm_layers=args.num_grulstm_layers,
+            batch_size=args.batch_size
+        ).to(device)
+        decoder = DecoderRNN(
+            input_size=1, hidden_size=args.hidden_size, num_grulstm_layers=args.num_grulstm_layers,
+            fc_units=args.fc_units, output_size=1
+        ).to(device)
+        net_gru = Net_GRU(encoder,decoder, N_output, device).to(device)
+        train_model(
+            net_gru, loss_type, trainloader, testloader,
+            saved_models_path, output_dir, eval_every=50, verbose=1
+        )
+    
+        base_models[base_model_name][level] = net_gru
 # ----- End: base models training ----- #
 
 # ----- Start: Inference models ----- #
 
-gen_test = iter(testloader)
+gen_test = iter(level2data[0]['testloader'])
 test_inputs, test_targets, breaks = next(gen_test)
 
 test_inputs  = torch.tensor(test_inputs, dtype=torch.float32).to(device)
@@ -227,18 +237,17 @@ criterion = torch.nn.MSELoss()
 
 for inf_model_name in args.inference_model_names:
     if inf_model_name in ['DILATE']:
-        net = base_models['seq2seqdilate']
+        net = base_models['seq2seqdilate'][0]
         inf_net = inf_models.DILATE(net)
         pred = inf_net(test_inputs).to(device)
         metric_mse = criterion(test_targets, pred)
     elif inf_model_name in ['MSE']:
-        net = base_models['seq2seqmse']
+        net = base_models['seq2seqmse'][0]
         inf_net = inf_models.MSE(net)
         pred = inf_net(test_inputs).to(device)
         metric_mse = criterion(test_targets, pred)
     elif inf_model_name in ['seq2seqmse_dualtpp']:
-        net = base_models['seq2seqmse']
-        base_models_dict = {0:net}
+        base_models_dict = base_models['seq2seqmse']
         inf_net = inf_models.DualTPP('seq2seqmse', base_models_dict)
         pred = inf_net(test_inputs).to(device)
         metric_mse = criterion(test_targets, pred)
