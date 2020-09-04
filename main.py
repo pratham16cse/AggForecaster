@@ -228,29 +228,34 @@ for base_model_name in args.base_model_names:
 
 # ----- Start: Inference models ----- #
 
-gen_test = iter(level2data[0]['testloader'])
-test_inputs, test_targets, breaks = next(gen_test)
+lvl2testinputs = dict()
+lvl2testtargets = dict()
+for level in range(args.L):
+    gen_test = iter(level2data[level]['testloader'])
+    test_inputs, test_targets, breaks = next(gen_test)
 
-test_inputs  = torch.tensor(test_inputs, dtype=torch.float32).to(device)
-test_targets = torch.tensor(test_targets, dtype=torch.float32).to(device)
+    test_inputs  = torch.tensor(test_inputs, dtype=torch.float32).to(device)
+    test_targets = torch.tensor(test_targets, dtype=torch.float32).to(device)
+    lvl2testinputs[level] = test_inputs
+    lvl2testtargets[level] = test_targets
 criterion = torch.nn.MSELoss()
 
 for inf_model_name in args.inference_model_names:
     if inf_model_name in ['DILATE']:
         net = base_models['seq2seqdilate'][0]
         inf_net = inf_models.DILATE(net)
-        pred = inf_net(test_inputs).to(device)
-        metric_mse = criterion(test_targets, pred)
+        pred = inf_net(lvl2testinputs[0]).to(device)
+        metric_mse = criterion(lvl2testtargets[0], pred)
     elif inf_model_name in ['MSE']:
         net = base_models['seq2seqmse'][0]
         inf_net = inf_models.MSE(net)
-        pred = inf_net(test_inputs).to(device)
-        metric_mse = criterion(test_targets, pred)
+        pred = inf_net(lvl2testinputs[0]).to(device)
+        metric_mse = criterion(lvl2testtargets[0], pred)
     elif inf_model_name in ['seq2seqmse_dualtpp']:
         base_models_dict = base_models['seq2seqmse']
         inf_net = inf_models.DualTPP('seq2seqmse', base_models_dict)
-        pred = inf_net(test_inputs).to(device)
-        metric_mse = criterion(test_targets, pred)
+        pred = inf_net(lvl2testinputs).to(device)
+        metric_mse = criterion(lvl2testtargets[0], pred)
 
     metric_mse = metric_mse.item()
 

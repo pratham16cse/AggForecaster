@@ -39,4 +39,4 @@ class DualTPP(torch.nn.Module):
 
 	def forward(self, x):
 		bottom_level_model = self.base_models_dict[0]
-		return bottom_level_model(x)
+		return bottom_level_model(x[0])
