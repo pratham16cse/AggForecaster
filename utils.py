@@ -1,4 +1,5 @@
 from torch.utils.data import DataLoader
+import numpy as np
 
 from data.synthetic_dataset import create_synthetic_dataset, SyntheticDataset
 
@@ -15,20 +16,41 @@ def add_metrics_to_dict(
 
 	return metrics_dict
 
+def aggregate_data(level, K, train_input, train_target, test_input, test_target):
+
+	def aggregate_seqs_(seqs):
+		agg_seqs = []
+		for seq in seqs:
+			assert len(seq)%K == 0
+			agg_seq = [np.sum(seq[i:i+K]) for i in range(0, len(seq), K)]
+			agg_seqs.append(agg_seq)
+		return np.array(agg_seqs)
+
+	agg_train_input = aggregate_seqs_(train_input)
+	agg_train_target = aggregate_seqs_(train_target)
+	agg_test_input = aggregate_seqs_(test_input)
+	agg_test_target = aggregate_seqs_(test_target)
+
+	return agg_train_input, agg_train_target, agg_test_input, agg_test_target
+
+
 def create_hierarchical_data(
 	args, train_input, train_target, test_input, test_target, train_bkp, test_bkp
 ):
 	level2data = dict()
 	for level in range(args.L):
-		if level == 0:
-			dataset_train = SyntheticDataset(train_input, train_target, train_bkp)
-			dataset_test  = SyntheticDataset(test_input, test_target, test_bkp)
-			trainloader = DataLoader(dataset_train, batch_size=args.batch_size,shuffle=True, num_workers=1)
-			testloader  = DataLoader(dataset_test, batch_size=args.batch_size,shuffle=False, num_workers=1)
-			level2data[0] = {
-				'trainloader': trainloader,
-				'testloader': testloader,
-			}
+		if level > 0:
+			train_input, train_target, test_input, test_target = aggregate_data(
+				level, args.K, train_input, train_target, test_input, test_target,
+			)
+		dataset_train = SyntheticDataset(train_input, train_target, train_bkp)
+		dataset_test  = SyntheticDataset(test_input, test_target, test_bkp)
+		trainloader = DataLoader(dataset_train, batch_size=args.batch_size,shuffle=True, num_workers=1)
+		testloader  = DataLoader(dataset_test, batch_size=args.batch_size,shuffle=False, num_workers=1)
+		level2data[level] = {
+			'trainloader': trainloader,
+			'testloader': testloader,
+		}
 
 	return level2data
 
