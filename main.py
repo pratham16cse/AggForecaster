@@ -4,7 +4,7 @@ import argparse
 import numpy as np
 import torch
 from data.synthetic_dataset import create_synthetic_dataset, SyntheticDataset
-from models.seq2seq import EncoderRNN, DecoderRNN, Net_GRU
+from models.base_models import EncoderRNN, DecoderRNN, Net_GRU
 from loss.dilate_loss import dilate_loss
 from torch.utils.data import DataLoader
 import random
