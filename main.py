@@ -253,7 +253,7 @@ for inf_model_name in args.inference_model_names:
         metric_mse = criterion(lvl2testtargets[0], pred)
     elif inf_model_name in ['seq2seqmse_dualtpp']:
         base_models_dict = base_models['seq2seqmse']
-        inf_net = inf_models.DualTPP('seq2seqmse', base_models_dict)
+        inf_net = inf_models.DualTPP(args.K, 'seq2seqmse', base_models_dict)
         pred = inf_net(lvl2testinputs).to(device)
         metric_mse = criterion(lvl2testtargets[0], pred)
 
