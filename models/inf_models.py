@@ -82,9 +82,9 @@ class DualTPP(torch.nn.Module):
 
 		objective = cp.Minimize(opt_loss)
 
-		constraints = [ex_preds>=0]
+		#constraints = [ex_preds>=0]
 
-		prob = cp.Problem(objective, constraints)
+		prob = cp.Problem(objective)#, constraints)
 
 		try:
 			opt_loss = prob.solve()

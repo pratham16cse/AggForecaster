@@ -179,6 +179,10 @@ args.inference_model_names = ['DILATE', 'MSE', 'seq2seqmse_dualtpp']
 base_models = {}
 for name in args.base_model_names:
     base_models[name] = {}
+inference_models = {}
+for name in args.inference_model_names:
+    inference_models[name] = {}
+
 
 os.makedirs(args.output_dir, exist_ok=True)
 os.makedirs(args.saved_models_dir, exist_ok=True)
@@ -257,6 +261,7 @@ for inf_model_name in args.inference_model_names:
         pred = inf_net(lvl2testinputs).to(device)
         metric_mse = criterion(lvl2testtargets[0], pred)
 
+    inference_models[inf_model_name] = inf_net
     metric_mse = metric_mse.item()
 
     print('MSE metric for Inference model {}: {:f}'.format(inf_model_name, metric_mse))
@@ -274,26 +279,27 @@ with open(os.path.join(args.output_dir, 'results_'+args.dataset_name+'.json'), '
 
 # Visualize results
 
-#nets = [net_gru_mse,net_gru_dilate]
 
-#for ind in range(1,51):
-#    plt.figure()
-#    plt.rcParams['figure.figsize'] = (17.0,5.0)  
-#    k = 1
-#    for net in nets:
-#        pred = net(test_inputs).to(device)
-#
-#        input = test_inputs.detach().cpu().numpy()[ind,:,:]
-#        target = test_targets.detach().cpu().numpy()[ind,:,:]
-#        preds = pred.detach().cpu().numpy()[ind,:,:]
-#
-#        plt.subplot(1,3,k)
-#        plt.plot(range(0,N_input) ,input,label='input',linewidth=3)
-#        plt.plot(range(N_input-1,N_input+N_output), np.concatenate([ input[N_input-1:N_input], target ]) ,label='target',linewidth=3)   
-#        plt.plot(range(N_input-1,N_input+N_output),  np.concatenate([ input[N_input-1:N_input], preds ])  ,label='prediction',linewidth=3)       
-#        plt.xticks(range(0,40,2))
-#        plt.legend()
-#        k = k+1
-#
-#    plt.show()
-#
+for ind in range(1,51):
+    plt.figure()
+    plt.rcParams['figure.figsize'] = (17.0,5.0)  
+    k = 1
+    for inf_mdl_name, inf_net in inference_models.items():
+        if inf_mdl_name in ['DILATE', 'MSE']:
+            pred = inf_net(lvl2testinputs[0]).to(device)
+        elif inf_mdl_name in ['seq2seqmse_dualtpp']:
+            pred = inf_net(lvl2testinputs).to(device)
+
+        input = lvl2testinputs[0].detach().cpu().numpy()[ind,:,:]
+        target = lvl2testtargets[0].detach().cpu().numpy()[ind,:,:]
+        preds = pred.detach().cpu().numpy()[ind,:,:]
+
+        plt.subplot(1,3,k)
+        plt.plot(range(0,args.N_input) ,input,label='input',linewidth=3)
+        plt.plot(range(args.N_input-1,args.N_input+args.N_output), np.concatenate([ input[args.N_input-1:args.N_input], target ]) ,label='target',linewidth=3)   
+        plt.plot(range(args.N_input-1,args.N_input+args.N_output),  np.concatenate([ input[args.N_input-1:args.N_input], preds ])  ,label=inf_mdl_name,linewidth=3)       
+        plt.xticks(range(0,40,2))
+        plt.legend()
+        k = k+1
+
+    plt.show()
