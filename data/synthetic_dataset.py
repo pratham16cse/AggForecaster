@@ -3,6 +3,23 @@ import torch
 import random
 from torch.utils.data import Dataset, DataLoader
 
+def create_sin_dataset(N, N_input, N_output, sigma):
+    # N: number of samples in each split (train, test)
+    # N_input: import of time steps in input series
+    # N_output: import of time steps in output series
+    # sigma: standard deviation of additional noise
+    X = []
+    breakpoints = []
+    for k in range(2*N):
+        inp = np.random.uniform(-np.pi, np.pi) + np.linspace(0, 50, N_input+N_output)
+        serie = np.sin(inp)
+        X.append(serie)
+        breakpoints.append(N_input)
+    X = np.stack(X)
+    breakpoints = np.array(breakpoints)
+    return X[0:N,0:N_input], X[0:N, N_input:N_input+N_output], X[N:2*N,0:N_input], X[N:2*N, N_input:N_input+N_output],breakpoints[0:N], breakpoints[N:2*N]
+
+
 def create_synthetic_dataset(N, N_input,N_output,sigma):
     # N: number of samples in each split (train, test)
     # N_input: import of time steps in input series

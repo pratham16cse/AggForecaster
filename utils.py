@@ -1,7 +1,7 @@
 from torch.utils.data import DataLoader
 import numpy as np
 
-from data.synthetic_dataset import create_synthetic_dataset, SyntheticDataset
+from data.synthetic_dataset import create_synthetic_dataset, create_sin_dataset, SyntheticDataset
 
 
 def add_metrics_to_dict(
@@ -64,18 +64,24 @@ def get_processed_data(args):
 
 		# Load synthetic dataset
 		X_train_input,X_train_target,X_test_input,X_test_target,train_bkp,test_bkp = create_synthetic_dataset(N, args.N_input, args.N_output, sigma)
-		dataset_train = SyntheticDataset(X_train_input, X_train_target, train_bkp)
-		dataset_test  = SyntheticDataset(X_test_input, X_test_target, test_bkp)
-		trainloader = DataLoader(dataset_train, batch_size=args.batch_size,shuffle=True, num_workers=1)
-		testloader  = DataLoader(dataset_test, batch_size=args.batch_size,shuffle=False, num_workers=1)
+		#dataset_train = SyntheticDataset(X_train_input, X_train_target, train_bkp)
+		#dataset_test  = SyntheticDataset(X_test_input, X_test_target, test_bkp)
+		#trainloader = DataLoader(dataset_train, batch_size=args.batch_size,shuffle=True, num_workers=1)
+		#testloader  = DataLoader(dataset_test, batch_size=args.batch_size,shuffle=False, num_workers=1)
 
-		level2data = create_hierarchical_data(
-			args, X_train_input, X_train_target, X_test_input, X_test_target,
-			train_bkp, test_bkp
-		)
+	elif args.dataset_name in ['sin']:
+		N = 500
+		sigma = 0.01
+
+		X_train_input,X_train_target,X_test_input,X_test_target,train_bkp,test_bkp = create_sin_dataset(N, args.N_input, args.N_output, sigma)
+
+	level2data = create_hierarchical_data(
+		args, X_train_input, X_train_target, X_test_input, X_test_target,
+		train_bkp, test_bkp
+	)
 
 	return {
-		'trainloader': trainloader,
-		'testloader': testloader,
+		#'trainloader': trainloader,
+		#'testloader': testloader,
 		'level2data': level2data,
 	}
