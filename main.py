@@ -175,10 +175,17 @@ parser.add_argument('--K', type=int, default=2,
 
 args = parser.parse_args()
 
-args.base_model_names = ['seq2seqdilate', 'seq2seqmse', 'seq2seqnll']
-#args.base_model_names = ['seq2seqnll']
-args.inference_model_names = ['DILATE', 'MSE', 'seq2seqmse_dualtpp', 'seq2seqnll_dualtpp']
-#args.inference_model_names = ['seq2seqnll_dualtpp']
+args.base_model_names = [
+    'seq2seqdilate',
+    'seq2seqmse',
+    'seq2seqnll'
+]
+args.inference_model_names = [
+    'DILATE',
+    'MSE',
+    'seq2seqmse_dualtpp',
+    'seq2seqnll_dualtpp',
+]
 
 base_models = {}
 for name in args.base_model_names:
@@ -211,7 +218,9 @@ for base_model_name in args.base_model_names:
         elif base_model_name in ['seq2seqnll']:
             point_estimates = False
     
-        saved_models_dir = os.path.join(args.saved_models_dir, base_model_name, str(level))
+        saved_models_dir = os.path.join(
+            args.saved_models_dir, args.dataset_name+'_'+base_model_name+'_'+str(level)
+        )
         os.makedirs(saved_models_dir, exist_ok=True)
         saved_models_path = os.path.join(saved_models_dir, 'state_dict_model.pt')
         output_dir = os.path.join(args.output_dir, base_model_name)
