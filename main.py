@@ -44,16 +44,15 @@ def train_model(
             batch_size, N_output = target.shape[0:2]                     
 
             # forward + backward + optimize
-            outputs = net(inputs)
+            means, stds = net(inputs)
             loss_mse,loss_shape,loss_temporal = torch.tensor(0),torch.tensor(0),torch.tensor(0)
             
             if model_name in ['seq2seqmse']:
-                loss_mse = criterion(target,outputs)
+                loss_mse = criterion(target,means)
                 loss = loss_mse                   
             if model_name in ['seq2seqdilate']:
-                loss, loss_shape, loss_temporal = dilate_loss(target,outputs,alpha, args.gamma, device)
+                loss, loss_shape, loss_temporal = dilate_loss(target, means, alpha, args.gamma, device)
             if model_name in ['seq2seqnll']:
-                means, stds = outputs[:, :, 0:1], outputs[:, :, 1:2]
                 dist = torch.distributions.normal.Normal(means, stds)
                 loss = -torch.sum(dist.log_prob(target))
                   
@@ -91,15 +90,15 @@ def eval_model(net,loader, gamma,verbose=1):
         inputs = torch.tensor(inputs, dtype=torch.float32).to(device)
         target = torch.tensor(target, dtype=torch.float32).to(device)
         batch_size, N_output = target.shape[0:2]
-        outputs = net(inputs)
+        means, _ = net(inputs)
          
         # MSE    
-        loss_mse = criterion(target,outputs)    
+        loss_mse = criterion(target, means)
         loss_dtw, loss_tdi = 0,0
         # DTW and TDI
         for k in range(batch_size):         
             target_k_cpu = target[k,:,0:1].view(-1).detach().cpu().numpy()
-            output_k_cpu = outputs[k,:,0:1].view(-1).detach().cpu().numpy()
+            output_k_cpu = means[k,:,0:1].view(-1).detach().cpu().numpy()
 
             loss_dtw += dtw(target_k_cpu,output_k_cpu)
             path, sim = dtw_path(target_k_cpu, output_k_cpu)   
@@ -177,7 +176,9 @@ parser.add_argument('--K', type=int, default=2,
 args = parser.parse_args()
 
 args.base_model_names = ['seq2seqdilate', 'seq2seqmse', 'seq2seqnll']
+#args.base_model_names = ['seq2seqnll']
 args.inference_model_names = ['DILATE', 'MSE', 'seq2seqmse_dualtpp', 'seq2seqnll_dualtpp']
+#args.inference_model_names = ['seq2seqnll_dualtpp']
 
 base_models = {}
 for name in args.base_model_names:
@@ -207,10 +208,8 @@ for base_model_name in args.base_model_names:
 
         if base_model_name in ['seq2seqmse', 'seq2seqdilate']:
             point_estimates = True
-            output_size = 1
         elif base_model_name in ['seq2seqnll']:
             point_estimates = False
-            output_size = 2
     
         saved_models_dir = os.path.join(args.saved_models_dir, base_model_name, str(level))
         os.makedirs(saved_models_dir, exist_ok=True)
@@ -224,7 +223,7 @@ for base_model_name in args.base_model_names:
         ).to(device)
         decoder = DecoderRNN(
             input_size=1, hidden_size=args.hidden_size, num_grulstm_layers=args.num_grulstm_layers,
-            fc_units=args.fc_units, output_size=output_size
+            fc_units=args.fc_units, output_size=1
         ).to(device)
         net_gru = Net_GRU(encoder,decoder, N_output, point_estimates, device).to(device)
         train_model(
@@ -304,7 +303,7 @@ for ind in range(1,51):
         target = lvl2testtargets[0].detach().cpu().numpy()[ind,:,:]
         preds = pred.detach().cpu().numpy()[ind,:,:]
 
-        plt.subplot(3,1,k)
+        plt.subplot(len(inference_models),1,k)
         plt.plot(range(0,args.N_input) ,input,label='input',linewidth=3)
         plt.plot(range(args.N_input-1,args.N_input+args.N_output), np.concatenate([ input[args.N_input-1:args.N_input], target ]) ,label='target',linewidth=3)   
         plt.plot(range(args.N_input-1,args.N_input+args.N_output),  np.concatenate([ input[args.N_input-1:args.N_input], preds ])  ,label=inf_mdl_name,linewidth=3)       

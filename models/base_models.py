@@ -24,13 +24,16 @@ class DecoderRNN(nn.Module):
         self.output_size = output_size
         self.gru = nn.GRU(input_size=input_size, hidden_size=hidden_size, num_layers=num_grulstm_layers,batch_first=True)
         self.fc = nn.Linear(hidden_size, fc_units)
-        self.out = nn.Linear(fc_units, output_size)         
+        self.out_mean = nn.Linear(fc_units, output_size)
+        self.out_std = nn.Linear(fc_units, output_size)
         
     def forward(self, input, hidden):
         output, hidden = self.gru(input, hidden) 
         output = F.relu( self.fc(output) )
-        output = self.out(output)      
-        return output, hidden
+        means = self.out_mean(output)      
+        stds = self.out_std(output)
+        stds = F.relu(stds) + 1e-3
+        return (means, stds), hidden
     
 class Net_GRU(nn.Module):
     def __init__(self, encoder, decoder, target_length, point_estimates, device):
@@ -50,9 +53,11 @@ class Net_GRU(nn.Module):
         decoder_input = x[:,-1,:].unsqueeze(1) # first decoder input= last element of input sequence
         decoder_hidden = encoder_hidden
         
-        outputs = torch.zeros([x.shape[0], self.target_length, self.decoder.output_size]).to(self.device)
+        means = torch.zeros([x.shape[0], self.target_length, self.decoder.output_size]).to(self.device)
+        stds = torch.zeros([x.shape[0], self.target_length, self.decoder.output_size]).to(self.device)
         for di in range(self.target_length):
-            decoder_output, decoder_hidden = self.decoder(decoder_input, decoder_hidden)
-            decoder_input = decoder_output[:, :, 0:1]
-            outputs[:, di:di+1, :] = decoder_output
-        return outputs      
+            (step_means, step_stds), decoder_hidden = self.decoder(decoder_input, decoder_hidden)
+            decoder_input = step_means
+            means[:, di:di+1, :] = step_means
+            stds[:, di:di+1, :] = step_stds
+        return means, stds

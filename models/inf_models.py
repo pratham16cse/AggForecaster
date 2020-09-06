@@ -13,7 +13,8 @@ class DILATE(torch.nn.Module):
 		self.base_model = model
 
 	def forward(self, x):
-		return self.base_model(x)
+		means, _ = self.base_model(x) 
+		return means
 
 class MSE(torch.nn.Module):
 	"""docstring for MSE"""
@@ -22,7 +23,8 @@ class MSE(torch.nn.Module):
 		self.base_model = model
 
 	def forward(self, x):
-		return self.base_model(x)
+		means, _ = self.base_model(x)
+		return means
 		
 
 class DualTPP(torch.nn.Module):
@@ -101,15 +103,11 @@ class DualTPP(torch.nn.Module):
 		for level in range(len(self.base_models_dict)):
 			model = self.base_models_dict[level]
 			inputs = inputs_dict[level]
-			params = model(inputs)
-			if model.point_estimates:
-				means = params
-				stds = torch.ones_like(means)
-				params = [means, stds]
-			else:
-				means, stds = params[:, :, 0:1], params[:, :, 1:2]
-				params = [means, stds]
+			means, stds = model(inputs)
 
+			if model.point_estimates:
+				stds = torch.ones_like(means)
+			params = [means, stds]
 			params_dict[level] = params
 
 		all_preds = []
