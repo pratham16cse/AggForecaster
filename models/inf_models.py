@@ -42,11 +42,6 @@ class DualTPP(torch.nn.Module):
 		self.base_model_name = base_model_name
 		self.base_models_dict = base_models_dict
 
-		if base_model_name in ['seq2seqmse']:
-			self.point_estimates = True
-		else:
-			self.point_estimates = False
-
 	def aggregate_seq_(self, seq):
 		assert seq.shape[0]%self.K == 0
 		agg_seq = np.array([[cp.sum(seq[i:i+self.K])] for i in range(0, seq.shape[0], self.K)])
@@ -107,12 +102,13 @@ class DualTPP(torch.nn.Module):
 			model = self.base_models_dict[level]
 			inputs = inputs_dict[level]
 			params = model(inputs)
-			if self.point_estimates:
+			if model.point_estimates:
 				means = params
-				sigmas = torch.ones_like(means)
-				params = [means, sigmas]
+				stds = torch.ones_like(means)
+				params = [means, stds]
 			else:
-				raise NotImplementedError
+				means, stds = params[:, :, 0:1], params[:, :, 1:2]
+				params = [means, stds]
 
 			params_dict[level] = params
 

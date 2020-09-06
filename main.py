@@ -26,7 +26,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 def train_model(
-    net, loss_type, trainloader, testloader, saved_models_path, output_dir,
+    args, model_name, net, trainloader, testloader, saved_models_path, output_dir,
     eval_every=50, verbose=1, Lambda=1, alpha=0.5
 ):
     
@@ -47,12 +47,15 @@ def train_model(
             outputs = net(inputs)
             loss_mse,loss_shape,loss_temporal = torch.tensor(0),torch.tensor(0),torch.tensor(0)
             
-            if (loss_type=='mse'):
+            if model_name in ['seq2seqmse']:
                 loss_mse = criterion(target,outputs)
                 loss = loss_mse                   
- 
-            if (loss_type=='dilate'):    
+            if model_name in ['seq2seqdilate']:
                 loss, loss_shape, loss_temporal = dilate_loss(target,outputs,alpha, args.gamma, device)
+            if model_name in ['seq2seqnll']:
+                means, stds = outputs[:, :, 0:1], outputs[:, :, 1:2]
+                dist = torch.distributions.normal.Normal(means, stds)
+                loss = -torch.sum(dist.log_prob(target))
                   
             optimizer.zero_grad()
             loss.backward()
@@ -173,8 +176,8 @@ parser.add_argument('--K', type=int, default=2,
 
 args = parser.parse_args()
 
-args.base_model_names = ['seq2seqdilate', 'seq2seqmse']
-args.inference_model_names = ['DILATE', 'MSE', 'seq2seqmse_dualtpp']
+args.base_model_names = ['seq2seqdilate', 'seq2seqmse', 'seq2seqnll']
+args.inference_model_names = ['DILATE', 'MSE', 'seq2seqmse_dualtpp', 'seq2seqnll_dualtpp']
 
 base_models = {}
 for name in args.base_model_names:
@@ -201,32 +204,34 @@ for base_model_name in args.base_model_names:
         trainloader = level2data[level]['trainloader']
         testloader = level2data[level]['testloader']
         N_output = level2data[level]['N_output']
+
+        if base_model_name in ['seq2seqmse', 'seq2seqdilate']:
+            point_estimates = True
+            output_size = 1
+        elif base_model_name in ['seq2seqnll']:
+            point_estimates = False
+            output_size = 2
     
         saved_models_dir = os.path.join(args.saved_models_dir, base_model_name, str(level))
         os.makedirs(saved_models_dir, exist_ok=True)
         saved_models_path = os.path.join(saved_models_dir, 'state_dict_model.pt')
         output_dir = os.path.join(args.output_dir, base_model_name)
         os.makedirs(output_dir, exist_ok=True)
-    
-        if base_model_name in ['seq2seqmse']:
-            loss_type = 'mse'
-        elif base_model_name in ['seq2seqdilate']:
-            loss_type = 'dilate'
-    
+ 
         encoder = EncoderRNN(
             input_size=1, hidden_size=args.hidden_size, num_grulstm_layers=args.num_grulstm_layers,
             batch_size=args.batch_size
         ).to(device)
         decoder = DecoderRNN(
             input_size=1, hidden_size=args.hidden_size, num_grulstm_layers=args.num_grulstm_layers,
-            fc_units=args.fc_units, output_size=1
+            fc_units=args.fc_units, output_size=output_size
         ).to(device)
-        net_gru = Net_GRU(encoder,decoder, N_output, device).to(device)
+        net_gru = Net_GRU(encoder,decoder, N_output, point_estimates, device).to(device)
         train_model(
-            net_gru, loss_type, trainloader, testloader,
+            args, base_model_name, net_gru, trainloader, testloader,
             saved_models_path, output_dir, eval_every=50, verbose=1
         )
-    
+
         base_models[base_model_name][level] = net_gru
 # ----- End: base models training ----- #
 
@@ -258,6 +263,11 @@ for inf_model_name in args.inference_model_names:
     elif inf_model_name in ['seq2seqmse_dualtpp']:
         base_models_dict = base_models['seq2seqmse']
         inf_net = inf_models.DualTPP(args.K, 'seq2seqmse', base_models_dict)
+        pred = inf_net(lvl2testinputs).to(device)
+        metric_mse = criterion(lvl2testtargets[0], pred)
+    elif inf_model_name in ['seq2seqnll_dualtpp']:
+        base_models_dict = base_models['seq2seqnll']
+        inf_net = inf_models.DualTPP(args.K, 'seq2seqnll', base_models_dict)
         pred = inf_net(lvl2testinputs).to(device)
         metric_mse = criterion(lvl2testtargets[0], pred)
 
@@ -294,7 +304,7 @@ for ind in range(1,51):
         target = lvl2testtargets[0].detach().cpu().numpy()[ind,:,:]
         preds = pred.detach().cpu().numpy()[ind,:,:]
 
-        plt.subplot(1,3,k)
+        plt.subplot(3,1,k)
         plt.plot(range(0,args.N_input) ,input,label='input',linewidth=3)
         plt.plot(range(args.N_input-1,args.N_input+args.N_output), np.concatenate([ input[args.N_input-1:args.N_input], target ]) ,label='target',linewidth=3)   
         plt.plot(range(args.N_input-1,args.N_input+args.N_output),  np.concatenate([ input[args.N_input-1:args.N_input], preds ])  ,label=inf_mdl_name,linewidth=3)       

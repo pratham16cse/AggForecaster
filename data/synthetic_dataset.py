@@ -12,7 +12,7 @@ def create_sin_dataset(N, N_input, N_output, sigma):
     breakpoints = []
     for k in range(2*N):
         inp = np.random.uniform(-np.pi, np.pi) + np.linspace(0, 50, N_input+N_output)
-        serie = np.sin(inp)
+        serie = np.sin(inp) + np.random.normal(0, 0.1)
         X.append(serie)
         breakpoints.append(N_input)
     X = np.stack(X)
