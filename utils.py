@@ -46,8 +46,14 @@ def create_hierarchical_data(
 			)
 		dataset_train = SyntheticDataset(train_input, train_target, train_bkp)
 		dataset_test  = SyntheticDataset(test_input, test_target, test_bkp)
-		trainloader = DataLoader(dataset_train, batch_size=args.batch_size,shuffle=True, drop_last=True, num_workers=1)
-		testloader  = DataLoader(dataset_test, batch_size=args.batch_size,shuffle=False, drop_last=True, num_workers=1)
+		trainloader = DataLoader(
+			dataset_train, batch_size=args.batch_size, shuffle=True,
+			drop_last=True, num_workers=1
+		)
+		testloader  = DataLoader(
+			dataset_test, batch_size=test_input.shape[0], shuffle=False,
+			drop_last=False, num_workers=1
+		)
 		level2data[level] = {
 			'trainloader': trainloader,
 			'testloader': testloader,

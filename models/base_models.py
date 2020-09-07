@@ -14,9 +14,9 @@ class EncoderRNN(torch.nn.Module):
         output, hidden = self.gru(input, hidden)      
         return output, hidden
     
-    def init_hidden(self,device):
+    def init_hidden(self, batch_size, device):
         #[num_layers*num_directions,batch,hidden_size]   
-        return torch.zeros(self.num_grulstm_layers, self.batch_size, self.hidden_size, device=device)
+        return torch.zeros(self.num_grulstm_layers, batch_size, self.hidden_size, device=device)
     
 class DecoderRNN(nn.Module):
     def __init__(self, input_size, hidden_size, num_grulstm_layers,fc_units, output_size):
@@ -46,7 +46,7 @@ class Net_GRU(nn.Module):
         
     def forward(self, x):
         input_length  = x.shape[1]
-        encoder_hidden = self.encoder.init_hidden(self.device)
+        encoder_hidden = self.encoder.init_hidden(x.shape[0], self.device)
         for ei in range(input_length):
             encoder_output, encoder_hidden = self.encoder(x[:,ei:ei+1,:]  , encoder_hidden)
             
