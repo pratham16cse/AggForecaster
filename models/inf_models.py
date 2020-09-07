@@ -112,6 +112,7 @@ class DualTPP(torch.nn.Module):
 
 		all_preds = []
 		for i in range(params_dict[0][0].size()[0]):
+			print(i)
 			ex_params_dict = dict()
 			for lvl, params in params_dict.items():
 				ex_params_dict[lvl] = [params_dict[lvl][0][i], params_dict[lvl][1][i]]

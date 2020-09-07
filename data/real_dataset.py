@@ -35,22 +35,47 @@ def parse_Traffic(N_input, N_output):
 			data.append(line.rstrip().split(',')[0])
 		data = np.array(data).astype(np.float32)
 	
-		data_train, data_dev, data_test = generate_train_dev_test_data(data, N_input)
+	data_train, data_dev, data_test = generate_train_dev_test_data(data, N_input)
 
-		data_train_in, data_train_out = create_forecast_io_seqs(data_train, N_input, N_output, N_output)
-		data_dev_in, data_dev_out = create_forecast_io_seqs(data_dev, N_input, N_output, N_output)
-		data_test_in, data_test_out = create_forecast_io_seqs(data_test, N_input, N_output, N_output)
+	data_train_in, data_train_out = create_forecast_io_seqs(data_train, N_input, N_output, N_output)
+	data_dev_in, data_dev_out = create_forecast_io_seqs(data_dev, N_input, N_output, N_output)
+	data_test_in, data_test_out = create_forecast_io_seqs(data_test, N_input, N_output, N_output)
 
-		train_bkp = np.ones(data_train_in.shape[0]) * N_input
-		dev_bkp = np.ones(data_dev_in.shape[0]) * N_input
-		test_bkp = np.ones(data_test_in.shape[0]) * N_input
+	train_bkp = np.ones(data_train_in.shape[0]) * N_input
+	dev_bkp = np.ones(data_dev_in.shape[0]) * N_input
+	test_bkp = np.ones(data_test_in.shape[0]) * N_input
 
-		return (
-			data_train_in, data_train_out, data_dev_in, data_dev_out,
-			data_test_in, data_test_out, train_bkp, dev_bkp, test_bkp,
-		)
+	return (
+		data_train_in, data_train_out, data_dev_in, data_dev_out,
+		data_test_in, data_test_out, train_bkp, dev_bkp, test_bkp,
+	)
 
 def parse_ECG5000(N_input, N_output):
-	raise NotImplementedError
+	with open('data/ECG5000/ECG5000_TRAIN.tsv', 'r') as f:
+		data = []
+		for line in f:
+			data.append(line.rstrip().split())
+		data = np.array(data).astype(np.float32)
+	with open('data/ECG5000/ECG5000_TEST.tsv', 'r') as f:
+		data_test = []
+		for line in f:
+			data_test.append(line.rstrip().split())
+		data_test = np.array(data_test).astype(np.float32)
 
+	N = data.shape[0]
+	dev_len = int(0.2*N)
+	train_len = N - dev_len
+	data_train, data_dev = data[:train_len], data[train_len:train_len+dev_len]
 
+	data_train_in, data_train_out = data_train[:, :N_input], data_train[:, N_input:N_input+N_output]
+	data_dev_in, data_dev_out = data_dev[:, :N_input], data_dev[:, N_input:N_input+N_output]
+	data_test_in, data_test_out = data_test[:, :N_input], data_test[:, N_input:N_input+N_output]
+
+	train_bkp = np.ones(data_train_in.shape[0]) * N_input
+	dev_bkp = np.ones(data_dev_in.shape[0]) * N_input
+	test_bkp = np.ones(data_test_in.shape[0]) * N_input
+
+	return (
+		data_train_in, data_train_out, data_dev_in, data_dev_out,
+		data_test_in, data_test_out, train_bkp, dev_bkp, test_bkp,
+	)
