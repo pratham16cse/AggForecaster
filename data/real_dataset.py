@@ -42,9 +42,13 @@ def parse_Traffic(N_input, N_output):
 		data_test_in, data_test_out = create_forecast_io_seqs(data_test, N_input, N_output, N_output)
 
 		train_bkp = np.ones(data_train_in.shape[0]) * N_input
+		dev_bkp = np.ones(data_dev_in.shape[0]) * N_input
 		test_bkp = np.ones(data_test_in.shape[0]) * N_input
 
-		return data_train_in, data_train_out, data_test_in, data_test_out, train_bkp, test_bkp
+		return (
+			data_train_in, data_train_out, data_dev_in, data_dev_out,
+			data_test_in, data_test_out, train_bkp, dev_bkp, test_bkp,
+		)
 
 def parse_ECG5000(N_input, N_output):
 	raise NotImplementedError

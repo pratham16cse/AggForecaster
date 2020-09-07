@@ -26,7 +26,8 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 def train_model(
-    args, model_name, net, trainloader, testloader, saved_models_path, output_dir,
+    args, model_name, net, trainloader, devloader, testloader,
+    saved_models_path, output_dir,
     eval_every=50, verbose=1, Lambda=1, alpha=0.5
 ):
     
@@ -63,7 +64,7 @@ def train_model(
         if(verbose):
             if (epoch % args.print_every == 0):
                 print('epoch ', epoch, ' loss ',loss.item(),' loss shape ',loss_shape.item(),' loss temporal ',loss_temporal.item())
-                metric_mse, metric_dtw, metric_tdi = eval_model(net,testloader, args.gamma,verbose=1)
+                metric_mse, metric_dtw, metric_tdi = eval_model(net, devloader, args.gamma,verbose=1)
 
                 if metric_mse < best_metric_mse:
                     best_metric_mse = metric_mse
@@ -74,7 +75,7 @@ def train_model(
     print('Best model found at epoch', best_epoch)
     net.load_state_dict(torch.load(saved_models_path))
     net.eval()
-    metric_mse, metric_dtw, metric_tdi = eval_model(net,testloader, args.gamma,verbose=1)
+    metric_mse, metric_dtw, metric_tdi = eval_model(net, devloader, args.gamma,verbose=1)
   
 
 def eval_model(net,loader, gamma,verbose=1):   
@@ -210,6 +211,7 @@ for base_model_name in args.base_model_names:
         levels = [0]
     for level in levels:
         trainloader = level2data[level]['trainloader']
+        devloader = level2data[level]['devloader']
         testloader = level2data[level]['testloader']
         N_output = level2data[level]['N_output']
 
@@ -236,7 +238,7 @@ for base_model_name in args.base_model_names:
         ).to(device)
         net_gru = Net_GRU(encoder,decoder, N_output, point_estimates, device).to(device)
         train_model(
-            args, base_model_name, net_gru, trainloader, testloader,
+            args, base_model_name, net_gru, trainloader, devloader, testloader,
             saved_models_path, output_dir, eval_every=50, verbose=1
         )
 
