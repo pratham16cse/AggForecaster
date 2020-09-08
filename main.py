@@ -337,6 +337,14 @@ for inf_model_name in args.inference_model_names:
         model2metrics, inf_model_name, metric_mse, metric_dtw, metric_tdi
     )
     infmodel2preds[inf_model_name] = preds
+    output_dir = os.path.join(args.output_dir, args.dataset_name)
+    os.makedirs(output_dir, exist_ok=True)
+    utils.write_arr_to_file(
+        output_dir, inf_model_name,
+        lvl2testinputs[0].detach().numpy(),
+        lvl2testtargets[0].detach().numpy(),
+        preds.detach().numpy()
+    )
 
 
 # ----- End: Inference models ----- #

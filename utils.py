@@ -1,5 +1,6 @@
 from torch.utils.data import DataLoader
 import numpy as np
+import os
 
 from data.synthetic_dataset import create_synthetic_dataset, create_sin_dataset, SyntheticDataset
 from data.real_dataset import parse_ECG5000, parse_Traffic
@@ -16,6 +17,18 @@ def add_metrics_to_dict(
 	metrics_dict[model_name]['tdi'] = metric_tdi
 
 	return metrics_dict
+
+def write_arr_to_file(output_dir, inf_model_name, inputs, targets, preds):
+
+	# Files are saved in .npy format
+	np.save(os.path.join(output_dir, inf_model_name + '_' + 'preds'), preds)
+
+	for fname in os.listdir(output_dir):
+	    if fname.endswith('targets.npy'):
+	        break
+	else:
+		np.save(os.path.join(output_dir, 'inputs'), inputs)
+		np.save(os.path.join(output_dir, 'targets'), targets)
 
 def aggregate_data(
 	level, K, train_input, train_target, dev_input, dev_target,
