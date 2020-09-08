@@ -30,41 +30,41 @@ def train_model(
     saved_models_path, output_dir,
     eval_every=50, verbose=1, Lambda=1, alpha=0.5
 ):
-    
+
     optimizer = torch.optim.Adam(net.parameters(),lr=args.learning_rate)
     criterion = torch.nn.MSELoss()
 
     best_metric_mse = np.inf
     best_epoch = 0
-    
-    for epoch in range(args.epochs): 
+
+    for epoch in range(args.epochs):
         for i, data in enumerate(trainloader, 0):
             inputs, target, _ = data
             inputs = torch.tensor(inputs, dtype=torch.float32).to(device)
             target = torch.tensor(target, dtype=torch.float32).to(device)
-            batch_size, N_output = target.shape[0:2]                     
+            batch_size, N_output = target.shape[0:2]
 
             # forward + backward + optimize
             means, stds = net(inputs)
             loss_mse,loss_shape,loss_temporal = torch.tensor(0),torch.tensor(0),torch.tensor(0)
-            
+
             if model_name in ['seq2seqmse']:
                 loss_mse = criterion(target,means)
-                loss = loss_mse                   
+                loss = loss_mse
             if model_name in ['seq2seqdilate']:
                 loss, loss_shape, loss_temporal = dilate_loss(target, means, alpha, args.gamma, device)
             if model_name in ['seq2seqnll']:
                 dist = torch.distributions.normal.Normal(means, stds)
                 loss = -torch.sum(dist.log_prob(target))
-                  
+
             optimizer.zero_grad()
             loss.backward()
-            optimizer.step()          
-        
+            optimizer.step()
+
         if(verbose):
             if (epoch % args.print_every == 0):
                 print('epoch ', epoch, ' loss ',loss.item(),' loss shape ',loss_shape.item(),' loss temporal ',loss_temporal.item())
-                metric_mse, metric_dtw, metric_tdi = eval_model(net, devloader, args.gamma,verbose=1)
+                metric_mse, metric_dtw, metric_tdi = eval_base_model(net, devloader, args.gamma,verbose=1)
 
                 if metric_mse < best_metric_mse:
                     best_metric_mse = metric_mse
@@ -75,14 +75,14 @@ def train_model(
     print('Best model found at epoch', best_epoch)
     net.load_state_dict(torch.load(saved_models_path))
     net.eval()
-    metric_mse, metric_dtw, metric_tdi = eval_model(net, devloader, args.gamma,verbose=1)
-  
+    metric_mse, metric_dtw, metric_tdi = eval_base_model(net, devloader, args.gamma,verbose=1)
 
-def eval_model(net,loader, gamma,verbose=1):   
+
+def eval_base_model(net,loader, gamma,verbose=1):
     criterion = torch.nn.MSELoss()
     losses_mse = []
     losses_dtw = []
-    losses_tdi = []   
+    losses_tdi = []
 
     for i, data in enumerate(loader, 0):
         loss_mse, loss_dtw, loss_tdi = torch.tensor(0),torch.tensor(0),torch.tensor(0)
@@ -92,23 +92,23 @@ def eval_model(net,loader, gamma,verbose=1):
         target = torch.tensor(target, dtype=torch.float32).to(device)
         batch_size, N_output = target.shape[0:2]
         means, _ = net(inputs)
-         
-        # MSE    
+
+        # MSE
         loss_mse = criterion(target, means)
         loss_dtw, loss_tdi = 0,0
         # DTW and TDI
-        for k in range(batch_size):         
+        for k in range(batch_size):
             target_k_cpu = target[k,:,0:1].view(-1).detach().cpu().numpy()
             output_k_cpu = means[k,:,0:1].view(-1).detach().cpu().numpy()
 
             loss_dtw += dtw(target_k_cpu,output_k_cpu)
-            path, sim = dtw_path(target_k_cpu, output_k_cpu)   
-                       
+            path, sim = dtw_path(target_k_cpu, output_k_cpu)
+
             Dist = 0
             for i,j in path:
                     Dist += (i-j)*(i-j)
-            loss_tdi += Dist / (N_output*N_output)            
-                        
+            loss_tdi += Dist / (N_output*N_output)
+
         loss_dtw = loss_dtw /batch_size
         loss_tdi = loss_tdi / batch_size
 
@@ -121,9 +121,51 @@ def eval_model(net,loader, gamma,verbose=1):
     metric_dtw = np.array(losses_dtw).mean()
     metric_tdi = np.array(losses_tdi).mean()
 
-    print('Eval mse= ', metric_mse, ' dtw= ', metric_dtw, ' tdi= ', metric_tdi) 
+    print('Eval mse= ', metric_mse, ' dtw= ', metric_dtw, ' tdi= ', metric_tdi)
 
     return metric_mse, metric_dtw, metric_tdi
+
+def eval_inf_model(net, lvl2testinputs, lvl2testtargets, gamma, verbose=1):
+    criterion = torch.nn.MSELoss()
+    losses_mse = []
+    losses_dtw = []
+    losses_tdi = []
+
+    target = lvl2testtargets[0]
+    batch_size, N_output = target.shape[0:2]
+    preds, _ = net(lvl2testinputs)
+
+    # MSE
+    loss_mse = criterion(target, preds)
+    loss_dtw, loss_tdi = 0,0
+    # DTW and TDI
+    for k in range(batch_size):
+        target_k_cpu = target[k,:,0:1].view(-1).detach().cpu().numpy()
+        output_k_cpu = preds[k,:,0:1].view(-1).detach().cpu().numpy()
+
+        loss_dtw += dtw(target_k_cpu,output_k_cpu)
+        path, sim = dtw_path(target_k_cpu, output_k_cpu)
+
+        Dist = 0
+        for i,j in path:
+                Dist += (i-j)*(i-j)
+        loss_tdi += Dist / (N_output*N_output)
+
+    loss_dtw = loss_dtw /batch_size
+    loss_tdi = loss_tdi / batch_size
+
+    # print statistics
+    losses_mse.append( loss_mse.item() )
+    losses_dtw.append( loss_dtw )
+    losses_tdi.append( loss_tdi )
+
+    metric_mse = np.array(losses_mse).mean()
+    metric_dtw = np.array(losses_dtw).mean()
+    metric_tdi = np.array(losses_tdi).mean()
+
+    print('Eval mse= ', metric_mse, ' dtw= ', metric_dtw, ' tdi= ', metric_tdi)
+
+    return preds, metric_mse, metric_dtw, metric_tdi
 
 
 
@@ -200,6 +242,7 @@ os.makedirs(args.output_dir, exist_ok=True)
 os.makedirs(args.saved_models_dir, exist_ok=True)
 
 model2metrics = dict()
+infmodel2preds = dict()
 
 
 dataset = utils.get_processed_data(args)
@@ -219,7 +262,7 @@ for base_model_name in args.base_model_names:
             point_estimates = True
         elif base_model_name in ['seq2seqnll']:
             point_estimates = False
-    
+
         saved_models_dir = os.path.join(
             args.saved_models_dir, args.dataset_name+'_'+base_model_name+'_'+str(level)
         )
@@ -227,7 +270,7 @@ for base_model_name in args.base_model_names:
         saved_models_path = os.path.join(saved_models_dir, 'state_dict_model.pt')
         output_dir = os.path.join(args.output_dir, base_model_name)
         os.makedirs(output_dir, exist_ok=True)
- 
+
         encoder = EncoderRNN(
             input_size=1, hidden_size=args.hidden_size, num_grulstm_layers=args.num_grulstm_layers,
             batch_size=args.batch_size
@@ -257,36 +300,43 @@ for level in range(args.L):
     test_targets = torch.tensor(test_targets, dtype=torch.float32).to(device)
     lvl2testinputs[level] = test_inputs
     lvl2testtargets[level] = test_targets
-criterion = torch.nn.MSELoss()
+#criterion = torch.nn.MSELoss()
 
 for inf_model_name in args.inference_model_names:
     if inf_model_name in ['DILATE']:
-        net = base_models['seq2seqdilate'][0]
-        inf_net = inf_models.DILATE(net)
-        pred = inf_net(lvl2testinputs[0]).to(device)
-        metric_mse = criterion(lvl2testtargets[0], pred)
+        base_models_dict = base_models['seq2seqdilate']
+        inf_net = inf_models.DILATE(base_models_dict)
+        #pred = inf_net(lvl2testinputs[0]).to(device)
+        #metric_mse = criterion(lvl2testtargets[0], pred)
     elif inf_model_name in ['MSE']:
-        net = base_models['seq2seqmse'][0]
-        inf_net = inf_models.MSE(net)
-        pred = inf_net(lvl2testinputs[0]).to(device)
-        metric_mse = criterion(lvl2testtargets[0], pred)
+        base_models_dict = base_models['seq2seqmse']
+        inf_net = inf_models.MSE(base_models_dict)
+        #pred = inf_net(lvl2testinputs[0]).to(device)
+        #metric_mse = criterion(lvl2testtargets[0], pred)
     elif inf_model_name in ['seq2seqmse_dualtpp']:
         base_models_dict = base_models['seq2seqmse']
-        inf_net = inf_models.DualTPP(args.K, 'seq2seqmse', base_models_dict)
-        pred = inf_net(lvl2testinputs).to(device)
-        metric_mse = criterion(lvl2testtargets[0], pred)
+        inf_net = inf_models.DualTPP(args.K, base_models_dict)
+        #pred = inf_net(lvl2testinputs).to(device)
+        #metric_mse = criterion(lvl2testtargets[0], pred)
     elif inf_model_name in ['seq2seqnll_dualtpp']:
         base_models_dict = base_models['seq2seqnll']
-        inf_net = inf_models.DualTPP(args.K, 'seq2seqnll', base_models_dict)
-        pred = inf_net(lvl2testinputs).to(device)
-        metric_mse = criterion(lvl2testtargets[0], pred)
+        inf_net = inf_models.DualTPP(args.K, base_models_dict)
+        #pred = inf_net(lvl2testinputs).to(device)
+        #metric_mse = criterion(lvl2testtargets[0], pred)
 
+    inf_net.eval()
+    preds, metric_mse, metric_dtw, metric_tdi = eval_inf_model(
+        inf_net, lvl2testinputs, lvl2testtargets, args.gamma, verbose=1
+    )
     inference_models[inf_model_name] = inf_net
     metric_mse = metric_mse.item()
 
     print('MSE metric for Inference model {}: {:f}'.format(inf_model_name, metric_mse))
 
-    model2metrics = utils.add_metrics_to_dict(model2metrics, inf_model_name, metric_mse)
+    model2metrics = utils.add_metrics_to_dict(
+        model2metrics, inf_model_name, metric_mse, metric_dtw, metric_tdi
+    )
+    infmodel2preds[inf_model_name] = preds
 
 
 # ----- End: Inference models ----- #
@@ -302,22 +352,18 @@ with open(os.path.join(args.output_dir, 'results_'+args.dataset_name+'.json'), '
 
 for ind in range(1,51):
     plt.figure()
-    plt.rcParams['figure.figsize'] = (17.0,5.0)  
+    plt.rcParams['figure.figsize'] = (17.0,5.0)
     k = 1
-    for inf_mdl_name, inf_net in inference_models.items():
-        if inf_mdl_name in ['DILATE', 'MSE']:
-            pred = inf_net(lvl2testinputs[0]).to(device)
-        elif inf_mdl_name in ['seq2seqmse_dualtpp']:
-            pred = inf_net(lvl2testinputs).to(device)
+    for inf_mdl_name, preds in infmodel2preds.items():
 
         input = lvl2testinputs[0].detach().cpu().numpy()[ind,:,:]
         target = lvl2testtargets[0].detach().cpu().numpy()[ind,:,:]
-        preds = pred.detach().cpu().numpy()[ind,:,:]
+        preds = preds.detach().cpu().numpy()[ind,:,:]
 
         plt.subplot(len(inference_models),1,k)
         plt.plot(range(0,args.N_input) ,input,label='input',linewidth=3)
-        plt.plot(range(args.N_input-1,args.N_input+args.N_output), np.concatenate([ input[args.N_input-1:args.N_input], target ]) ,label='target',linewidth=3)   
-        plt.plot(range(args.N_input-1,args.N_input+args.N_output),  np.concatenate([ input[args.N_input-1:args.N_input], preds ])  ,label=inf_mdl_name,linewidth=3)       
+        plt.plot(range(args.N_input-1,args.N_input+args.N_output), np.concatenate([ input[args.N_input-1:args.N_input], target ]) ,label='target',linewidth=3)
+        plt.plot(range(args.N_input-1,args.N_input+args.N_output),  np.concatenate([ input[args.N_input-1:args.N_input], preds ])  ,label=inf_mdl_name,linewidth=3)
         plt.xticks(range(0,40,2))
         plt.legend()
         k = k+1

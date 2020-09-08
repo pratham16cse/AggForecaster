@@ -6,14 +6,14 @@ from data.real_dataset import parse_ECG5000, parse_Traffic
 
 
 def add_metrics_to_dict(
-	metrics_dict,
-	model_name,
-	metric_mse,
+	metrics_dict, model_name, metric_mse, metric_dtw, metric_tdi,
 ):
 	if model_name not in metrics_dict:
 		metrics_dict[model_name] = dict()
 
 	metrics_dict[model_name]['mse'] = metric_mse
+	metrics_dict[model_name]['dtw'] = metric_dtw
+	metrics_dict[model_name]['tdi'] = metric_tdi
 
 	return metrics_dict
 

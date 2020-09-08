@@ -8,40 +8,35 @@ import cvxpy as cp
 
 class DILATE(torch.nn.Module):
 	"""docstring for DILATE"""
-	def __init__(self, model):
+	def __init__(self, base_models_dict):
 		super(DILATE, self).__init__()
-		self.base_model = model
+		self.base_models_dict = base_models_dict
 
-	def forward(self, x):
-		means, _ = self.base_model(x) 
-		return means
+	def forward(self, inputs_dict):
+		return self.base_models_dict[0](inputs_dict[0])
 
 class MSE(torch.nn.Module):
 	"""docstring for MSE"""
-	def __init__(self, model):
+	def __init__(self, base_models_dict):
 		super(MSE, self).__init__()
-		self.base_model = model
+		self.base_models_dict = base_models_dict
 
-	def forward(self, x):
-		means, _ = self.base_model(x)
-		return means
+	def forward(self, inputs_dict):
+		return self.base_models_dict[0](inputs_dict[0])
 		
 
 class DualTPP(torch.nn.Module):
 	"""docstring for DualTPP"""
-	def __init__(self, K, base_model_name, base_models_dict):
+	def __init__(self, K, base_models_dict):
 		'''
 		K: int
 			number of steps to aggregate at each level
-		base_model_name: str
-			model name from args.base_model_names list
 		base_models_dict: dict
 			key: level in the hierarchy
 			value: base model at the level 'key'
 		'''
 		super(DualTPP, self).__init__()
 		self.K = K
-		self.base_model_name = base_model_name
 		self.base_models_dict = base_models_dict
 
 	def aggregate_seq_(self, seq):
@@ -112,7 +107,7 @@ class DualTPP(torch.nn.Module):
 
 		all_preds = []
 		for i in range(params_dict[0][0].size()[0]):
-			print(i)
+			#print(i)
 			ex_params_dict = dict()
 			for lvl, params in params_dict.items():
 				ex_params_dict[lvl] = [params_dict[lvl][0][i], params_dict[lvl][1][i]]
@@ -122,4 +117,4 @@ class DualTPP(torch.nn.Module):
 
 		all_preds = torch.FloatTensor(all_preds)
 
-		return all_preds
+		return all_preds, None
