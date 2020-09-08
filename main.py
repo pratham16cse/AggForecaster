@@ -349,6 +349,19 @@ for inf_model_name in args.inference_model_names:
 
 # ----- End: Inference models ----- #
 
+with open(os.path.join(args.output_dir, 'results_'+args.dataset_name+'.txt'), 'w') as fp:
+
+    fp.write('\nModel Name, MAE, DTW, TDI')
+    for model_name, metrics_dict in model2metrics.items():
+        fp.write(
+            '\n{}, {:.3f}, {:.3f}, {:.3f}'.format(
+                model_name,
+                metrics_dict['mse'],
+                metrics_dict['dtw'],
+                metrics_dict['tdi'],
+            )
+        )
+
 for model_name, metrics_dict in model2metrics.items():
     for metric, metric_val in metrics_dict.items():
         model2metrics[model_name][metric] = str(metric_val)
