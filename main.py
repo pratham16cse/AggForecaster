@@ -104,54 +104,65 @@ dataset = utils.get_processed_data(args)
 level2data = dataset['level2data']
 # ----- Start: base models training ----- #
 for base_model_name in args.base_model_names:
+    base_models[base_model_name] = {}
+
     levels = range(args.L)
+    aggregate_methods = ['sum', 'leastsquare']
     if base_model_name in ['seq2seqdilate']:
         levels = [0]
-    for level in levels:
-        trainloader = level2data[level]['trainloader']
-        devloader = level2data[level]['devloader']
-        testloader = level2data[level]['testloader']
-        N_output = level2data[level]['N_output']
-        input_size = level2data[level]['input_size']
-        output_size = level2data[level]['output_size']
+        aggregate_methods = ['sum']
 
-        if base_model_name in ['seq2seqmse', 'seq2seqdilate']:
-            point_estimates = True
-        elif base_model_name in ['seq2seqnll']:
-            point_estimates = False
+    for agg_method in aggregate_methods:
+        base_models[base_model_name][agg_method] = {}
+        level2data = dataset['level2data'][agg_method]
 
-        saved_models_dir = os.path.join(
-            args.saved_models_dir, args.dataset_name+'_'+base_model_name+'_'+str(level)
-        )
-        os.makedirs(saved_models_dir, exist_ok=True)
-        saved_models_path = os.path.join(saved_models_dir, 'state_dict_model.pt')
-        output_dir = os.path.join(args.output_dir, base_model_name)
-        os.makedirs(output_dir, exist_ok=True)
-        print('\n {} {}'.format(base_model_name, str(level)))
+        for level in levels:
+            trainloader = level2data[level]['trainloader']
+            devloader = level2data[level]['devloader']
+            testloader = level2data[level]['testloader']
+            N_output = level2data[level]['N_output']
+            input_size = level2data[level]['input_size']
+            output_size = level2data[level]['output_size']
 
-        encoder = EncoderRNN(
-            input_size=input_size, hidden_size=args.hidden_size, num_grulstm_layers=args.num_grulstm_layers,
-            batch_size=args.batch_size
-        ).to(args.device)
-        decoder = DecoderRNN(
-            input_size=input_size, hidden_size=args.hidden_size, num_grulstm_layers=args.num_grulstm_layers,
-            fc_units=args.fc_units, output_size=output_size
-        ).to(args.device)
-        net_gru = Net_GRU(encoder,decoder, N_output, point_estimates, args.device).to(args.device)
-        train_model(
-            args, base_model_name, net_gru, trainloader, devloader, testloader,
-            saved_models_path, output_dir, eval_every=50, verbose=1
-        )
+            if base_model_name in ['seq2seqmse', 'seq2seqdilate']:
+                point_estimates = True
+            elif base_model_name in ['seq2seqnll']:
+                point_estimates = False
 
-        base_models[base_model_name][level] = net_gru
+            saved_models_dir = os.path.join(
+                args.saved_models_dir,
+                args.dataset_name+'_'+base_model_name+'_'+agg_method+'_'+str(level)
+            )
+            os.makedirs(saved_models_dir, exist_ok=True)
+            saved_models_path = os.path.join(saved_models_dir, 'state_dict_model.pt')
+            output_dir = os.path.join(args.output_dir, base_model_name)
+            os.makedirs(output_dir, exist_ok=True)
+            print('\n {} {} {}'.format(base_model_name, agg_method, str(level)))
+
+            encoder = EncoderRNN(
+                input_size=input_size, hidden_size=args.hidden_size, num_grulstm_layers=args.num_grulstm_layers,
+                batch_size=args.batch_size
+            ).to(args.device)
+            decoder = DecoderRNN(
+                input_size=input_size, hidden_size=args.hidden_size, num_grulstm_layers=args.num_grulstm_layers,
+                fc_units=args.fc_units, output_size=output_size
+            ).to(args.device)
+            net_gru = Net_GRU(encoder,decoder, N_output, point_estimates, args.device).to(args.device)
+            train_model(
+                args, base_model_name, net_gru, trainloader, devloader, testloader,
+                saved_models_path, output_dir, eval_every=50, verbose=1
+            )
+
+            base_models[base_model_name][agg_method][level] = net_gru
 # ----- End: base models training ----- #
 
 # ----- Start: Inference models ----- #
+print('\n Starting Inference Models')
 
 lvl2testinputs = dict()
 lvl2testtargets = dict()
 for level in range(args.L):
-    gen_test = iter(level2data[level]['testloader'])
+    gen_test = iter(dataset['level2data']['sum'][level]['testloader'])
     test_inputs, test_targets, breaks = next(gen_test)
 
     test_inputs  = torch.tensor(test_inputs, dtype=torch.float32).to(args.device)
@@ -162,22 +173,22 @@ for level in range(args.L):
 
 for inf_model_name in args.inference_model_names:
     if inf_model_name in ['DILATE']:
-        base_models_dict = base_models['seq2seqdilate']
+        base_models_dict = base_models['seq2seqdilate']['sum']
         inf_net = inf_models.DILATE(base_models_dict)
         #pred = inf_net(lvl2testinputs[0]).to(args.device)
         #metric_mse = criterion(lvl2testtargets[0], pred)
     elif inf_model_name in ['MSE']:
-        base_models_dict = base_models['seq2seqmse']
+        base_models_dict = base_models['seq2seqmse']['sum']
         inf_net = inf_models.MSE(base_models_dict)
         #pred = inf_net(lvl2testinputs[0]).to(args.device)
         #metric_mse = criterion(lvl2testtargets[0], pred)
     elif inf_model_name in ['seq2seqmse_dualtpp']:
-        base_models_dict = base_models['seq2seqmse']
+        base_models_dict = base_models['seq2seqmse']['sum']
         inf_net = inf_models.DualTPP(args.K, base_models_dict)
         #pred = inf_net(lvl2testinputs).to(args.device)
         #metric_mse = criterion(lvl2testtargets[0], pred)
     elif inf_model_name in ['seq2seqnll_dualtpp']:
-        base_models_dict = base_models['seq2seqnll']
+        base_models_dict = base_models['seq2seqnll']['sum']
         inf_net = inf_models.DualTPP(args.K, base_models_dict)
         #pred = inf_net(lvl2testinputs).to(args.device)
         #metric_mse = criterion(lvl2testtargets[0], pred)

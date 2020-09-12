@@ -180,7 +180,7 @@ def get_processed_data(args):
 			train_bkp, dev_bkp, test_bkp,
 		) = parse_Traffic(args.N_input, args.N_output)
 
-	level2data = create_hierarchical_data(
+	level2data_sum = create_hierarchical_data(
 		args, X_train_input, X_train_target,
 		X_dev_input, X_dev_target,
 		X_test_input, X_test_target,
@@ -195,9 +195,14 @@ def get_processed_data(args):
 		aggregation_func=aggregation2func['leastsquare']
 	)
 
+	level2data = dict()
+	level2data['sum'] = level2data_sum
+	level2data['leastsquare'] = level2data_ls
+
 	return {
 		#'trainloader': trainloader,
 		#'testloader': testloader,
-		'level2data': level2data,
-		'level2data_ls': level2data_ls
+		'level2data_sum': level2data_sum,
+		'level2data_ls': level2data_ls,
+		'level2data': level2data
 	}
