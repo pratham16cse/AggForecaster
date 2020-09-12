@@ -18,7 +18,7 @@ def create_sin_dataset(N, N_input, N_output, sigma):
         serie = np.sin(inp) + np.random.normal(0, 0.1)
         X.append(serie)
         breakpoints.append(N_input)
-    X = np.stack(X)
+    X = np.expand_dims(np.stack(X), axis=-1)
     breakpoints = np.array(breakpoints)
     return (
         X[0:N, 0:N_input], X[0:N, N_input:N_input+N_output],
@@ -50,7 +50,7 @@ def create_synthetic_dataset(N, N_input,N_output,sigma):
         serie[i2+interval:] += (j2-j1)
         X.append(serie)
         breakpoints.append(i2+interval)
-    X = np.stack(X)
+    X = np.expand_dims(np.stack(X), axis=-1)
     breakpoints = np.array(breakpoints)
     return (
         X[0:N, 0:N_input], X[0:N, N_input:N_input+N_output],
@@ -70,5 +70,5 @@ class SyntheticDataset(torch.utils.data.Dataset):
         return (self.X_input).shape[0]
 
     def __getitem__(self, idx):
-        return (self.X_input[idx,:,np.newaxis], self.X_target[idx,:,np.newaxis]  , self.breakpoints[idx])
+        return (self.X_input[idx], self.X_target[idx], self.breakpoints[idx])
 

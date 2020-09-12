@@ -112,6 +112,8 @@ for base_model_name in args.base_model_names:
         devloader = level2data[level]['devloader']
         testloader = level2data[level]['testloader']
         N_output = level2data[level]['N_output']
+        input_size = level2data[level]['input_size']
+        output_size = level2data[level]['output_size']
 
         if base_model_name in ['seq2seqmse', 'seq2seqdilate']:
             point_estimates = True
@@ -125,14 +127,15 @@ for base_model_name in args.base_model_names:
         saved_models_path = os.path.join(saved_models_dir, 'state_dict_model.pt')
         output_dir = os.path.join(args.output_dir, base_model_name)
         os.makedirs(output_dir, exist_ok=True)
+        print('\n {} {}'.format(base_model_name, str(level)))
 
         encoder = EncoderRNN(
-            input_size=1, hidden_size=args.hidden_size, num_grulstm_layers=args.num_grulstm_layers,
+            input_size=input_size, hidden_size=args.hidden_size, num_grulstm_layers=args.num_grulstm_layers,
             batch_size=args.batch_size
         ).to(args.device)
         decoder = DecoderRNN(
-            input_size=1, hidden_size=args.hidden_size, num_grulstm_layers=args.num_grulstm_layers,
-            fc_units=args.fc_units, output_size=1
+            input_size=input_size, hidden_size=args.hidden_size, num_grulstm_layers=args.num_grulstm_layers,
+            fc_units=args.fc_units, output_size=output_size
         ).to(args.device)
         net_gru = Net_GRU(encoder,decoder, N_output, point_estimates, args.device).to(args.device)
         train_model(

@@ -77,7 +77,7 @@ def aggregate_data(
 		agg_seqs = []
 		for seq in seqs:
 			assert len(seq)%K == 0
-			agg_seq = [np.sum(seq[i:i+K]) for i in range(0, len(seq), K)]
+			agg_seq = [np.sum(seq[i:i+K], axis=0) for i in range(0, len(seq), K)]
 			agg_seqs.append(agg_seq)
 		return np.array(agg_seqs)
 
@@ -127,7 +127,9 @@ def create_hierarchical_data(
 			'trainloader': trainloader,
 			'devloader': devloader,
 			'testloader': testloader,
-			'N_output': test_target.shape[1]
+			'N_output': test_target.shape[1],
+			'input_size': test_input.shape[2],
+			'output_size': test_target.shape[2]
 		}
 
 	return level2data
