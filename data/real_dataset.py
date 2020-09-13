@@ -34,6 +34,7 @@ def parse_Traffic(N_input, N_output):
 		for line in f:
 			data.append(line.rstrip().split(',')[0])
 		data = np.array(data).astype(np.float32)
+		data = np.expand_dims(data, axis=-1)
 	
 	data_train, data_dev, data_test = generate_train_dev_test_data(data, N_input)
 
@@ -56,11 +57,13 @@ def parse_ECG5000(N_input, N_output):
 		for line in f:
 			data.append(line.rstrip().split())
 		data = np.array(data).astype(np.float32)
+		data = np.expand_dims(data, axis=-1)
 	with open('data/ECG5000/ECG5000_TEST.tsv', 'r') as f:
 		data_test = []
 		for line in f:
 			data_test.append(line.rstrip().split())
 		data_test = np.array(data_test).astype(np.float32)
+		data_test = np.expand_dims(data_test, axis=-1)
 
 	N = data.shape[0]
 	dev_len = int(0.2*N)

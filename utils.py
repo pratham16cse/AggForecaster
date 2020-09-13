@@ -77,7 +77,7 @@ def aggregate_data(
 		agg_seqs = []
 		for seq in seqs:
 			assert len(seq)%K == 0
-			agg_seq = [np.sum(seq[i:i+K]) for i in range(0, len(seq), K)]
+			agg_seq = [np.sum(seq[i:i+K], axis=0) for i in range(0, len(seq), K)]
 			agg_seqs.append(agg_seq)
 		return np.array(agg_seqs)
 
@@ -127,7 +127,9 @@ def create_hierarchical_data(
 			'trainloader': trainloader,
 			'devloader': devloader,
 			'testloader': testloader,
-			'N_output': test_target.shape[1]
+			'N_output': test_target.shape[1],
+			'input_size': test_input.shape[2],
+			'output_size': test_target.shape[2]
 		}
 
 	return level2data
@@ -178,7 +180,7 @@ def get_processed_data(args):
 			train_bkp, dev_bkp, test_bkp,
 		) = parse_Traffic(args.N_input, args.N_output)
 
-	level2data = create_hierarchical_data(
+	level2data_sum = create_hierarchical_data(
 		args, X_train_input, X_train_target,
 		X_dev_input, X_dev_target,
 		X_test_input, X_test_target,
@@ -193,9 +195,14 @@ def get_processed_data(args):
 		aggregation_func=aggregation2func['leastsquare']
 	)
 
+	level2data = dict()
+	level2data['sum'] = level2data_sum
+	level2data['leastsquare'] = level2data_ls
+
 	return {
 		#'trainloader': trainloader,
 		#'testloader': testloader,
-		'level2data': level2data,
-		'level2data_ls': level2data_ls
+		'level2data_sum': level2data_sum,
+		'level2data_ls': level2data_ls,
+		'level2data': level2data
 	}
