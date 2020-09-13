@@ -62,6 +62,9 @@ parser.add_argument('--L', type=int, default=2,
 parser.add_argument('--K', type=int, default=2,
                     help='number of bins to aggregate')
 
+parser.add_argument('--plot_anecdotes', action='store_true', default=False,
+                    help='Plot the comparison of various methods')
+
 #parser.add_argument('--patience', type=int, default=2,
 #                    help='Number of epochs to wait for \
 #                          before beginning cross-validation')
@@ -256,22 +259,23 @@ with open(os.path.join(args.output_dir, 'results_'+args.dataset_name+'.json'), '
 # Visualize results
 
 
-for ind in range(1,51):
-    plt.figure()
-    plt.rcParams['figure.figsize'] = (17.0,5.0)
-    k = 1
-    for inf_mdl_name, preds in infmodel2preds.items():
+if args.plot_anecdotes:
+    for ind in range(1,51):
+        plt.figure()
+        plt.rcParams['figure.figsize'] = (17.0,5.0)
+        k = 1
+        for inf_mdl_name, preds in infmodel2preds.items():
 
-        input = test_inputs_dict['sum'][0].detach().cpu().numpy()[ind,:,:]
-        target = test_targets_dict['sum'][0].detach().cpu().numpy()[ind,:,:]
-        preds = preds.detach().cpu().numpy()[ind,:,:]
+            input = test_inputs_dict['sum'][0].detach().cpu().numpy()[ind,:,:]
+            target = test_targets_dict['sum'][0].detach().cpu().numpy()[ind,:,:]
+            preds = preds.detach().cpu().numpy()[ind,:,:]
 
-        plt.subplot(len(inference_models),1,k)
-        plt.plot(range(0,args.N_input) ,input,label='input',linewidth=3)
-        plt.plot(range(args.N_input-1,args.N_input+args.N_output), np.concatenate([ input[args.N_input-1:args.N_input], target ]) ,label='target',linewidth=3)
-        plt.plot(range(args.N_input-1,args.N_input+args.N_output),  np.concatenate([ input[args.N_input-1:args.N_input], preds ])  ,label=inf_mdl_name,linewidth=3)
-        plt.xticks(range(0,40,2))
-        plt.legend()
-        k = k+1
+            plt.subplot(len(inference_models),1,k)
+            plt.plot(range(0,args.N_input) ,input,label='input',linewidth=3)
+            plt.plot(range(args.N_input-1,args.N_input+args.N_output), np.concatenate([ input[args.N_input-1:args.N_input], target ]) ,label='target',linewidth=3)
+            plt.plot(range(args.N_input-1,args.N_input+args.N_output),  np.concatenate([ input[args.N_input-1:args.N_input], preds ])  ,label=inf_mdl_name,linewidth=3)
+            plt.xticks(range(0,40,2))
+            plt.legend()
+            k = k+1
 
-    plt.show()
+        plt.show()
