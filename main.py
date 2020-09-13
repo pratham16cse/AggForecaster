@@ -83,7 +83,10 @@ args.inference_model_names = [
     'MSE',
     'seq2seqmse_dualtpp',
     'seq2seqnll_dualtpp',
+    'seq2seqmse_optls',
+    'seq2seqnll_optls',
 ]
+args.aggregate_methods = ['sum', 'leastsquare']
 
 base_models = {}
 for name in args.base_model_names:
@@ -107,7 +110,7 @@ for base_model_name in args.base_model_names:
     base_models[base_model_name] = {}
 
     levels = range(args.L)
-    aggregate_methods = ['sum', 'leastsquare']
+    aggregate_methods = args.aggregate_methods
     if base_model_name in ['seq2seqdilate']:
         levels = [0]
         aggregate_methods = ['sum']
@@ -159,43 +162,56 @@ for base_model_name in args.base_model_names:
 # ----- Start: Inference models ----- #
 print('\n Starting Inference Models')
 
-lvl2testinputs = dict()
-lvl2testtargets = dict()
-for level in range(args.L):
-    gen_test = iter(dataset['level2data']['sum'][level]['testloader'])
-    test_inputs, test_targets, breaks = next(gen_test)
+test_inputs_dict = dict()
+test_targets_dict = dict()
+for agg_method in args.aggregate_methods:
+    test_inputs_dict[agg_method] = dict()
+    test_targets_dict[agg_method] = dict()
+    for level in range(args.L):
+        gen_test = iter(dataset['level2data'][agg_method][level]['testloader'])
+        test_inputs, test_targets, breaks = next(gen_test)
 
-    test_inputs  = torch.tensor(test_inputs, dtype=torch.float32).to(args.device)
-    test_targets = torch.tensor(test_targets, dtype=torch.float32).to(args.device)
-    lvl2testinputs[level] = test_inputs
-    lvl2testtargets[level] = test_targets
+        test_inputs  = torch.tensor(test_inputs, dtype=torch.float32).to(args.device)
+        test_targets = torch.tensor(test_targets, dtype=torch.float32).to(args.device)
+        test_inputs_dict[agg_method][level] = test_inputs
+        test_targets_dict[agg_method][level] = test_targets
 #criterion = torch.nn.MSELoss()
 
 for inf_model_name in args.inference_model_names:
     if inf_model_name in ['DILATE']:
         base_models_dict = base_models['seq2seqdilate']['sum']
         inf_net = inf_models.DILATE(base_models_dict)
-        #pred = inf_net(lvl2testinputs[0]).to(args.device)
-        #metric_mse = criterion(lvl2testtargets[0], pred)
+        inf_test_inputs_dict = test_inputs_dict['sum']
+        inf_test_targets = test_targets_dict['sum'][0]
     elif inf_model_name in ['MSE']:
         base_models_dict = base_models['seq2seqmse']['sum']
         inf_net = inf_models.MSE(base_models_dict)
-        #pred = inf_net(lvl2testinputs[0]).to(args.device)
-        #metric_mse = criterion(lvl2testtargets[0], pred)
+        inf_test_inputs_dict = test_inputs_dict['sum']
+        inf_test_targets = test_targets_dict['sum'][0]
     elif inf_model_name in ['seq2seqmse_dualtpp']:
         base_models_dict = base_models['seq2seqmse']['sum']
         inf_net = inf_models.DualTPP(args.K, base_models_dict)
-        #pred = inf_net(lvl2testinputs).to(args.device)
-        #metric_mse = criterion(lvl2testtargets[0], pred)
+        inf_test_inputs_dict = test_inputs_dict['sum']
+        inf_test_targets = test_targets_dict['sum'][0]
     elif inf_model_name in ['seq2seqnll_dualtpp']:
         base_models_dict = base_models['seq2seqnll']['sum']
         inf_net = inf_models.DualTPP(args.K, base_models_dict)
-        #pred = inf_net(lvl2testinputs).to(args.device)
-        #metric_mse = criterion(lvl2testtargets[0], pred)
+        inf_test_inputs_dict = test_inputs_dict['sum']
+        inf_test_targets = test_targets_dict['sum'][0]
+    elif inf_model_name in ['seq2seqmse_optls']:
+        base_models_dict = base_models['seq2seqmse']['leastsquare']
+        inf_net = inf_models.OPT_ls(args.K, base_models_dict)
+        inf_test_inputs_dict = test_inputs_dict['leastsquare']
+        inf_test_targets = test_targets_dict['sum'][0]
+    elif inf_model_name in ['seq2seqnll_optls']:
+        base_models_dict = base_models['seq2seqnll']['leastsquare']
+        inf_net = inf_models.OPT_ls(args.K, base_models_dict)
+        inf_test_inputs_dict = test_inputs_dict['leastsquare']
+        inf_test_targets = test_targets_dict['sum'][0]
 
     inf_net.eval()
     preds, metric_mse, metric_dtw, metric_tdi = eval_inf_model(
-        args, inf_net, lvl2testinputs, lvl2testtargets, args.gamma, verbose=1
+        args, inf_net, inf_test_inputs_dict, inf_test_targets, args.gamma, verbose=1
     )
     inference_models[inf_model_name] = inf_net
     metric_mse = metric_mse.item()
@@ -210,8 +226,8 @@ for inf_model_name in args.inference_model_names:
     os.makedirs(output_dir, exist_ok=True)
     utils.write_arr_to_file(
         output_dir, inf_model_name,
-        lvl2testinputs[0].detach().numpy(),
-        lvl2testtargets[0].detach().numpy(),
+        test_inputs_dict['sum'][0].detach().numpy(),
+        test_targets_dict['sum'][0].detach().numpy(),
         preds.detach().numpy()
     )
 
@@ -246,8 +262,8 @@ for ind in range(1,51):
     k = 1
     for inf_mdl_name, preds in infmodel2preds.items():
 
-        input = lvl2testinputs[0].detach().cpu().numpy()[ind,:,:]
-        target = lvl2testtargets[0].detach().cpu().numpy()[ind,:,:]
+        input = test_inputs_dict['sum'][0].detach().cpu().numpy()[ind,:,:]
+        target = test_targets_dict['sum'][0].detach().cpu().numpy()[ind,:,:]
         preds = preds.detach().cpu().numpy()[ind,:,:]
 
         plt.subplot(len(inference_models),1,k)

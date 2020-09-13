@@ -50,15 +50,14 @@ def eval_base_model(args, net, loader, gamma, verbose=1):
 
     return metric_mse, metric_dtw, metric_tdi
 
-def eval_inf_model(args, net, lvl2testinputs, lvl2testtargets, gamma, verbose=1):
+def eval_inf_model(args, net, inf_test_inputs_dict, target, gamma, verbose=1):
     criterion = torch.nn.MSELoss()
     losses_mse = []
     losses_dtw = []
     losses_tdi = []
 
-    target = lvl2testtargets[0]
     batch_size, N_output = target.shape[0:2]
-    preds, _ = net(lvl2testinputs)
+    preds, _ = net(inf_test_inputs_dict)
 
     # MSE
     loss_mse = criterion(target, preds)
