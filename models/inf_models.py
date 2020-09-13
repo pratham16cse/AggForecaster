@@ -23,7 +23,24 @@ class MSE(torch.nn.Module):
 
 	def forward(self, inputs_dict):
 		return self.base_models_dict[0](inputs_dict[0])
-		
+
+class NLLsum(torch.nn.Module):
+	"""docstring for NLLsum"""
+	def __init__(self, base_models_dict):
+		super(NLLsum, self).__init__()
+		self.base_models_dict = base_models_dict
+
+	def forward(self, inputs_dict):
+		return self.base_models_dict[0](inputs_dict[0])
+
+class NLLls(torch.nn.Module):
+	"""docstring for NLLls"""
+	def __init__(self, base_models_dict):
+		super(NLLls, self).__init__()
+		self.base_models_dict = base_models_dict
+
+	def forward(self, inputs_dict):
+		return self.base_models_dict[0](inputs_dict[0])
 
 class DualTPP(torch.nn.Module):
 	"""docstring for DualTPP"""

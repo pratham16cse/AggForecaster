@@ -14,8 +14,8 @@ def create_sin_dataset(N, N_input, N_output, sigma):
     X = []
     breakpoints = []
     for k in range(N+N_dev+N_test):
-        inp = np.random.uniform(-np.pi, np.pi) + np.linspace(0, 50, N_input+N_output)
-        serie = np.sin(inp) + np.random.normal(0, 0.1)
+        inp = np.random.uniform(-np.pi, np.pi) + np.linspace(0, 10, N_input+N_output)
+        serie = np.sin(inp) + np.random.normal(0, 0.1, size=(inp.shape))
         X.append(serie)
         breakpoints.append(N_input)
     X = np.expand_dims(np.stack(X), axis=-1)

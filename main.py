@@ -84,6 +84,8 @@ args.base_model_names = [
 args.inference_model_names = [
     'DILATE',
     'MSE',
+    'NLLsum',
+    'NLLls',
     'seq2seqmse_dualtpp',
     'seq2seqnll_dualtpp',
     'seq2seqmse_optls',
@@ -191,6 +193,16 @@ for inf_model_name in args.inference_model_names:
         inf_net = inf_models.MSE(base_models_dict)
         inf_test_inputs_dict = test_inputs_dict['sum']
         inf_test_targets = test_targets_dict['sum'][0]
+    elif inf_model_name in ['NLLsum']:
+        base_models_dict = base_models['seq2seqnll']['sum']
+        inf_net = inf_models.NLLsum(base_models_dict)
+        inf_test_inputs_dict = test_inputs_dict['sum']
+        inf_test_targets = test_targets_dict['sum'][0]
+    elif inf_model_name in ['NLLls']:
+        base_models_dict = base_models['seq2seqnll']['leastsquare']
+        inf_net = inf_models.NLLls(base_models_dict)
+        inf_test_inputs_dict = test_inputs_dict['leastsquare']
+        inf_test_targets = test_targets_dict['sum'][0]
     elif inf_model_name in ['seq2seqmse_dualtpp']:
         base_models_dict = base_models['seq2seqmse']['sum']
         inf_net = inf_models.DualTPP(args.K, base_models_dict)
@@ -262,7 +274,7 @@ with open(os.path.join(args.output_dir, 'results_'+args.dataset_name+'.json'), '
 if args.plot_anecdotes:
     for ind in range(1,51):
         plt.figure()
-        plt.rcParams['figure.figsize'] = (17.0,5.0)
+        plt.rcParams['figure.figsize'] = (16.0,8.0)
         k = 1
         for inf_mdl_name, preds in infmodel2preds.items():
 
