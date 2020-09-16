@@ -45,10 +45,16 @@ class Net_GRU(nn.Module):
         self.device = device
         
     def forward(self, x):
+        #if torch.sum(torch.isnan(self.decoder.fc.weight)):
+        #    import ipdb
+        #    ipdb.set_trace()
         input_length  = x.shape[1]
         encoder_hidden = self.encoder.init_hidden(x.shape[0], self.device)
         for ei in range(input_length):
             encoder_output, encoder_hidden = self.encoder(x[:,ei:ei+1,:]  , encoder_hidden)
+            #if torch.sum(torch.isnan(encoder_hidden)):
+            #    import ipdb
+            #    ipdb.set_trace()
             
         decoder_input = x[:,-1,:].unsqueeze(1) # first decoder input= last element of input sequence
         decoder_hidden = encoder_hidden
@@ -60,4 +66,7 @@ class Net_GRU(nn.Module):
             decoder_input = step_means
             means[:, di:di+1, :] = step_means
             stds[:, di:di+1, :] = step_stds
+            #if torch.sum(torch.isnan(step_means)):
+            #    import ipdb
+            #    ipdb.set_trace()
         return means, stds

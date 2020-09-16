@@ -18,4 +18,7 @@ def dilate_loss(outputs, targets, alpha, gamma, device):
 	Omega =  soft_dtw.pairwise_distances(torch.range(1,N_output).view(N_output,1)).to(device)
 	loss_temporal =  torch.sum( path*Omega ) / (N_output*N_output) 
 	loss = alpha*loss_shape+ (1-alpha)*loss_temporal
+	#if torch.isnan(loss):
+	#	import ipdb
+	#	ipdb.set_trace()
 	return loss, loss_shape, loss_temporal

@@ -36,9 +36,23 @@ def train_model(
                 dist = torch.distributions.normal.Normal(means, stds)
                 loss = -torch.sum(dist.log_prob(target))
 
+            print(i, loss)
+            #if torch.isnan(loss):
+            #    import ipdb
+            #    ipdb.set_trace()
             optimizer.zero_grad()
+            #if torch.sum(torch.isnan(net.decoder.fc.weight)):
+            #    import ipdb
+            #    ipdb.set_trace()
+            #print(optimizer.param_groups)
             loss.backward()
+            if i >= 30:
+                import ipdb
+                ipdb.set_trace()
             optimizer.step()
+            #if torch.sum(torch.isnan(net.decoder.fc.weight)):
+            #    import ipdb
+            #    ipdb.set_trace()
 
         if(verbose):
             if (epoch % args.print_every == 0):

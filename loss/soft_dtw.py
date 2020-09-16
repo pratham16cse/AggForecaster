@@ -20,6 +20,9 @@ def pairwise_distances(x, y=None):
         y_norm = x_norm.view(1, -1)
     
     dist = x_norm + y_norm - 2.0 * torch.mm(x, y_t)
+    #if torch.sum(torch.isnan(torch.clamp(dist, 0.0, float('inf')))):
+    #  import ipdb
+    #  ipdb.set_trace()
     return torch.clamp(dist, 0.0, float('inf'))
 
 @jit(nopython = True)
@@ -93,6 +96,10 @@ class SoftDTWBatch(Function):
         for k in range(batch_size):         
             Ek = torch.FloatTensor(compute_softdtw_backward(D_[k,:,:], R_[k,:,:], g_)).to(dev)
             E[k:k+1,:,:] = Ek
+
+        if torch.sum(torch.isnan(grad_output)) or torch.sum(torch.isnan(E)):
+          import ipdb
+          ipdb.set_trace()
 
         return grad_output * E, None
 

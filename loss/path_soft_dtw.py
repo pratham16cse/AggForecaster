@@ -129,4 +129,8 @@ class PathDTWBatch(Function):
             _, hess_k = dtw_hessian_prod(D_cpu[k,:,:], Z, Q_cpu[k,:,:,:], E_cpu[k,:,:], gamma)
             Hessian[k:k+1,:,:] = torch.FloatTensor(hess_k).to(device)
 
+        if torch.sum(torch.isnan(Hessian)):
+            import ipdb
+            ipdb.set_trace()
+
         return  Hessian, None
