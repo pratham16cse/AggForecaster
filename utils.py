@@ -3,7 +3,7 @@ import numpy as np
 import os
 
 from data.synthetic_dataset import create_synthetic_dataset, create_sin_dataset, SyntheticDataset
-from data.real_dataset import parse_ECG5000, parse_Traffic, parse_Taxi
+from data.real_dataset import parse_ECG5000, parse_Traffic, parse_Taxi, parse_Traffic911
 
 
 def add_metrics_to_dict(
@@ -187,6 +187,15 @@ def get_processed_data(args):
 			X_test_input, X_test_target,
 			train_bkp, dev_bkp, test_bkp,
 		) = parse_Taxi(args.N_input, args.N_output)
+
+	elif args.dataset_name in ['Traffic911']:
+		(
+			X_train_input, X_train_target,
+			X_dev_input, X_dev_target,
+			X_test_input, X_test_target,
+			train_bkp, dev_bkp, test_bkp,
+		) = parse_Traffic911(args.N_input, args.N_output)
+
 
 	level2data_sum = create_hierarchical_data(
 		args, X_train_input, X_train_target,

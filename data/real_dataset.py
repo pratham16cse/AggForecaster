@@ -166,3 +166,72 @@ def parse_Taxi(N_input, N_output):
 		data_train_in, data_train_out, data_dev_in, data_dev_out,
 		data_test_in, data_test_out, train_bkp, dev_bkp, test_bkp,
 	)
+
+def parse_Traffic911(N_input, N_output):
+	call_df = pd.read_csv('data/911.csv')
+	call_df = call_df[call_df['zip'].isnull()==False] # Ignore calls with NaN zip codes
+	print('Types of Emergencies')
+	print(call_df.title.apply(lambda x: x.split(':')[0]).value_counts())
+	call_df['type'] = call_df.title.apply(lambda x: x.split(':')[0])
+	print('Subtypes')
+	for each in call_df.type.unique():
+	    subtype_count = call_df[call_df.title.apply(lambda x: x.split(':')[0]==each)].title.value_counts()
+	    print('For', each, 'type of Emergency, we have ', subtype_count.count(), 'subtypes')
+	    print(subtype_count[subtype_count>100])
+	print('Out of 3 types, considering only Traffic')
+	call_data = call_df[call_df['type']=='Traffic']
+	call_data['timeStamp'] = pd.to_datetime(call_data['timeStamp'], errors='coerce')
+	print("We have timeline from", call_data['timeStamp'].min(), "to", call_data['timeStamp'].max())
+	call_data = call_data.sort_values('timeStamp')
+	call_data['timeStamp'] = pd.DatetimeIndex(call_data['timeStamp']).astype(np.int64)/1000000000
+
+	num_days = int(
+		np.ceil(
+			(call_data['timeStamp'].values[-1] - call_data['timeStamp'].values[0])/(3600.*24)
+		)
+	)
+	zip2counts = dict()
+	zip2numevents = dict()
+	for loc_id, loc_df in call_data.groupby(['zip']):
+		timestamps = loc_df['timeStamp'].values
+		timestamps = timestamps - timestamps[0]
+		zip2numevents[loc_id] = len(timestamps)
+		# Select locations in which num_events per day is >1
+		#print(loc_id, loc_df.shape)
+		if (len(timestamps) >= N_input+N_output and len(timestamps) / num_days > 1.):
+			counts = create_bins(timestamps, bin_size=3600.*24, num_bins=num_days)
+			print(loc_id, len(timestamps), len(timestamps) / num_days, len(counts))
+			zip2counts[loc_id] = counts
+
+	data = np.array([val for val in zip2counts.values()])
+	data = np.expand_dims(data, axis=2)
+	data_train_in, data_train_out = [], []
+	data_dev_in, data_dev_out = [], []
+	data_test_in, data_test_out = [], []
+	for seq in data:
+		seq_train, seq_dev, seq_test = generate_train_dev_test_data(seq, N_input)
+		batch_train_in, batch_train_out = create_forecast_io_seqs(seq_train, N_input, N_output, N_output)
+		batch_dev_in, batch_dev_out = create_forecast_io_seqs(seq_dev, N_input, N_output, N_output)
+		batch_test_in, batch_test_out = create_forecast_io_seqs(seq_test, N_input, N_output, N_output)
+		data_train_in.append(batch_train_in)
+		data_train_out.append(batch_train_out)
+		data_dev_in.append(batch_dev_in)
+		data_dev_out.append(batch_dev_out)
+		data_test_in.append(batch_test_in)
+		data_test_out.append(batch_test_out)
+
+	data_train_in = np.concatenate(data_train_in, axis=0)
+	data_train_out = np.concatenate(data_train_out, axis=0)
+	data_dev_in = np.concatenate(data_dev_in, axis=0)
+	data_dev_out = np.concatenate(data_dev_out, axis=0)
+	data_test_in = np.concatenate(data_test_in, axis=0)
+	data_test_out = np.concatenate(data_test_out, axis=0)
+
+	train_bkp = np.ones(data_train_in.shape[0]) * N_input
+	dev_bkp = np.ones(data_dev_in.shape[0]) * N_input
+	test_bkp = np.ones(data_test_in.shape[0]) * N_input
+
+	return (
+		data_train_in, data_train_out, data_dev_in, data_dev_out,
+		data_test_in, data_test_out, train_bkp, dev_bkp, test_bkp,
+	)
