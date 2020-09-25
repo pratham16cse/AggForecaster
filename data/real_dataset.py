@@ -185,25 +185,15 @@ def parse_Traffic911(N_input, N_output):
 	call_data = call_data.sort_values('timeStamp')
 	call_data['timeStamp'] = pd.DatetimeIndex(call_data['timeStamp']).astype(np.int64)/1000000000
 
-	num_days = int(
+	num_hrs = int(
 		np.ceil(
-			(call_data['timeStamp'].values[-1] - call_data['timeStamp'].values[0])/(3600.*24)
+			(call_data['timeStamp'].values[-1] - call_data['timeStamp'].values[0])/(3600.)
 		)
 	)
-	zip2counts = dict()
-	zip2numevents = dict()
-	for loc_id, loc_df in call_data.groupby(['zip']):
-		timestamps = loc_df['timeStamp'].values
-		timestamps = timestamps - timestamps[0]
-		zip2numevents[loc_id] = len(timestamps)
-		# Select locations in which num_events per day is >1
-		#print(loc_id, loc_df.shape)
-		if (len(timestamps) >= N_input+N_output and len(timestamps) / num_days > 1.):
-			counts = create_bins(timestamps, bin_size=3600.*24, num_bins=num_days)
-			print(loc_id, len(timestamps), len(timestamps) / num_days, len(counts))
-			zip2counts[loc_id] = counts
-
-	data = np.array([val for val in zip2counts.values()])
+	timestamps = call_data['timeStamp'].values
+	timestamps = timestamps - timestamps[0]
+	counts = create_bins(timestamps, bin_size=3600., num_bins=num_hrs)
+	data = np.expand_dims(np.array(counts), axis=0)
 	data = np.expand_dims(data, axis=2)
 	data_train_in, data_train_out = [], []
 	data_dev_in, data_dev_out = [], []
