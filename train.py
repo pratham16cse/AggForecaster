@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import torch
 from loss.dilate_loss import dilate_loss
@@ -10,13 +11,26 @@ def train_model(
     eval_every=50, verbose=1, Lambda=1, alpha=0.5
 ):
 
-    optimizer = torch.optim.Adam(net.parameters(),lr=args.learning_rate)
     criterion = torch.nn.MSELoss()
 
-    best_metric_mse = np.inf
-    best_epoch = 0
+    optimizer = torch.optim.Adam(net.parameters(),lr=args.learning_rate)
+    if (not args.ignore_ckpt) and os.path.isfile(saved_models_path):
+        print('Loading from saved model')
+        checkpoint = torch.load(saved_models_path)
+        net.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        best_epoch = checkpoint['epoch']
+        best_metric_mse = checkpoint['metric_mse']
+    else:
+        if args.ignore_ckpt:
+            print('Ignoring saved checkpoint')
+        else:
+            print('No saved model found')
+        best_epoch = -1
+        best_metric_mse = np.inf
+    net.train()
 
-    for epoch in range(args.epochs):
+    for curr_epoch in range(best_epoch+1, best_epoch+1+args.epochs):
         for i, data in enumerate(trainloader, 0):
             inputs, target, _ = data
             inputs = torch.tensor(inputs, dtype=torch.float32).to(args.device)
@@ -41,17 +55,26 @@ def train_model(
             optimizer.step()
 
         if(verbose):
-            if (epoch % args.print_every == 0):
-                print('epoch ', epoch, ' loss ',loss.item(),' loss shape ',loss_shape.item(),' loss temporal ',loss_temporal.item())
+            if (curr_epoch % args.print_every == 0):
+                print('curr_epoch ', curr_epoch, ' loss ',loss.item(),' loss shape ',loss_shape.item(),' loss temporal ',loss_temporal.item())
                 metric_mse, metric_dtw, metric_tdi = eval_base_model(args, net, devloader, args.gamma,verbose=1)
 
                 if metric_mse < best_metric_mse:
                     best_metric_mse = metric_mse
-                    best_epoch = epoch
-                    torch.save(net.state_dict(), saved_models_path)
-                    print('Model saved at epoch', epoch)
+                    best_epoch = curr_epoch
+                    state_dict = {
+                                'model_state_dict': net.state_dict(),
+                                'optimizer_state_dict': optimizer.state_dict(),
+                                'epoch': best_epoch,
+                                'metric_mse': best_metric_mse,
+                                }
+                    torch.save(state_dict, saved_models_path)
+                    print('Model saved at epoch', curr_epoch)
 
     print('Best model found at epoch', best_epoch)
-    net.load_state_dict(torch.load(saved_models_path))
+    #net.load_state_dict(torch.load(saved_models_path))
+    checkpoint = torch.load(saved_models_path)
+    net.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     net.eval()
     metric_mse, metric_dtw, metric_tdi = eval_base_model(args, net, devloader, args.gamma,verbose=1)

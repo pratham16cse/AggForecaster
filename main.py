@@ -37,6 +37,8 @@ parser.add_argument('--output_dir', type=str,
                     help='Path to store all raw outputs', default='Outputs')
 parser.add_argument('--saved_models_dir', type=str,
                     help='Path to store all saved models', default='saved_models')
+parser.add_argument('--ignore_ckpt', action='store_true', default=False,
+                    help='Start the training without loading the checkpoint')
 
 parser.add_argument('--epochs', type=int, default=500,
                     help='number of training epochs')
