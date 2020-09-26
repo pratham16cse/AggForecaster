@@ -5,6 +5,8 @@ import torch.nn.functional as F
 import numpy as np
 import cvxpy as cp
 
+from utils import normalize, unnormalize
+
 
 class DILATE(torch.nn.Module):
 	"""docstring for DILATE"""
@@ -12,7 +14,7 @@ class DILATE(torch.nn.Module):
 		super(DILATE, self).__init__()
 		self.base_models_dict = base_models_dict
 
-	def forward(self, inputs_dict):
+	def forward(self, inputs_dict, norm_dict):
 		return self.base_models_dict[0](inputs_dict[0])
 
 class MSE(torch.nn.Module):
@@ -21,7 +23,7 @@ class MSE(torch.nn.Module):
 		super(MSE, self).__init__()
 		self.base_models_dict = base_models_dict
 
-	def forward(self, inputs_dict):
+	def forward(self, inputs_dict, norm_dict):
 		return self.base_models_dict[0](inputs_dict[0])
 
 class NLLsum(torch.nn.Module):
@@ -30,7 +32,7 @@ class NLLsum(torch.nn.Module):
 		super(NLLsum, self).__init__()
 		self.base_models_dict = base_models_dict
 
-	def forward(self, inputs_dict):
+	def forward(self, inputs_dict, norm_dict):
 		return self.base_models_dict[0](inputs_dict[0])
 
 class NLLls(torch.nn.Module):
@@ -39,7 +41,7 @@ class NLLls(torch.nn.Module):
 		super(NLLls, self).__init__()
 		self.base_models_dict = base_models_dict
 
-	def forward(self, inputs_dict):
+	def forward(self, inputs_dict, norm_dict):
 		return self.base_models_dict[0](inputs_dict[0])
 
 class DualTPP(torch.nn.Module):
@@ -66,7 +68,7 @@ class DualTPP(torch.nn.Module):
 		#ipdb.set_trace()
 		return -cp.sum(np.sum(np.log(1/(((2*np.pi)**0.5)*std)) - (((ex_preds - means)**2) / (2*(std)**2))))
 
-	def optimize(self, params_dict):
+	def optimize(self, params_dict, norm_dict):
 
 		#params_dict_detached = dict()
 		#for 
@@ -74,12 +76,16 @@ class DualTPP(torch.nn.Module):
 		ex_preds_dict = dict()
 
 		for lvl, params in params_dict.items():
+			#params[0] = unnormalize(params[0].detach().numpy(), norm_dict[lvl].detach().numpy())
 			if lvl==0:
-				ex_preds = cp.Variable(params[0].size())
+				ex_preds = cp.Variable(params[0].shape)
 				ex_preds_dict[lvl] = ex_preds
 				lvl_ex_preds = ex_preds
 			else:
-				lvl_ex_preds = self.aggregate_seq_(ex_preds_dict[lvl-1])
+				lvl_ex_preds, _ = normalize(
+					self.aggregate_seq_(unnormalize(ex_preds_dict[lvl-1], norm_dict[lvl-1])),
+					norm_dict[lvl]
+				)
 			lvl_loss = self.log_prob(lvl_ex_preds, params[0].detach().numpy(), params[1].detach().numpy())
 			#import ipdb
 			#ipdb.set_trace()
@@ -108,8 +114,12 @@ class DualTPP(torch.nn.Module):
 		return ex_preds.value
 
 
-	def forward(self, inputs_dict):
+	def forward(self, inputs_dict, norm_dict):
 		bottom_level_model = self.base_models_dict[0]
+
+		norm_dict_np = dict()
+		for lvl in norm_dict.keys():
+			norm_dict_np[lvl] = np.expand_dims(norm_dict[lvl].detach().numpy(), axis=0)
 
 		params_dict = dict()
 		for level in range(len(self.base_models_dict)):
@@ -129,10 +139,12 @@ class DualTPP(torch.nn.Module):
 			for lvl, params in params_dict.items():
 				ex_params_dict[lvl] = [params_dict[lvl][0][i], params_dict[lvl][1][i]]
 
-			ex_preds_opt = self.optimize(ex_params_dict)
+			ex_preds_opt = self.optimize(ex_params_dict, norm_dict_np)
 			all_preds.append(ex_preds_opt)
 
 		all_preds = torch.FloatTensor(all_preds)
+
+		#all_preds, _ = normalize(all_preds, norm_dict[0])
 
 		return all_preds, None
 
@@ -180,7 +192,7 @@ class OPT_ls(torch.nn.Module):
 		#ipdb.set_trace()
 		return -cp.sum(np.sum(np.log(1/(((2*np.pi)**0.5)*std)) - (((ex_preds - means)**2) / (2*(std)**2))))
 
-	def optimize(self, params_dict):
+	def optimize(self, params_dict, norm_dict):
 
 		#params_dict_detached = dict()
 		#for 
@@ -190,7 +202,15 @@ class OPT_ls(torch.nn.Module):
 		preds = cp.Variable(params_dict[0][0].size())
 
 
-		ls_params = self.fit_with_indices(preds)
+		ls_params, _ = normalize(
+			self.fit_with_indices(unnormalize(preds, norm_dict[0])),
+			norm_dict[1]
+		)
+		#ls_params = unnormalize(ls_params, norm_dict[1].detach().numpy())
+		#params_dict[0][0] = unnormalize(params_dict[0][0], norm_dict[0])
+		#params_dict[0][1] = unnormalize(params_dict[0][1], norm_dict[0])
+		#params_dict[1][0] = unnormalize(params_dict[1][0], norm_dict[1])
+		#params_dict[1][1] = unnormalize(params_dict[1][1], norm_dict[1])
 		ls_loss = self.log_prob(
 			ls_params,
 			params_dict[1][0].detach().numpy(), params_dict[1][1].detach().numpy()
@@ -220,7 +240,11 @@ class OPT_ls(torch.nn.Module):
 		return preds.value
 
 
-	def forward(self, inputs_dict):
+	def forward(self, inputs_dict, norm_dict):
+
+		norm_dict_np = dict()
+		for lvl in norm_dict.keys():
+			norm_dict_np[lvl] = np.expand_dims(norm_dict[lvl].detach().numpy(), axis=0)
 
 		params_dict = dict()
 		for level in range(len(self.base_models_dict)):
@@ -240,9 +264,11 @@ class OPT_ls(torch.nn.Module):
 			for lvl, params in params_dict.items():
 				ex_params_dict[lvl] = [params_dict[lvl][0][i], params_dict[lvl][1][i]]
 
-			ex_preds_opt = self.optimize(ex_params_dict)
+			ex_preds_opt = self.optimize(ex_params_dict, norm_dict_np)
 			all_preds.append(ex_preds_opt)
 
 		all_preds = torch.FloatTensor(all_preds)
+
+		#all_preds, _ = normalize(all_preds, norm_dict[0])
 
 		return all_preds, None

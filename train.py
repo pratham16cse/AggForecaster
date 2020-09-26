@@ -6,7 +6,7 @@ from eval import eval_base_model
 
 
 def train_model(
-    args, model_name, net, trainloader, devloader, testloader,
+    args, model_name, net, trainloader, devloader, testloader, norm,
     saved_models_path, output_dir,
     eval_every=50, verbose=1, Lambda=1, alpha=0.5
 ):
@@ -57,7 +57,7 @@ def train_model(
         if(verbose):
             if (curr_epoch % args.print_every == 0):
                 print('curr_epoch ', curr_epoch, ' loss ',loss.item(),' loss shape ',loss_shape.item(),' loss temporal ',loss_temporal.item())
-                metric_mse, metric_dtw, metric_tdi = eval_base_model(args, net, devloader, args.gamma,verbose=1)
+                metric_mse, metric_dtw, metric_tdi = eval_base_model(args, net, devloader, norm, args.gamma, verbose=1)
 
                 if metric_mse < best_metric_mse:
                     best_metric_mse = metric_mse
@@ -77,4 +77,4 @@ def train_model(
     net.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     net.eval()
-    metric_mse, metric_dtw, metric_tdi = eval_base_model(args, net, devloader, args.gamma,verbose=1)
+    metric_mse, metric_dtw, metric_tdi = eval_base_model(args, net, devloader, norm, args.gamma,verbose=1)

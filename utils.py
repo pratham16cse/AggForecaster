@@ -1,4 +1,5 @@
 from torch.utils.data import DataLoader
+from torch import from_numpy
 import numpy as np
 import os
 
@@ -29,6 +30,16 @@ def write_arr_to_file(output_dir, inf_model_name, inputs, targets, preds):
 	else:
 		np.save(os.path.join(output_dir, 'inputs'), inputs)
 		np.save(os.path.join(output_dir, 'targets'), targets)
+
+def normalize(data, norm=None):
+	if norm is None:
+		norm = np.mean(data, axis=(0, 1))
+
+	data_norm = data * 1.0/norm 
+	return data_norm, norm
+
+def unnormalize(data, norm):
+	return data * norm
 
 def fit_with_indices(seq, K):
     x = np.reshape(np.ones_like(seq), (-1, K))
@@ -108,9 +119,21 @@ def create_hierarchical_data(
 				level, args.K, train_input, train_target,
 				dev_input, dev_target, test_input, test_target,
 			)
-		dataset_train = SyntheticDataset(train_input, train_target, train_bkp)
-		dataset_dev = SyntheticDataset(dev_input, dev_target, dev_bkp)
-		dataset_test  = SyntheticDataset(test_input, test_target, test_bkp)
+
+		if args.normalize:
+			train_input_norm, norm = normalize(train_input)
+		else:
+			train_input_norm = train_input
+			norm = np.ones_like(np.mean(train_input, axis=(0, 1)))
+		train_target_norm, _ = normalize(train_target, norm)
+		dev_input_norm, _ = normalize(dev_input, norm)
+		dev_target_norm = dev_target
+		test_input_norm, _ = normalize(test_input, norm)
+		test_target_norm = test_target
+
+		dataset_train = SyntheticDataset(train_input_norm, train_target_norm, train_bkp)
+		dataset_dev = SyntheticDataset(dev_input_norm, dev_target_norm, dev_bkp)
+		dataset_test  = SyntheticDataset(test_input_norm, test_target_norm, test_bkp)
 		trainloader = DataLoader(
 			dataset_train, batch_size=args.batch_size, shuffle=True,
 			drop_last=True, num_workers=1
@@ -123,13 +146,15 @@ def create_hierarchical_data(
 			dataset_test, batch_size=test_input.shape[0], shuffle=False,
 			drop_last=False, num_workers=1
 		)
+		norm = from_numpy(norm)
 		level2data[level] = {
 			'trainloader': trainloader,
 			'devloader': devloader,
 			'testloader': testloader,
 			'N_output': test_target.shape[1],
 			'input_size': test_input.shape[2],
-			'output_size': test_target.shape[2]
+			'output_size': test_target.shape[2],
+			'norm': norm
 		}
 
 	return level2data
