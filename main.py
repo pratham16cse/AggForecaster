@@ -39,6 +39,8 @@ parser.add_argument('--saved_models_dir', type=str,
                     help='Path to store all saved models', default='saved_models')
 parser.add_argument('--ignore_ckpt', action='store_true', default=False,
                     help='Start the training without loading the checkpoint')
+parser.add_argument('--normalize', action='store_true', default=False,
+                    help='Normalize the dataset using average')
 
 parser.add_argument('--epochs', type=int, default=500,
                     help='number of training epochs')
@@ -86,8 +88,8 @@ args.base_model_names = [
 args.inference_model_names = [
     'DILATE',
     'MSE',
-    'NLLsum',
-    'NLLls',
+#    'NLLsum',
+#    'NLLls',
     'seq2seqmse_dualtpp',
     'seq2seqnll_dualtpp',
     'seq2seqmse_optls',
@@ -133,6 +135,7 @@ for base_model_name in args.base_model_names:
             N_output = level2data[level]['N_output']
             input_size = level2data[level]['input_size']
             output_size = level2data[level]['output_size']
+            norm = level2data[level]['norm']
 
             if base_model_name in ['seq2seqmse', 'seq2seqdilate']:
                 point_estimates = True
@@ -159,7 +162,8 @@ for base_model_name in args.base_model_names:
             ).to(args.device)
             net_gru = Net_GRU(encoder,decoder, N_output, point_estimates, args.device).to(args.device)
             train_model(
-                args, base_model_name, net_gru, trainloader, devloader, testloader,
+                args, base_model_name, net_gru,
+                trainloader, devloader, testloader, norm,
                 saved_models_path, output_dir, eval_every=50, verbose=1
             )
 
@@ -171,9 +175,11 @@ print('\n Starting Inference Models')
 
 test_inputs_dict = dict()
 test_targets_dict = dict()
+test_norm_dict = dict()
 for agg_method in args.aggregate_methods:
     test_inputs_dict[agg_method] = dict()
     test_targets_dict[agg_method] = dict()
+    test_norm_dict[agg_method] = dict()
     for level in range(args.L):
         gen_test = iter(dataset['level2data'][agg_method][level]['testloader'])
         test_inputs, test_targets, breaks = next(gen_test)
@@ -182,6 +188,7 @@ for agg_method in args.aggregate_methods:
         test_targets = torch.tensor(test_targets, dtype=torch.float32).to(args.device)
         test_inputs_dict[agg_method][level] = test_inputs
         test_targets_dict[agg_method][level] = test_targets
+        test_norm_dict[agg_method][level] = dataset['level2data'][agg_method][level]['norm']
 #criterion = torch.nn.MSELoss()
 
 for inf_model_name in args.inference_model_names:
@@ -189,46 +196,63 @@ for inf_model_name in args.inference_model_names:
         base_models_dict = base_models['seq2seqdilate']['sum']
         inf_net = inf_models.DILATE(base_models_dict)
         inf_test_inputs_dict = test_inputs_dict['sum']
+        inf_test_norm_dict = test_norm_dict['sum']
         inf_test_targets = test_targets_dict['sum'][0]
+        inf_norm = test_norm_dict['sum'][0]
     elif inf_model_name in ['MSE']:
         base_models_dict = base_models['seq2seqmse']['sum']
         inf_net = inf_models.MSE(base_models_dict)
         inf_test_inputs_dict = test_inputs_dict['sum']
+        inf_test_norm_dict = test_norm_dict['sum']
         inf_test_targets = test_targets_dict['sum'][0]
+        inf_norm = test_norm_dict['sum'][0]
     elif inf_model_name in ['NLLsum']:
         base_models_dict = base_models['seq2seqnll']['sum']
         inf_net = inf_models.NLLsum(base_models_dict)
         inf_test_inputs_dict = test_inputs_dict['sum']
+        inf_test_norm_dict = test_norm_dict['sum']
         inf_test_targets = test_targets_dict['sum'][0]
+        inf_norm = test_norm_dict['sum'][0]
     elif inf_model_name in ['NLLls']:
         base_models_dict = base_models['seq2seqnll']['leastsquare']
         inf_net = inf_models.NLLls(base_models_dict)
         inf_test_inputs_dict = test_inputs_dict['leastsquare']
+        inf_test_norm_dict = test_norm_dict['leastsquare']
         inf_test_targets = test_targets_dict['sum'][0]
+        inf_norm = test_norm_dict['sum'][0]
     elif inf_model_name in ['seq2seqmse_dualtpp']:
         base_models_dict = base_models['seq2seqmse']['sum']
         inf_net = inf_models.DualTPP(args.K, base_models_dict)
         inf_test_inputs_dict = test_inputs_dict['sum']
+        inf_test_norm_dict = test_norm_dict['sum']
         inf_test_targets = test_targets_dict['sum'][0]
+        inf_norm = test_norm_dict['sum'][0]
     elif inf_model_name in ['seq2seqnll_dualtpp']:
         base_models_dict = base_models['seq2seqnll']['sum']
         inf_net = inf_models.DualTPP(args.K, base_models_dict)
         inf_test_inputs_dict = test_inputs_dict['sum']
+        inf_test_norm_dict = test_norm_dict['sum']
         inf_test_targets = test_targets_dict['sum'][0]
+        inf_norm = test_norm_dict['sum'][0]
     elif inf_model_name in ['seq2seqmse_optls']:
         base_models_dict = base_models['seq2seqmse']['leastsquare']
         inf_net = inf_models.OPT_ls(args.K, base_models_dict)
         inf_test_inputs_dict = test_inputs_dict['leastsquare']
+        inf_test_norm_dict = test_norm_dict['leastsquare']
         inf_test_targets = test_targets_dict['sum'][0]
+        inf_norm = test_norm_dict['sum'][0]
     elif inf_model_name in ['seq2seqnll_optls']:
         base_models_dict = base_models['seq2seqnll']['leastsquare']
         inf_net = inf_models.OPT_ls(args.K, base_models_dict)
         inf_test_inputs_dict = test_inputs_dict['leastsquare']
+        inf_test_norm_dict = test_norm_dict['leastsquare']
         inf_test_targets = test_targets_dict['sum'][0]
+        inf_norm = test_norm_dict['sum'][0]
 
     inf_net.eval()
     preds, metric_mse, metric_dtw, metric_tdi = eval_inf_model(
-        args, inf_net, inf_test_inputs_dict, inf_test_targets, args.gamma, verbose=1
+        args, inf_net, inf_test_inputs_dict, inf_test_norm_dict,
+        inf_test_targets, inf_norm, args.gamma, verbose=1
     )
     inference_models[inf_model_name] = inf_net
     metric_mse = metric_mse.item()
@@ -243,7 +267,7 @@ for inf_model_name in args.inference_model_names:
     os.makedirs(output_dir, exist_ok=True)
     utils.write_arr_to_file(
         output_dir, inf_model_name,
-        test_inputs_dict['sum'][0].detach().numpy(),
+        utils.unnormalize(test_inputs_dict['sum'][0].detach().numpy(), inf_norm.detach().numpy()),
         test_targets_dict['sum'][0].detach().numpy(),
         preds.detach().numpy()
     )

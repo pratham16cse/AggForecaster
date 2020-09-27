@@ -1,9 +1,10 @@
 import numpy as np
 import torch
 from tslearn.metrics import dtw, dtw_path
+from utils import unnormalize
 
 
-def eval_base_model(args, net, loader, gamma, verbose=1):
+def eval_base_model(args, net, loader, norm, gamma, verbose=1):
     criterion = torch.nn.MSELoss()
     losses_mse = []
     losses_dtw = []
@@ -17,6 +18,9 @@ def eval_base_model(args, net, loader, gamma, verbose=1):
         target = torch.tensor(target, dtype=torch.float32).to(args.device)
         batch_size, N_output = target.shape[0:2]
         means, _ = net(inputs)
+
+        # Unnormalize the data
+        means = unnormalize(means, norm)
 
         # MSE
         loss_mse = criterion(target, means)
@@ -50,14 +54,17 @@ def eval_base_model(args, net, loader, gamma, verbose=1):
 
     return metric_mse, metric_dtw, metric_tdi
 
-def eval_inf_model(args, net, inf_test_inputs_dict, target, gamma, verbose=1):
+def eval_inf_model(args, net, inf_test_inputs_dict, inf_test_norm_dict, target, norm, gamma, verbose=1):
     criterion = torch.nn.MSELoss()
     losses_mse = []
     losses_dtw = []
     losses_tdi = []
 
     batch_size, N_output = target.shape[0:2]
-    preds, _ = net(inf_test_inputs_dict)
+    preds, _ = net(inf_test_inputs_dict, inf_test_norm_dict)
+
+    # Unnormalize
+    preds = unnormalize(preds, norm)
 
     # MSE
     loss_mse = criterion(target, preds)
