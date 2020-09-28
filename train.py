@@ -38,7 +38,7 @@ def train_model(
             batch_size, N_output = target.shape[0:2]
 
             # forward + backward + optimize
-            means, stds = net(inputs)
+            means, stds = net(inputs, target)
             loss_mse,loss_shape,loss_temporal = torch.tensor(0),torch.tensor(0),torch.tensor(0)
 
             if model_name in ['seq2seqmse']:
