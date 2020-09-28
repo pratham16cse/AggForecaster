@@ -237,14 +237,15 @@ def get_processed_data(args):
 		aggregation_func=aggregation2func['leastsquare']
 	)
 
-	level2data = dict()
-	level2data['sum'] = level2data_sum
-	level2data['leastsquare'] = level2data_ls
+	dataset = dict()
+	dataset['sum'] = level2data_sum
+	dataset['leastsquare'] = level2data_ls
 
-	return {
+	return dataset
+	#return {
 		#'trainloader': trainloader,
 		#'testloader': testloader,
-		'level2data_sum': level2data_sum,
-		'level2data_ls': level2data_ls,
-		'level2data': level2data
-	}
+		#'level2data_sum': level2data_sum,
+		#'level2data_ls': level2data_ls,
+		#'level2data': level2data
+	#}

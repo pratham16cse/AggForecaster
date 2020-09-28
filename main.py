@@ -59,6 +59,8 @@ parser.add_argument('--batch_size', type=int, default=100,
                     help='Input batch size')
 parser.add_argument('--gamma', type=float, default=0.01, nargs='+',
                    help='gamma parameter of DILATE loss')
+parser.add_argument('--teacher_forcing_ratio', type=float, default=0.5, nargs='+',
+                   help='Probability of applying teacher forcing to a batch')
 
 # Hierarchical model arguments
 parser.add_argument('--L', type=int, default=2,
@@ -113,7 +115,7 @@ infmodel2preds = dict()
 
 
 dataset = utils.get_processed_data(args)
-level2data = dataset['level2data']
+#level2data = dataset['level2data']
 # ----- Start: base models training ----- #
 for base_model_name in args.base_model_names:
     base_models[base_model_name] = {}
@@ -126,7 +128,7 @@ for base_model_name in args.base_model_names:
 
     for agg_method in aggregate_methods:
         base_models[base_model_name][agg_method] = {}
-        level2data = dataset['level2data'][agg_method]
+        level2data = dataset[agg_method]
 
         for level in levels:
             trainloader = level2data[level]['trainloader']
@@ -160,7 +162,10 @@ for base_model_name in args.base_model_names:
                 input_size=input_size, hidden_size=args.hidden_size, num_grulstm_layers=args.num_grulstm_layers,
                 fc_units=args.fc_units, output_size=output_size
             ).to(args.device)
-            net_gru = Net_GRU(encoder,decoder, N_output, point_estimates, args.device).to(args.device)
+            net_gru = Net_GRU(
+                encoder,decoder, N_output, point_estimates,
+                args.teacher_forcing_ratio, args.device
+            ).to(args.device)
             train_model(
                 args, base_model_name, net_gru,
                 trainloader, devloader, testloader, norm,
@@ -181,14 +186,14 @@ for agg_method in args.aggregate_methods:
     test_targets_dict[agg_method] = dict()
     test_norm_dict[agg_method] = dict()
     for level in range(args.L):
-        gen_test = iter(dataset['level2data'][agg_method][level]['testloader'])
+        gen_test = iter(dataset[agg_method][level]['testloader'])
         test_inputs, test_targets, breaks = next(gen_test)
 
         test_inputs  = torch.tensor(test_inputs, dtype=torch.float32).to(args.device)
         test_targets = torch.tensor(test_targets, dtype=torch.float32).to(args.device)
         test_inputs_dict[agg_method][level] = test_inputs
         test_targets_dict[agg_method][level] = test_targets
-        test_norm_dict[agg_method][level] = dataset['level2data'][agg_method][level]['norm']
+        test_norm_dict[agg_method][level] = dataset[agg_method][level]['norm']
 #criterion = torch.nn.MSELoss()
 
 for inf_model_name in args.inference_model_names:

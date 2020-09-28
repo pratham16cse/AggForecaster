@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import random
 
 class EncoderRNN(torch.nn.Module):
     def __init__(self,input_size, hidden_size, num_grulstm_layers, batch_size):
@@ -36,15 +37,16 @@ class DecoderRNN(nn.Module):
         return (means, stds), hidden
     
 class Net_GRU(nn.Module):
-    def __init__(self, encoder, decoder, target_length, point_estimates, device):
+    def __init__(self, encoder, decoder, target_length, point_estimates, teacher_forcing_ratio, device):
         super(Net_GRU, self).__init__()
         self.encoder = encoder
         self.decoder = decoder
         self.target_length = target_length
         self.point_estimates = point_estimates
+        self.teacher_forcing_ratio = teacher_forcing_ratio
         self.device = device
         
-    def forward(self, x):
+    def forward(self, x, target=None):
         input_length  = x.shape[1]
         encoder_hidden = self.encoder.init_hidden(x.shape[0], self.device)
         for ei in range(input_length):
@@ -57,7 +59,14 @@ class Net_GRU(nn.Module):
         stds = torch.zeros([x.shape[0], self.target_length, self.decoder.output_size]).to(self.device)
         for di in range(self.target_length):
             (step_means, step_stds), decoder_hidden = self.decoder(decoder_input, decoder_hidden)
-            decoder_input = step_means
+            if target is not None:
+                if random.random() < self.teacher_forcing_ratio:
+                    # Teacher Forcing
+                    decoder_input = target[:, di:di+1]
+                else:
+                    decoder_input = step_means
+            else:
+                decoder_input = step_means
             means[:, di:di+1, :] = step_means
             stds[:, di:di+1, :] = step_stds
         return means, stds
