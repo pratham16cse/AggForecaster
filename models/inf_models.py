@@ -15,7 +15,7 @@ class DILATE(torch.nn.Module):
 		self.base_models_dict = base_models_dict
 
 	def forward(self, inputs_dict, norm_dict):
-		return self.base_models_dict[0](inputs_dict[0])
+		return self.base_models_dict[1](inputs_dict[1])
 
 class MSE(torch.nn.Module):
 	"""docstring for MSE"""
@@ -24,7 +24,7 @@ class MSE(torch.nn.Module):
 		self.base_models_dict = base_models_dict
 
 	def forward(self, inputs_dict, norm_dict):
-		return self.base_models_dict[0](inputs_dict[0])
+		return self.base_models_dict[1](inputs_dict[1])
 
 class NLLsum(torch.nn.Module):
 	"""docstring for NLLsum"""
@@ -33,7 +33,7 @@ class NLLsum(torch.nn.Module):
 		self.base_models_dict = base_models_dict
 
 	def forward(self, inputs_dict, norm_dict):
-		return self.base_models_dict[0](inputs_dict[0])
+		return self.base_models_dict[1](inputs_dict[1])
 
 class NLLls(torch.nn.Module):
 	"""docstring for NLLls"""
@@ -42,11 +42,11 @@ class NLLls(torch.nn.Module):
 		self.base_models_dict = base_models_dict
 
 	def forward(self, inputs_dict, norm_dict):
-		return self.base_models_dict[0](inputs_dict[0])
+		return self.base_models_dict[1](inputs_dict[1])
 
 class DualTPP(torch.nn.Module):
 	"""docstring for DualTPP"""
-	def __init__(self, K, base_models_dict):
+	def __init__(self, K_list, base_models_dict):
 		'''
 		K: int
 			number of steps to aggregate at each level
@@ -55,12 +55,12 @@ class DualTPP(torch.nn.Module):
 			value: base model at the level 'key'
 		'''
 		super(DualTPP, self).__init__()
-		self.K = K
+		self.K_list = K_list
 		self.base_models_dict = base_models_dict
 
-	def aggregate_seq_(self, seq):
-		assert seq.shape[0]%self.K == 0
-		agg_seq = np.array([[cp.sum(seq[i:i+self.K])] for i in range(0, seq.shape[0], self.K)])
+	def aggregate_seq_(self, seq, K):
+		assert seq.shape[0]%K == 0
+		agg_seq = np.array([[cp.sum(seq[i:i+K])] for i in range(0, seq.shape[0], K)])
 		return agg_seq
 
 	def log_prob(self, ex_preds, means, std):
@@ -70,26 +70,20 @@ class DualTPP(torch.nn.Module):
 
 	def optimize(self, params_dict, norm_dict):
 
-		#params_dict_detached = dict()
-		#for 
-
-		ex_preds_dict = dict()
-
 		for lvl, params in params_dict.items():
 			#params[0] = unnormalize(params[0].detach().numpy(), norm_dict[lvl].detach().numpy())
-			if lvl==0:
+			if lvl==1:
 				ex_preds = cp.Variable(params[0].shape)
-				ex_preds_dict[lvl] = ex_preds
 				lvl_ex_preds = ex_preds
 			else:
 				lvl_ex_preds, _ = normalize(
-					self.aggregate_seq_(unnormalize(ex_preds_dict[lvl-1], norm_dict[lvl-1])),
+					self.aggregate_seq_(unnormalize(ex_preds, norm_dict[1]), lvl),
 					norm_dict[lvl]
 				)
 			lvl_loss = self.log_prob(lvl_ex_preds, params[0].detach().numpy(), params[1].detach().numpy())
 			#import ipdb
 			#ipdb.set_trace()
-			if lvl==0:
+			if lvl==1:
 				opt_loss = lvl_loss
 			else:
 				opt_loss += lvl_loss
@@ -115,14 +109,14 @@ class DualTPP(torch.nn.Module):
 
 
 	def forward(self, inputs_dict, norm_dict):
-		bottom_level_model = self.base_models_dict[0]
+		bottom_level_model = self.base_models_dict[1]
 
 		norm_dict_np = dict()
 		for lvl in norm_dict.keys():
 			norm_dict_np[lvl] = np.expand_dims(norm_dict[lvl].detach().numpy(), axis=0)
 
 		params_dict = dict()
-		for level in range(len(self.base_models_dict)):
+		for level in self.K_list:
 			model = self.base_models_dict[level]
 			inputs = inputs_dict[level]
 			means, stds = model(inputs)
@@ -133,7 +127,7 @@ class DualTPP(torch.nn.Module):
 			params_dict[level] = params
 
 		all_preds = []
-		for i in range(params_dict[0][0].size()[0]):
+		for i in range(params_dict[1][0].size()[0]):
 			#print(i)
 			ex_params_dict = dict()
 			for lvl, params in params_dict.items():
@@ -151,7 +145,7 @@ class DualTPP(torch.nn.Module):
 
 class OPT_ls(torch.nn.Module):
 	"""docstring for OPT_ls"""
-	def __init__(self, K, base_models_dict):
+	def __init__(self, K_list, base_models_dict):
 		'''
 		K: int
 			number of steps to aggregate at each level
@@ -160,20 +154,16 @@ class OPT_ls(torch.nn.Module):
 			value: base model at the level 'key'
 		'''
 		super(OPT_ls, self).__init__()
-		self.K = K
+		self.K_list = K_list
 		self.base_models_dict = base_models_dict
 
-	def aggregate_seq_(self, seq):
-		assert seq.shape[0]%self.K == 0
-		agg_seq = np.array([[cp.sum(seq[i:i+self.K])] for i in range(0, seq.shape[0], self.K)])
-		return agg_seq
 
-	def fit_with_indices(self, seq):
+	def fit_with_indices(self, seq, K):
 		W, B = [], []
-		for i in range(0, seq.shape[0], self.K):
-			x = np.ones_like(seq[i:i+self.K])
+		for i in range(0, seq.shape[0], K):
+			x = np.ones_like(seq[i:i+K])
 			x = np.cumsum(x) - 1
-			y = seq[i:i+self.K]
+			y = seq[i:i+K]
 			m_x = cp.sum(x)/x.shape[0]
 			m_y = cp.sum(y)/y.shape[0]
 			s_xy = cp.sum((x-m_x)*(y-m_y))
@@ -197,29 +187,47 @@ class OPT_ls(torch.nn.Module):
 		#params_dict_detached = dict()
 		#for 
 
-		ex_preds_dict = dict()
+#		ex_preds_dict = dict()
+#
+#		preds = cp.Variable(params_dict[1][0].size())
+#
+#
+#		ls_params, _ = normalize(
+#			self.fit_with_indices(unnormalize(preds, norm_dict[0])),
+#			norm_dict[1]
+#		)
+#		#ls_params = unnormalize(ls_params, norm_dict[1].detach().numpy())
+#		#params_dict[0][0] = unnormalize(params_dict[0][0], norm_dict[0])
+#		#params_dict[0][1] = unnormalize(params_dict[0][1], norm_dict[0])
+#		#params_dict[1][0] = unnormalize(params_dict[1][0], norm_dict[1])
+#		#params_dict[1][1] = unnormalize(params_dict[1][1], norm_dict[1])
+#		ls_loss = self.log_prob(
+#			ls_params,
+#			params_dict[1][0].detach().numpy(), params_dict[1][1].detach().numpy()
+#		)
+#		preds_loss = self.log_prob(
+#			preds,
+#			params_dict[0][0].detach().numpy(), params_dict[0][1].detach().numpy()
+#		)
+#		opt_loss = preds_loss + ls_loss
 
-		preds = cp.Variable(params_dict[0][0].size())
-
-
-		ls_params, _ = normalize(
-			self.fit_with_indices(unnormalize(preds, norm_dict[0])),
-			norm_dict[1]
-		)
-		#ls_params = unnormalize(ls_params, norm_dict[1].detach().numpy())
-		#params_dict[0][0] = unnormalize(params_dict[0][0], norm_dict[0])
-		#params_dict[0][1] = unnormalize(params_dict[0][1], norm_dict[0])
-		#params_dict[1][0] = unnormalize(params_dict[1][0], norm_dict[1])
-		#params_dict[1][1] = unnormalize(params_dict[1][1], norm_dict[1])
-		ls_loss = self.log_prob(
-			ls_params,
-			params_dict[1][0].detach().numpy(), params_dict[1][1].detach().numpy()
-		)
-		preds_loss = self.log_prob(
-			preds,
-			params_dict[0][0].detach().numpy(), params_dict[0][1].detach().numpy()
-		)
-		opt_loss = preds_loss + ls_loss
+		for lvl, params in params_dict.items():
+			#params[0] = unnormalize(params[0].detach().numpy(), norm_dict[lvl].detach().numpy())
+			if lvl==1:
+				ex_preds = cp.Variable(params[0].shape)
+				lvl_ex_preds = ex_preds
+			else:
+				lvl_ex_preds, _ = normalize(
+					self.fit_with_indices(unnormalize(ex_preds, norm_dict[1]), lvl),
+					norm_dict[lvl]
+				)
+			lvl_loss = self.log_prob(lvl_ex_preds, params[0].detach().numpy(), params[1].detach().numpy())
+			#import ipdb
+			#ipdb.set_trace()
+			if lvl==1:
+				opt_loss = lvl_loss
+			else:
+				opt_loss += lvl_loss
 
 		objective = cp.Minimize(opt_loss)
 
@@ -237,7 +245,7 @@ class OPT_ls(torch.nn.Module):
 		#import ipdb
 		#ipdb.set_trace()
 
-		return preds.value
+		return ex_preds.value
 
 
 	def forward(self, inputs_dict, norm_dict):
@@ -247,7 +255,7 @@ class OPT_ls(torch.nn.Module):
 			norm_dict_np[lvl] = np.expand_dims(norm_dict[lvl].detach().numpy(), axis=0)
 
 		params_dict = dict()
-		for level in range(len(self.base_models_dict)):
+		for level in self.K_list:
 			model = self.base_models_dict[level]
 			inputs = inputs_dict[level]
 			means, stds = model(inputs)
@@ -258,7 +266,7 @@ class OPT_ls(torch.nn.Module):
 			params_dict[level] = params
 
 		all_preds = []
-		for i in range(params_dict[0][0].size()[0]):
+		for i in range(params_dict[1][0].size()[0]):
 			#print(i)
 			ex_params_dict = dict()
 			for lvl, params in params_dict.items():

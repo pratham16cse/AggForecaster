@@ -2,6 +2,7 @@ from torch.utils.data import DataLoader
 from torch import from_numpy
 import numpy as np
 import os
+from collections import OrderedDict
 
 from data.synthetic_dataset import create_synthetic_dataset, create_sin_dataset, SyntheticDataset
 from data.real_dataset import parse_ECG5000, parse_Traffic, parse_Taxi, parse_Traffic911
@@ -56,7 +57,7 @@ def fit_with_indices(seq, K):
     return agg_seq
 
 def aggregate_data_leastsquare(
-	level, K, train_input, train_target, dev_input, dev_target,
+	K, train_input, train_target, dev_input, dev_target,
 	test_input, test_target
 ):
 	def aggregate_seqs_(seqs):
@@ -80,7 +81,7 @@ def aggregate_data_leastsquare(
 	)
 
 def aggregate_data(
-	level, K, train_input, train_target, dev_input, dev_target,
+	K, train_input, train_target, dev_input, dev_target,
 	test_input, test_target
 ):
 
@@ -109,27 +110,31 @@ def create_hierarchical_data(
 	test_input, test_target, train_bkp, dev_bkp, test_bkp,
 	aggregation_func,
 ):
-	level2data = dict()
-	for level in range(args.L):
-		if level > 0:
+	K2data = OrderedDict()
+	for K in args.K_list:
+		if K == 1:
+			train_input_agg, train_target_agg = train_input, train_target
+			dev_input_agg, dev_target_agg = dev_input, dev_target
+			test_input_agg, test_target_agg = test_input, test_target
+		else:
 			(
-				train_input, train_target, dev_input, dev_target,
-				test_input, test_target,
+				train_input_agg, train_target_agg, dev_input_agg, dev_target_agg,
+				test_input_agg, test_target_agg,
 			)= aggregation_func(
-				level, args.K, train_input, train_target,
+				K, train_input, train_target,
 				dev_input, dev_target, test_input, test_target,
 			)
 
 		if args.normalize:
-			train_input_norm, norm = normalize(train_input)
+			train_input_norm, norm = normalize(train_input_agg)
 		else:
-			train_input_norm = train_input
-			norm = np.ones_like(np.mean(train_input, axis=(0, 1)))
-		train_target_norm, _ = normalize(train_target, norm)
-		dev_input_norm, _ = normalize(dev_input, norm)
-		dev_target_norm = dev_target
-		test_input_norm, _ = normalize(test_input, norm)
-		test_target_norm = test_target
+			train_input_norm = train_input_agg
+			norm = np.ones_like(np.mean(train_input_agg, axis=(0, 1)))
+		train_target_norm, _ = normalize(train_target_agg, norm)
+		dev_input_norm, _ = normalize(dev_input_agg, norm)
+		dev_target_norm = dev_target_agg
+		test_input_norm, _ = normalize(test_input_agg, norm)
+		test_target_norm = test_target_agg
 
 		dataset_train = SyntheticDataset(train_input_norm, train_target_norm, train_bkp)
 		dataset_dev = SyntheticDataset(dev_input_norm, dev_target_norm, dev_bkp)
@@ -147,17 +152,17 @@ def create_hierarchical_data(
 			drop_last=False, num_workers=1
 		)
 		norm = from_numpy(norm)
-		level2data[level] = {
+		K2data[K] = {
 			'trainloader': trainloader,
 			'devloader': devloader,
 			'testloader': testloader,
-			'N_output': test_target.shape[1],
-			'input_size': test_input.shape[2],
-			'output_size': test_target.shape[2],
+			'N_output': test_target_norm.shape[1],
+			'input_size': test_input_norm.shape[2],
+			'output_size': test_target_norm.shape[2],
 			'norm': norm
 		}
 
-	return level2data
+	return K2data
 
 def get_processed_data(args):
 
@@ -222,14 +227,14 @@ def get_processed_data(args):
 		) = parse_Traffic911(args.N_input, args.N_output)
 
 
-	level2data_sum = create_hierarchical_data(
+	K2data_sum = create_hierarchical_data(
 		args, X_train_input, X_train_target,
 		X_dev_input, X_dev_target,
 		X_test_input, X_test_target,
 		train_bkp, dev_bkp, test_bkp,
 		aggregation_func=aggregation2func['sum']
 	)
-	level2data_ls = create_hierarchical_data(
+	K2data_ls = create_hierarchical_data(
 		args, X_train_input, X_train_target,
 		X_dev_input, X_dev_target,
 		X_test_input, X_test_target,
@@ -238,14 +243,14 @@ def get_processed_data(args):
 	)
 
 	dataset = dict()
-	dataset['sum'] = level2data_sum
-	dataset['leastsquare'] = level2data_ls
+	dataset['sum'] = K2data_sum
+	dataset['leastsquare'] = K2data_ls
 
 	return dataset
 	#return {
 		#'trainloader': trainloader,
 		#'testloader': testloader,
-		#'level2data_sum': level2data_sum,
-		#'level2data_ls': level2data_ls,
-		#'level2data': level2data
+		#'K2data_sum': K2data_sum,
+		#'K2data_ls': K2data_ls,
+		#'K2data': K2data
 	#}
