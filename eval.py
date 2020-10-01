@@ -94,6 +94,6 @@ def eval_inf_model(args, net, inf_test_inputs_dict, inf_test_norm_dict, target, 
     metric_dtw = np.array(losses_dtw).mean()
     metric_tdi = np.array(losses_tdi).mean()
 
-    print('Eval mse= ', metric_mse, ' dtw= ', metric_dtw, ' tdi= ', metric_tdi)
+    #print('Eval mse= ', metric_mse, ' dtw= ', metric_dtw, ' tdi= ', metric_tdi)
 
     return preds, metric_mse, metric_dtw, metric_tdi
