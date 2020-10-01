@@ -169,13 +169,16 @@ for base_model_name in args.base_model_names:
                 encoder,decoder, N_output, point_estimates,
                 args.teacher_forcing_ratio, args.device
             ).to(args.device)
-            train_model(
-                args, base_model_name, net_gru,
-                trainloader, devloader, testloader, norm,
-                saved_models_path, output_dir, eval_every=50, verbose=1
-            )
+            if agg_method in ['leastsquare'] and level == 1:
+                base_models[base_model_name][agg_method][level] = base_models[base_model_name]['sum'][1]
+            else:
+                train_model(
+                    args, base_model_name, net_gru,
+                    trainloader, devloader, testloader, norm,
+                    saved_models_path, output_dir, eval_every=50, verbose=1
+                )
 
-            base_models[base_model_name][agg_method][level] = net_gru
+                base_models[base_model_name][agg_method][level] = net_gru
 # ----- End: base models training ----- #
 
 # ----- Start: Inference models ----- #
