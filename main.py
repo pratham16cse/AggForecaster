@@ -59,7 +59,9 @@ parser.add_argument('--batch_size', type=int, default=100,
                     help='Input batch size')
 parser.add_argument('--gamma', type=float, default=0.01, nargs='+',
                    help='gamma parameter of DILATE loss')
-parser.add_argument('--teacher_forcing_ratio', type=float, default=0.5, nargs='+',
+parser.add_argument('--alpha', type=float, default=0.5,
+                   help='alpha parameter of DILATE loss')
+parser.add_argument('--teacher_forcing_ratio', type=float, default=0.5,
                    help='Probability of applying teacher forcing to a batch')
 
 # Hierarchical model arguments
@@ -97,10 +99,16 @@ args.inference_model_names = [
     'seq2seqmse_optls',
     'seq2seqnll_optls',
 ]
-args.aggregate_methods = ['sum', 'leastsquare']
+args.aggregate_methods = [
+    'sum',
+    'leastsquare'
+]
 
 if 1 not in args.K_list:
     args.K_list = [1] + args.K_list
+
+if args.dataset_name in ['Traffic']:
+    args.alpha = 0.8
 
 base_models = {}
 for name in args.base_model_names:
