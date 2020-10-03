@@ -2,10 +2,12 @@ import numpy as np
 import torch
 from tslearn.metrics import dtw, dtw_path
 from utils import unnormalize
+from loss.dilate_loss import dilate_loss
 
 
-def eval_base_model(args, net, loader, norm, gamma, verbose=1):
+def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1):
     criterion = torch.nn.MSELoss()
+    losses_dilate = []
     losses_mse = []
     losses_dtw = []
     losses_tdi = []
@@ -24,6 +26,10 @@ def eval_base_model(args, net, loader, norm, gamma, verbose=1):
 
         # MSE
         loss_mse = criterion(target, means)
+        if model_name in ['seq2seqdilate']:
+            loss_dilate, loss_shape, loss_temporal = dilate_loss(target, means, args.alpha, args.gamma, args.device)
+        else:
+            loss_dilate = torch.zeros([])
         loss_dtw, loss_tdi = 0,0
         # DTW and TDI
         for k in range(batch_size):
@@ -42,17 +48,20 @@ def eval_base_model(args, net, loader, norm, gamma, verbose=1):
         loss_tdi = loss_tdi / batch_size
 
         # print statistics
+        losses_dilate.append( loss_dilate.item() )
         losses_mse.append( loss_mse.item() )
         losses_dtw.append( loss_dtw )
         losses_tdi.append( loss_tdi )
 
+    metric_dilate = np.array(losses_dilate).mean()
     metric_mse = np.array(losses_mse).mean()
     metric_dtw = np.array(losses_dtw).mean()
     metric_tdi = np.array(losses_tdi).mean()
 
-    print('Eval mse= ', metric_mse, ' dtw= ', metric_dtw, ' tdi= ', metric_tdi)
+    print('Eval dilateloss= ', metric_dilate, \
+        'mse= ', metric_mse, ' dtw= ', metric_dtw, ' tdi= ', metric_tdi)
 
-    return metric_mse, metric_dtw, metric_tdi
+    return metric_dilate, metric_mse, metric_dtw, metric_tdi
 
 def eval_inf_model(args, net, inf_test_inputs_dict, inf_test_norm_dict, target, norm, gamma, verbose=1):
     criterion = torch.nn.MSELoss()
