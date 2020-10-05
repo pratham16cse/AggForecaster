@@ -70,3 +70,24 @@ class Net_GRU(nn.Module):
             means[:, di:di+1, :] = step_means
             stds[:, di:di+1, :] = step_stds
         return means, stds
+
+    def reinit(self, x, preds):
+        input_length  = x.shape[1]
+        encoder_hidden = self.encoder.init_hidden(x.shape[0], self.device)
+        for ei in range(input_length):
+            encoder_output, encoder_hidden = self.encoder(x[:,ei:ei+1,:]  , encoder_hidden)
+
+        decoder_input = x[:,-1,:].unsqueeze(1) # first decoder input= last element of input sequence
+        decoder_hidden = encoder_hidden
+
+        means = torch.zeros([x.shape[0], self.target_length, self.decoder.output_size]).to(self.device)
+        stds = torch.zeros([x.shape[0], self.target_length, self.decoder.output_size]).to(self.device)
+        for di in range(self.target_length):
+            (step_means, step_stds), decoder_hidden = self.decoder(decoder_input, decoder_hidden)
+            if di<preds.shape[1]:
+                decoder_input = preds[:, di:di+1]
+            else:
+                decoder_input = step_means
+            means[:, di:di+1, :] = step_means
+            stds[:, di:di+1, :] = step_stds
+        return means, stds

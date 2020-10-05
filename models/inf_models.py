@@ -5,6 +5,7 @@ import torch.nn.functional as F
 import numpy as np
 import cvxpy as cp
 
+import utils
 from utils import normalize, unnormalize
 
 
@@ -184,35 +185,7 @@ class OPT_ls(torch.nn.Module):
 
 	def optimize(self, params_dict, norm_dict):
 
-		#params_dict_detached = dict()
-		#for 
-
-#		ex_preds_dict = dict()
-#
-#		preds = cp.Variable(params_dict[1][0].size())
-#
-#
-#		ls_params, _ = normalize(
-#			self.fit_with_indices(unnormalize(preds, norm_dict[0])),
-#			norm_dict[1]
-#		)
-#		#ls_params = unnormalize(ls_params, norm_dict[1].detach().numpy())
-#		#params_dict[0][0] = unnormalize(params_dict[0][0], norm_dict[0])
-#		#params_dict[0][1] = unnormalize(params_dict[0][1], norm_dict[0])
-#		#params_dict[1][0] = unnormalize(params_dict[1][0], norm_dict[1])
-#		#params_dict[1][1] = unnormalize(params_dict[1][1], norm_dict[1])
-#		ls_loss = self.log_prob(
-#			ls_params,
-#			params_dict[1][0].detach().numpy(), params_dict[1][1].detach().numpy()
-#		)
-#		preds_loss = self.log_prob(
-#			preds,
-#			params_dict[0][0].detach().numpy(), params_dict[0][1].detach().numpy()
-#		)
-#		opt_loss = preds_loss + ls_loss
-
 		for lvl, params in params_dict.items():
-			#params[0] = unnormalize(params[0].detach().numpy(), norm_dict[lvl].detach().numpy())
 			if lvl==1:
 				ex_preds = cp.Variable(params[0].shape)
 				lvl_ex_preds = ex_preds
@@ -254,29 +227,63 @@ class OPT_ls(torch.nn.Module):
 		for lvl in norm_dict.keys():
 			norm_dict_np[lvl] = np.expand_dims(norm_dict[lvl].detach().numpy(), axis=0)
 
+		K = self.K_list[1]
+		num_bins = self.base_models_dict[K].target_length
+		num_examples = inputs_dict[1].shape[0]
+
 		params_dict = dict()
-		for level in self.K_list:
-			model = self.base_models_dict[level]
-			inputs = inputs_dict[level]
-			means, stds = model(inputs)
-
-			if model.point_estimates:
-				stds = torch.ones_like(means)
-			params = [means, stds]
-			params_dict[level] = params
-
 		all_preds = []
-		for i in range(params_dict[1][0].size()[0]):
-			#print(i)
-			ex_params_dict = dict()
-			for lvl, params in params_dict.items():
-				ex_params_dict[lvl] = [params_dict[lvl][0][i], params_dict[lvl][1][i]]
+		for b in range(num_bins):
 
-			ex_preds_opt = self.optimize(ex_params_dict, norm_dict_np)
-			all_preds.append(ex_preds_opt)
+			# First get all base model predictions. For b>0, pass optimized predictions
+			# through encoder RNN.
+			for level in [1, K]:
+				model = self.base_models_dict[level]
+				inputs = inputs_dict[level]
+				if b>0:
+					if level==1:
+						#inputs = torch.cat((inputs, torch.FloatTensor(all_preds)), 1)
+						reinit_inputs = torch.FloatTensor(all_preds)
+					else:
+						# Aggregate all_preds for level!=1
+						print(b,level)
+						all_preds_agg = []
+						for i in range(num_examples):
+							ex_preds_agg, _ = normalize(
+								torch.FloatTensor(utils.fit_with_indices(all_preds[i], level)),
+								norm_dict[level]
+							)
+							all_preds_agg.append(ex_preds_agg)
+						all_preds_agg = torch.stack(all_preds_agg)
+						#inputs = torch.cat((inputs, all_preds_agg), 1)
+						reinit_inputs = all_preds_agg
 
+				if b==0:
+					means, stds = model(inputs)
+				else:
+					means, stds = model.reinit(inputs, reinit_inputs)
+
+				if model.point_estimates:
+					stds = torch.ones_like(means)
+				params = [means, stds]
+				params_dict[level] = params
+
+			b_preds = [] # Predictions for current bin b
+			print(b)
+			for i in range(num_examples):
+				ex_params_dict = dict()
+				ex_params_dict[1] = [params_dict[1][0][i, b*K:(b+1)*K], params_dict[1][1][i, b*K:(b+1)*K]]
+				ex_params_dict[K] = [params_dict[K][0][i, b:b+1], params_dict[K][1][i, b:b+1]]
+
+				ex_preds_opt = self.optimize(ex_params_dict, norm_dict_np)
+				b_preds.append(ex_preds_opt)
+			b_preds = np.array(b_preds)
+			if b==0:
+				all_preds = b_preds
+			else:
+				all_preds = np.concatenate([all_preds, b_preds], axis=1)
+
+		#all_preds = np.concatenate(all_preds, axis=1)
 		all_preds = torch.FloatTensor(all_preds)
-
-		#all_preds, _ = normalize(all_preds, norm_dict[0])
 
 		return all_preds, None
