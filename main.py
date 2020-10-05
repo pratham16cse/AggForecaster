@@ -110,6 +110,7 @@ if 1 not in args.K_list:
 if args.dataset_name in ['Traffic']:
     args.alpha = 0.8
 
+
 base_models = {}
 for name in args.base_model_names:
     base_models[name] = {}
@@ -192,85 +193,112 @@ for base_model_name in args.base_model_names:
 # ----- Start: Inference models ----- #
 print('\n Starting Inference Models')
 
-test_inputs_dict = dict()
-test_targets_dict = dict()
-test_norm_dict = dict()
-for agg_method in args.aggregate_methods:
-    test_inputs_dict[agg_method] = dict()
-    test_targets_dict[agg_method] = dict()
-    test_norm_dict[agg_method] = dict()
-    for level in args.K_list:
-        gen_test = iter(dataset[agg_method][level]['testloader'])
-        test_inputs, test_targets, breaks = next(gen_test)
+def get_inputs_targets_dict(key):
+    inputs_dict = dict()
+    targets_dict = dict()
+    norm_dict = dict()
+    for agg_method in args.aggregate_methods:
+        inputs_dict[agg_method] = dict()
+        targets_dict[agg_method] = dict()
+        norm_dict[agg_method] = dict()
+        for level in args.K_list:
+            gen = iter(dataset[agg_method][level][key])
+            inputs, targets, breaks = next(gen)
+    
+            inputs  = torch.tensor(inputs, dtype=torch.float32).to(args.device)
+            targets = torch.tensor(targets, dtype=torch.float32).to(args.device)
+            inputs_dict[agg_method][level] = inputs
+            targets_dict[agg_method][level] = targets
+            norm_dict[agg_method][level] = dataset[agg_method][level]['norm']    
 
-        test_inputs  = torch.tensor(test_inputs, dtype=torch.float32).to(args.device)
-        test_targets = torch.tensor(test_targets, dtype=torch.float32).to(args.device)
-        test_inputs_dict[agg_method][level] = test_inputs
-        test_targets_dict[agg_method][level] = test_targets
-        test_norm_dict[agg_method][level] = dataset[agg_method][level]['norm']
-#criterion = torch.nn.MSELoss()
+    return inputs_dict, targets_dict, norm_dict
+
+dev_inputs_dict, dev_targets_dict, _ = get_inputs_targets_dict('devloader')
+test_inputs_dict, test_targets_dict, norm_dict = get_inputs_targets_dict('testloader')
 
 for inf_model_name in args.inference_model_names:
     if inf_model_name in ['DILATE']:
         base_models_dict = base_models['seq2seqdilate']['sum']
         inf_net = inf_models.DILATE(base_models_dict)
         inf_test_inputs_dict = test_inputs_dict['sum']
-        inf_test_norm_dict = test_norm_dict['sum']
+        inf_norm_dict = norm_dict['sum']
         inf_test_targets = test_targets_dict['sum'][1]
-        inf_norm = test_norm_dict['sum'][1]
+        inf_norm = norm_dict['sum'][1]
+        best_K = None
     elif inf_model_name in ['MSE']:
         base_models_dict = base_models['seq2seqmse']['sum']
         inf_net = inf_models.MSE(base_models_dict)
         inf_test_inputs_dict = test_inputs_dict['sum']
-        inf_test_norm_dict = test_norm_dict['sum']
+        inf_norm_dict = norm_dict['sum']
         inf_test_targets = test_targets_dict['sum'][1]
-        inf_norm = test_norm_dict['sum'][1]
+        inf_norm = norm_dict['sum'][1]
+        best_K = None
     elif inf_model_name in ['NLLsum']:
         base_models_dict = base_models['seq2seqnll']['sum']
         inf_net = inf_models.NLLsum(base_models_dict)
         inf_test_inputs_dict = test_inputs_dict['sum']
-        inf_test_norm_dict = test_norm_dict['sum']
+        inf_norm_dict = norm_dict['sum']
         inf_test_targets = test_targets_dict['sum'][1]
-        inf_norm = test_norm_dict['sum'][1]
+        inf_norm = norm_dict['sum'][1]
+        best_K = None
     elif inf_model_name in ['NLLls']:
         base_models_dict = base_models['seq2seqnll']['leastsquare']
         inf_net = inf_models.NLLls(base_models_dict)
         inf_test_inputs_dict = test_inputs_dict['leastsquare']
-        inf_test_norm_dict = test_norm_dict['leastsquare']
+        inf_norm_dict = norm_dict['leastsquare']
         inf_test_targets = test_targets_dict['sum'][1]
-        inf_norm = test_norm_dict['sum'][1]
+        inf_norm = norm_dict['sum'][1]
+        best_K = None
     elif inf_model_name in ['seq2seqmse_dualtpp']:
         base_models_dict = base_models['seq2seqmse']['sum']
         inf_net = inf_models.DualTPP(args.K_list, base_models_dict)
         inf_test_inputs_dict = test_inputs_dict['sum']
-        inf_test_norm_dict = test_norm_dict['sum']
+        inf_norm_dict = norm_dict['sum']
         inf_test_targets = test_targets_dict['sum'][1]
-        inf_norm = test_norm_dict['sum'][1]
+        inf_norm = norm_dict['sum'][1]
+        best_K = None
     elif inf_model_name in ['seq2seqnll_dualtpp']:
         base_models_dict = base_models['seq2seqnll']['sum']
         inf_net = inf_models.DualTPP(args.K_list, base_models_dict)
         inf_test_inputs_dict = test_inputs_dict['sum']
-        inf_test_norm_dict = test_norm_dict['sum']
+        inf_norm_dict = norm_dict['sum']
         inf_test_targets = test_targets_dict['sum'][1]
-        inf_norm = test_norm_dict['sum'][1]
-    elif inf_model_name in ['seq2seqmse_optls']:
-        base_models_dict = base_models['seq2seqmse']['leastsquare']
-        inf_net = inf_models.OPT_ls(args.K_list, base_models_dict)
+        inf_norm = norm_dict['sum'][1]
+        best_K = None
+
+    elif inf_model_name in ['seq2seqmse_optls', 'seq2seqnll_optls']:
+        # Get dev-mse for each K and select the K with best dev-mse and
+        # report test-mse using that K.
+
+        if inf_model_name in ['seq2seqmse_optls']:
+            base_models_dict = base_models['seq2seqmse']['leastsquare']
+        if inf_model_name in ['seq2seqnll_optls']:
+            base_models_dict = base_models['seq2seqnll']['leastsquare']
+        inf_dev_inputs_dict = dev_inputs_dict['leastsquare']
         inf_test_inputs_dict = test_inputs_dict['leastsquare']
-        inf_test_norm_dict = test_norm_dict['leastsquare']
+        inf_dev_targets = dev_targets_dict['sum'][1]
         inf_test_targets = test_targets_dict['sum'][1]
-        inf_norm = test_norm_dict['sum'][1]
-    elif inf_model_name in ['seq2seqnll_optls']:
-        base_models_dict = base_models['seq2seqnll']['leastsquare']
-        inf_net = inf_models.OPT_ls(args.K_list, base_models_dict)
-        inf_test_inputs_dict = test_inputs_dict['leastsquare']
-        inf_test_norm_dict = test_norm_dict['leastsquare']
-        inf_test_targets = test_targets_dict['sum'][1]
-        inf_norm = test_norm_dict['sum'][1]
+        inf_norm_dict = norm_dict['leastsquare']
+        inf_norm = norm_dict['sum'][1]
+
+        best_metric_mse = np.inf
+        best_inf_net = inf_net
+        best_K = args.K_list[0]
+        for K in args.K_list[1:]:
+            inf_net = inf_models.OPT_ls([1, K], base_models_dict)
+            _, metric_mse, metric_dtw, metric_tdi = eval_inf_model(
+                args, inf_net, inf_dev_inputs_dict, inf_norm_dict,
+                inf_dev_targets, inf_norm, args.gamma, verbose=1
+            )
+            if metric_mse < best_metric_mse:
+                best_inf_net = inf_net
+                best_metric_mse = metric_mse
+                best_K = K
+
 
     inf_net.eval()
     preds, metric_mse, metric_dtw, metric_tdi = eval_inf_model(
-        args, inf_net, inf_test_inputs_dict, inf_test_norm_dict,
+        args, inf_net, inf_test_inputs_dict, inf_norm_dict,
         inf_test_targets, inf_norm, args.gamma, verbose=1
     )
     inference_models[inf_model_name] = inf_net
@@ -281,7 +309,7 @@ for inf_model_name in args.inference_model_names:
     )
 
     model2metrics = utils.add_metrics_to_dict(
-        model2metrics, inf_model_name, metric_mse, metric_dtw, metric_tdi
+        model2metrics, inf_model_name, metric_mse, metric_dtw, metric_tdi, best_K
     )
     infmodel2preds[inf_model_name] = preds
     output_dir = os.path.join(args.output_dir, args.dataset_name)
@@ -306,6 +334,7 @@ with open(os.path.join(args.output_dir, 'results_'+args.dataset_name+'.txt'), 'w
                 metrics_dict['mse'],
                 metrics_dict['dtw'],
                 metrics_dict['tdi'],
+                metrics_dict['best_K']
             )
         )
 
