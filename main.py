@@ -110,6 +110,9 @@ if 1 not in args.K_list:
 if args.dataset_name in ['Traffic']:
     args.alpha = 0.8
 
+if args.dataset_name in ['ECG5000']:
+    args.teacher_forcing_ratio = 0.0
+
 base_models = {}
 for name in args.base_model_names:
     base_models[name] = {}

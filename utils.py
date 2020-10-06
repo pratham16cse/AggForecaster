@@ -1,5 +1,5 @@
 from torch.utils.data import DataLoader
-from torch import from_numpy
+import torch
 import numpy as np
 import os
 from collections import OrderedDict
@@ -151,7 +151,7 @@ def create_hierarchical_data(
 			dataset_test, batch_size=test_input.shape[0], shuffle=False,
 			drop_last=False, num_workers=1
 		)
-		norm = from_numpy(norm)
+		norm = torch.FloatTensor(norm)
 		K2data[K] = {
 			'trainloader': trainloader,
 			'devloader': devloader,

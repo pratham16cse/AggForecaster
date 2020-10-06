@@ -39,7 +39,7 @@ def parse_Traffic(N_input, N_output):
 	
 	data_train, data_dev, data_test = generate_train_dev_test_data(data, N_input)
 
-	data_train_in, data_train_out = create_forecast_io_seqs(data_train, N_input, N_output, N_output)
+	data_train_in, data_train_out = create_forecast_io_seqs(data_train, N_input, N_output, int(N_output/3))
 	data_dev_in, data_dev_out = create_forecast_io_seqs(data_dev, N_input, N_output, N_output)
 	data_test_in, data_test_out = create_forecast_io_seqs(data_test, N_input, N_output, N_output)
 
@@ -141,7 +141,7 @@ def parse_Taxi(N_input, N_output):
 	data_test_in, data_test_out = [], []
 	for seq in data:
 		seq_train, seq_dev, seq_test = generate_train_dev_test_data(seq, N_input)
-		batch_train_in, batch_train_out = create_forecast_io_seqs(seq_train, N_input, N_output, N_output)
+		batch_train_in, batch_train_out = create_forecast_io_seqs(seq_train, N_input, N_output, int(N_output/3))
 		batch_dev_in, batch_dev_out = create_forecast_io_seqs(seq_dev, N_input, N_output, N_output)
 		batch_test_in, batch_test_out = create_forecast_io_seqs(seq_test, N_input, N_output, N_output)
 		data_train_in.append(batch_train_in)
@@ -200,7 +200,7 @@ def parse_Traffic911(N_input, N_output):
 	data_test_in, data_test_out = [], []
 	for seq in data:
 		seq_train, seq_dev, seq_test = generate_train_dev_test_data(seq, N_input)
-		batch_train_in, batch_train_out = create_forecast_io_seqs(seq_train, N_input, N_output, N_output)
+		batch_train_in, batch_train_out = create_forecast_io_seqs(seq_train, N_input, N_output, int(N_output/3))
 		batch_dev_in, batch_dev_out = create_forecast_io_seqs(seq_dev, N_input, N_output, N_output)
 		batch_test_in, batch_test_out = create_forecast_io_seqs(seq_test, N_input, N_output, N_output)
 		data_train_in.append(batch_train_in)
