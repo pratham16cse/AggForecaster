@@ -284,3 +284,157 @@ class OPT_ls(torch.nn.Module):
 		#all_preds, _ = normalize(all_preds, norm_dict[0])
 
 		return all_preds, None
+
+
+class OPT_st(torch.nn.Module):
+	"""docstring for OPT_st"""
+	def __init__(self, K_list, base_models_dict, intercept_type='intercept'):
+		'''
+		K_list: list
+			list of K-values used for aggregation
+		base_models_dict: dict of dicts
+			key: aggregation method
+			value: dict
+				key: level in the hierarchy
+				value: base model at the level 'key'
+		'''
+		super(OPT_st, self).__init__()
+		self.K_list = K_list
+		self.base_models_dict = base_models_dict
+		self.intercept_type = intercept_type
+
+
+	def aggregate_seq_(self, seq, K):
+		assert seq.shape[0]%K == 0
+		agg_seq = np.array([[cp.sum(seq[i:i+K])] for i in range(0, seq.shape[0], K)])
+		return agg_seq
+
+	def fit_slope_with_indices(self, seq, K):
+		W = []
+		for i in range(0, seq.shape[0], K):
+			x = np.ones_like(seq[i:i+K])
+			x = np.cumsum(x) - 1
+			y = seq[i:i+K]
+			m_x = cp.sum(x)/x.shape[0]
+			m_y = cp.sum(y)/y.shape[0]
+			s_xy = cp.sum((x-m_x)*(y-m_y))
+			s_xx = cp.sum((x-m_x)**2)
+			w = s_xy/s_xx
+			if self.intercept_type in ['intercept']:
+				b = m_y - w*m_x
+			elif self.intercept_type in ['sum']:
+				b = cp.sum(y)
+			W.append(w)
+		W = np.expand_dims(np.array(W), axis=1)
+		return W
+
+	def log_prob(self, ex_preds, means, std):
+		#import ipdb
+		#ipdb.set_trace()
+		return -cp.sum(np.sum(np.log(1/(((2*np.pi)**0.5)*std)) - (((ex_preds - means)**2) / (2*(std)**2))))
+
+	def optimize(self, params_dict, norm_dict):
+
+		ex_preds = cp.Variable(params_dict['sum'][1][0].shape)
+		for lvl, params in params_dict['slope'].items():
+			if lvl==1:
+				lvl_ex_preds = ex_preds
+			else:
+				lvl_ex_preds, _ = normalize(
+					self.fit_slope_with_indices(
+						unnormalize(ex_preds, norm_dict['slope'][1]),
+						lvl
+					),
+					norm_dict['slope'][lvl]
+				)
+			lvl_loss = self.log_prob(
+				lvl_ex_preds,
+				params_dict['slope'][lvl][0].detach().numpy(),
+				params_dict['slope'][lvl][1].detach().numpy()
+			)
+			if lvl==1:
+				opt_loss = lvl_loss
+			else:
+				opt_loss += lvl_loss
+
+		for lvl, params in params_dict['sum'].items():
+			if lvl==1:
+				lvl_ex_preds = ex_preds
+			else:
+				lvl_ex_preds, _ = normalize(
+					self.aggregate_seq_(
+						unnormalize(ex_preds, norm_dict['sum'][1]),
+						lvl
+					),
+					norm_dict['slope'][lvl]
+				)
+			lvl_loss = self.log_prob(
+				lvl_ex_preds,
+				params_dict['sum'][lvl][0].detach().numpy(),
+				params_dict['sum'][lvl][1].detach().numpy()
+			)
+			opt_loss += lvl_loss
+
+		objective = cp.Minimize(opt_loss)
+
+		#constraints = [ex_preds>=0]
+
+		prob = cp.Problem(objective)#, constraints)
+
+		try:
+			opt_loss = prob.solve()
+		except cp.error.SolverError:
+			opt_loss = prob.solve(solver='SCS')
+
+		#if ex_preds.value is None:
+
+		#import ipdb
+		#ipdb.set_trace()
+
+		return ex_preds.value
+
+
+	def forward(self, inputs_dict, norm_dict):
+		'''
+		inputs_dict: [aggregation method][level]
+		norm_dict: [aggregation method][level]
+		'''
+
+		norm_dict_np = dict()
+		for agg_method in norm_dict.keys():
+			norm_dict_np[agg_method] = dict()
+			for lvl in norm_dict[agg_method].keys():
+				norm_dict_np[agg_method][lvl] = np.expand_dims(norm_dict[agg_method][lvl].detach().numpy(), axis=0)
+
+		params_dict = dict()
+		for agg_method in self.base_models_dict.keys():
+			params_dict[agg_method] = dict()
+			for level in self.K_list:
+				model = self.base_models_dict[agg_method][level]
+				inputs = inputs_dict[agg_method][level]
+				means, stds = model(inputs)
+
+				if model.point_estimates:
+					stds = torch.ones_like(means)
+				params = [means, stds]
+				params_dict[agg_method][level] = params
+
+		all_preds = []
+		for i in range(params_dict['sum'][1][0].size()[0]):
+			#print(i)
+			ex_params_dict = dict()
+			for agg_method in params_dict.keys():
+				ex_params_dict[agg_method] = dict()
+				for lvl in params_dict[agg_method].keys():
+					ex_params_dict[agg_method][lvl] = [params_dict[agg_method][lvl][0][i], params_dict[agg_method][lvl][1][i]]
+
+			#import ipdb
+			#ipdb.set_trace()
+			ex_preds_opt = self.optimize(ex_params_dict, norm_dict_np)
+			all_preds.append(ex_preds_opt)
+
+		all_preds = torch.FloatTensor(all_preds)
+
+		#all_preds, _ = normalize(all_preds, norm_dict[0])
+
+		return all_preds, None
