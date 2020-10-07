@@ -98,10 +98,13 @@ args.inference_model_names = [
     'seq2seqnll_dualtpp',
     'seq2seqmse_optls',
     'seq2seqnll_optls',
+    'seq2seqmse_optst',
+    'seq2seqnll_optst',
 ]
 args.aggregate_methods = [
     'sum',
-    'leastsquare'
+    'leastsquare',
+    'sumwithtrend'
 ]
 
 if 1 not in args.K_list:
@@ -180,7 +183,7 @@ for base_model_name in args.base_model_names:
                 encoder,decoder, N_output, point_estimates,
                 args.teacher_forcing_ratio, args.device
             ).to(args.device)
-            if agg_method in ['leastsquare'] and level == 1:
+            if agg_method in ['leastsquare', 'sumwithtrend'] and level == 1:
                 base_models[base_model_name][agg_method][level] = base_models[base_model_name]['sum'][1]
             else:
                 train_model(
@@ -268,6 +271,20 @@ for inf_model_name in args.inference_model_names:
         inf_net = inf_models.OPT_ls(args.K_list, base_models_dict)
         inf_test_inputs_dict = test_inputs_dict['leastsquare']
         inf_test_norm_dict = test_norm_dict['leastsquare']
+        inf_test_targets = test_targets_dict['sum'][1]
+        inf_norm = test_norm_dict['sum'][1]
+    elif inf_model_name in ['seq2seqmse_optst']:
+        base_models_dict = base_models['seq2seqmse']['sumwithtrend']
+        inf_net = inf_models.OPT_ls(args.K_list, base_models_dict, intercept_type='sum')
+        inf_test_inputs_dict = test_inputs_dict['sumwithtrend']
+        inf_test_norm_dict = test_norm_dict['sumwithtrend']
+        inf_test_targets = test_targets_dict['sum'][1]
+        inf_norm = test_norm_dict['sum'][1]
+    elif inf_model_name in ['seq2seqnll_optst']:
+        base_models_dict = base_models['seq2seqnll']['sumwithtrend']
+        inf_net = inf_models.OPT_ls(args.K_list, base_models_dict, intercept_type='sum')
+        inf_test_inputs_dict = test_inputs_dict['sumwithtrend']
+        inf_test_norm_dict = test_norm_dict['sumwithtrend']
         inf_test_targets = test_targets_dict['sum'][1]
         inf_norm = test_norm_dict['sum'][1]
 

@@ -42,6 +42,20 @@ def normalize(data, norm=None):
 def unnormalize(data, norm):
 	return data * norm
 
+def fit_sum_and_trend_with_indices(seq, K):
+    x = np.reshape(np.ones_like(seq), (-1, K))
+    x = np.cumsum(x, axis=1) - 1
+    y = np.reshape(seq, (-1, K))
+    m_x = np.mean(x, axis=1, keepdims=True)
+    m_y = np.mean(y, axis=1, keepdims=True)
+    s_xy = np.sum((x-m_x)*(y-m_y), axis=1, keepdims=True)
+    s_xx = np.sum((x-m_x)**2, axis=1, keepdims=True)
+    w = s_xy/s_xx
+    b = np.sum(y, axis=1, keepdims=True)
+
+    agg_seq = np.concatenate((w, b), axis=1)
+    return agg_seq
+
 def fit_with_indices(seq, K):
     x = np.reshape(np.ones_like(seq), (-1, K))
     x = np.cumsum(x, axis=1) - 1
@@ -55,6 +69,30 @@ def fit_with_indices(seq, K):
 
     agg_seq = np.concatenate((w, b), axis=1)
     return agg_seq
+
+def aggregate_data_sumwithtrend(
+	K, train_input, train_target, dev_input, dev_target,
+	test_input, test_target
+):
+	def aggregate_seqs_(seqs):
+		agg_seqs = []
+		for seq in seqs:
+			assert len(seq)%K == 0
+			agg_seq = fit_sum_and_trend_with_indices(seq, K)
+			agg_seqs.append(agg_seq)
+		return np.array(agg_seqs)
+
+	agg_train_input = aggregate_seqs_(train_input)
+	agg_train_target = aggregate_seqs_(train_target)
+	agg_dev_input = aggregate_seqs_(dev_input)
+	agg_dev_target = aggregate_seqs_(dev_target)
+	agg_test_input = aggregate_seqs_(test_input)
+	agg_test_target = aggregate_seqs_(test_target)
+
+	return (
+		agg_train_input, agg_train_target, agg_dev_input, agg_dev_target,
+		agg_test_input, agg_test_target
+	)
 
 def aggregate_data_leastsquare(
 	K, train_input, train_target, dev_input, dev_target,
@@ -169,6 +207,7 @@ def get_processed_data(args):
 	aggregation2func = {}
 	aggregation2func['sum'] = aggregate_data
 	aggregation2func['leastsquare'] = aggregate_data_leastsquare
+	aggregation2func['sumwithtrend'] = aggregate_data_sumwithtrend
 
 	if args.dataset_name in ['synth']:
 		# parameters
@@ -241,10 +280,18 @@ def get_processed_data(args):
 		train_bkp, dev_bkp, test_bkp,
 		aggregation_func=aggregation2func['leastsquare']
 	)
+	K2data_st = create_hierarchical_data(
+		args, X_train_input, X_train_target,
+		X_dev_input, X_dev_target,
+		X_test_input, X_test_target,
+		train_bkp, dev_bkp, test_bkp,
+		aggregation_func=aggregation2func['sumwithtrend']
+	)
 
 	dataset = dict()
 	dataset['sum'] = K2data_sum
 	dataset['leastsquare'] = K2data_ls
+	dataset['sumwithtrend'] = K2data_st
 
 	return dataset
 	#return {

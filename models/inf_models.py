@@ -145,7 +145,7 @@ class DualTPP(torch.nn.Module):
 
 class OPT_ls(torch.nn.Module):
 	"""docstring for OPT_ls"""
-	def __init__(self, K_list, base_models_dict):
+	def __init__(self, K_list, base_models_dict, intercept_type='intercept'):
 		'''
 		K: int
 			number of steps to aggregate at each level
@@ -156,6 +156,7 @@ class OPT_ls(torch.nn.Module):
 		super(OPT_ls, self).__init__()
 		self.K_list = K_list
 		self.base_models_dict = base_models_dict
+		self.intercept_type = intercept_type
 
 
 	def fit_with_indices(self, seq, K):
@@ -169,7 +170,10 @@ class OPT_ls(torch.nn.Module):
 			s_xy = cp.sum((x-m_x)*(y-m_y))
 			s_xx = cp.sum((x-m_x)**2)
 			w = s_xy/s_xx
-			b = m_y - w*m_x
+			if self.intercept_type in ['intercept']:
+				b = m_y - w*m_x
+			elif self.intercept_type in ['sum']:
+				b = cp.sum(y)
 			W.append(w)
 			B.append(b)
 		W = np.expand_dims(np.array(W), axis=1)
