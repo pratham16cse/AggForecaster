@@ -21,6 +21,7 @@ def train_model(
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         best_epoch = checkpoint['epoch']
         best_metric = checkpoint['metric']
+        epochs = 0
     else:
         if args.ignore_ckpt:
             print('Ignoring saved checkpoint')
@@ -28,9 +29,10 @@ def train_model(
             print('No saved model found')
         best_epoch = -1
         best_metric = np.inf
+        epochs = args.epochs
     net.train()
 
-    for curr_epoch in range(best_epoch+1, best_epoch+1+args.epochs):
+    for curr_epoch in range(best_epoch+1, best_epoch+1+epochs):
         for i, data in enumerate(trainloader, 0):
             inputs, target, _ = data
             inputs = torch.tensor(inputs, dtype=torch.float32).to(args.device)

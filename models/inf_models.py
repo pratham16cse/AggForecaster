@@ -366,7 +366,7 @@ class OPT_st(torch.nn.Module):
 						unnormalize(ex_preds, norm_dict['sum'][1]),
 						lvl
 					),
-					norm_dict['slope'][lvl]
+					norm_dict['sum'][lvl]
 				)
 			lvl_loss = self.log_prob(
 				lvl_ex_preds,
