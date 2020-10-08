@@ -33,6 +33,7 @@ def train_model(
     net.train()
 
     for curr_epoch in range(best_epoch+1, best_epoch+1+epochs):
+        epoch_loss = 0.
         for i, data in enumerate(trainloader, 0):
             inputs, target, _ = data
             inputs = torch.tensor(inputs, dtype=torch.float32).to(args.device)
@@ -52,13 +53,15 @@ def train_model(
                 dist = torch.distributions.normal.Normal(means, stds)
                 loss = -torch.sum(dist.log_prob(target))
 
+            epoch_loss += loss.item()
+
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
         if(verbose):
             if (curr_epoch % args.print_every == 0):
-                print('curr_epoch ', curr_epoch, ' loss ',loss.item(),' loss shape ',loss_shape.item(),' loss temporal ',loss_temporal.item())
+                print('curr_epoch ', curr_epoch, ' epoch_loss ', epoch_loss,' loss shape ',loss_shape.item(),' loss temporal ',loss_temporal.item())
                 metric_dilate, metric_mse, metric_dtw, metric_tdi = eval_base_model(
                     args, model_name, net, devloader, norm, args.gamma, verbose=1
                 )
