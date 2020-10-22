@@ -92,7 +92,7 @@ args.base_model_names = [
 args.inference_model_names = [
     'DILATE',
     'MSE',
-#    'NLLsum',
+    'NLLsum',
 #    'NLLls',
     'seq2seqmse_dualtpp',
     'seq2seqnll_dualtpp',
@@ -100,6 +100,7 @@ args.inference_model_names = [
     'seq2seqnll_optls',
     'seq2seqmse_optst',
     'seq2seqnll_optst',
+    'seq2seqnll_optklst',
 ]
 args.aggregate_methods = [
     'sum',
@@ -284,6 +285,13 @@ for inf_model_name in args.inference_model_names:
     elif inf_model_name in ['seq2seqnll_optst']:
         base_models_dict = base_models['seq2seqnll']
         inf_net = inf_models.OPT_st(args.K_list, base_models_dict, intercept_type='sum')
+        inf_test_inputs_dict = test_inputs_dict
+        inf_test_norm_dict = test_norm_dict
+        inf_test_targets = test_targets_dict['sum'][1]
+        inf_norm = test_norm_dict['sum'][1]
+    elif inf_model_name in ['seq2seqnll_optklst']:
+        base_models_dict = base_models['seq2seqnll']
+        inf_net = inf_models.OPT_KL_st(args.K_list, base_models_dict, intercept_type='sum')
         inf_test_inputs_dict = test_inputs_dict
         inf_test_norm_dict = test_norm_dict
         inf_test_targets = test_targets_dict['sum'][1]
