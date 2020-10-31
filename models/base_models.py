@@ -26,18 +26,34 @@ class DecoderRNN(nn.Module):
         self.gru = nn.GRU(input_size=input_size, hidden_size=hidden_size, num_layers=num_grulstm_layers,batch_first=True)
         self.fc = nn.Linear(hidden_size, fc_units)
         self.out_mean = nn.Linear(fc_units, output_size)
-        self.out_std = nn.Linear(fc_units, output_size)
+        if not self.deep_std:
+            self.out_std = nn.Linear(fc_units, output_size)
+        else:
+            self.out_std_1 = nn.Linear(fc_units, fc_units)
+            self.out_std_2 = nn.Linear(fc_units, fc_units)
+            self.out_std_3 = nn.Linear(fc_units, output_size)
         
     def forward(self, input, hidden):
         output, hidden = self.gru(input, hidden) 
         output = F.relu( self.fc(output) )
         means = self.out_mean(output)      
         stds = self.out_std(output)
-        stds = F.relu(stds) + 1e-3
+        #stds = F.relu(stds) + 1e-3
+
+        if not self.deep_std:
+            stds = F.softplus(stds) + 1e-3
+        else:
+            stds_1 = F.relu(self.out_std_1(output))
+            stds_2 = F.relu(self.out_std_2(stds_1))
+            stds = F.softplus(self.out_std_3(stds_2)) + 1e-3
+
         return (means, stds), hidden
     
 class Net_GRU(nn.Module):
-    def __init__(self, encoder, decoder, target_length, point_estimates, teacher_forcing_ratio, device):
+    def __init__(
+        self, encoder, decoder, target_length, point_estimates,
+        teacher_forcing_ratio, deep_std, device
+    ):
         super(Net_GRU, self).__init__()
         self.encoder = encoder
         self.decoder = decoder
@@ -45,6 +61,7 @@ class Net_GRU(nn.Module):
         self.point_estimates = point_estimates
         self.teacher_forcing_ratio = teacher_forcing_ratio
         self.device = device
+        self.deep_std = deep_std
         
     def forward(self, x, target=None):
         input_length  = x.shape[1]

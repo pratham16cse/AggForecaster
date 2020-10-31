@@ -63,6 +63,11 @@ parser.add_argument('--alpha', type=float, default=0.5,
                    help='alpha parameter of DILATE loss')
 parser.add_argument('--teacher_forcing_ratio', type=float, default=0.5,
                    help='Probability of applying teacher forcing to a batch')
+parser.add_argument('--deep_std', action='store_true', default=False,
+                    help='Extra layers for prediction of standard deviation')
+parser.add_argument('--train_twostage', action='store_true', default=False,
+                    help='Train base model in two stages -- train only \
+                          mean in first stage, train both in second stage')
 
 # Hierarchical model arguments
 parser.add_argument('--L', type=int, default=2,
@@ -183,7 +188,7 @@ for base_model_name in args.base_model_names:
             ).to(args.device)
             net_gru = Net_GRU(
                 encoder,decoder, N_output, point_estimates,
-                args.teacher_forcing_ratio, args.device
+                args.teacher_forcing_ratio, args.deep_std, args.device
             ).to(args.device)
             if agg_method in ['leastsquare', 'sumwithtrend', 'slope'] and level == 1:
                 base_models[base_model_name][agg_method][level] = base_models[base_model_name]['sum'][1]

@@ -50,6 +50,11 @@ def train_model(
             if model_name in ['seq2seqdilate']:
                 loss, loss_shape, loss_temporal = dilate_loss(target, means, args.alpha, args.gamma, args.device)
             if model_name in ['seq2seqnll']:
+                if args.train_twostage:
+                    if curr_epoch < epochs/2:
+                        stds = torch.ones_like(stds)
+                    if curr_epoch-1 <= epochs/2 and curr_epoch > epochs/2:
+                        best_metric = np.inf
                 dist = torch.distributions.normal.Normal(means, stds)
                 loss = -torch.sum(dist.log_prob(target))
 
