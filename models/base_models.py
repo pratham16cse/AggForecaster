@@ -20,9 +20,10 @@ class EncoderRNN(torch.nn.Module):
         return torch.zeros(self.num_grulstm_layers, batch_size, self.hidden_size, device=device)
     
 class DecoderRNN(nn.Module):
-    def __init__(self, input_size, hidden_size, num_grulstm_layers,fc_units, output_size):
+    def __init__(self, input_size, hidden_size, num_grulstm_layers,fc_units, output_size, deep_std):
         super(DecoderRNN, self).__init__()      
         self.output_size = output_size
+        self.deep_std = deep_std
         self.gru = nn.GRU(input_size=input_size, hidden_size=hidden_size, num_layers=num_grulstm_layers,batch_first=True)
         self.fc = nn.Linear(hidden_size, fc_units)
         self.out_mean = nn.Linear(fc_units, output_size)

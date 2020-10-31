@@ -68,6 +68,9 @@ parser.add_argument('--deep_std', action='store_true', default=False,
 parser.add_argument('--train_twostage', action='store_true', default=False,
                     help='Train base model in two stages -- train only \
                           mean in first stage, train both in second stage')
+parser.add_argument('--mse_loss_with_nll', action='store_true', default=False,
+                    help='Add extra mse_loss when training with nll')
+
 
 # Hierarchical model arguments
 parser.add_argument('--L', type=int, default=2,
@@ -184,7 +187,7 @@ for base_model_name in args.base_model_names:
             ).to(args.device)
             decoder = DecoderRNN(
                 input_size=input_size, hidden_size=args.hidden_size, num_grulstm_layers=args.num_grulstm_layers,
-                fc_units=args.fc_units, output_size=output_size
+                fc_units=args.fc_units, output_size=output_size, deep_std=args.deep_std
             ).to(args.device)
             net_gru = Net_GRU(
                 encoder,decoder, N_output, point_estimates,

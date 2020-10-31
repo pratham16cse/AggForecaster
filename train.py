@@ -58,6 +58,9 @@ def train_model(
                 dist = torch.distributions.normal.Normal(means, stds)
                 loss = -torch.sum(dist.log_prob(target))
 
+                if args.mse_loss_with_nll:
+                    loss += criterion(target, means)
+
             epoch_loss += loss.item()
 
             optimizer.zero_grad()
