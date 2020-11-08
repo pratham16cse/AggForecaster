@@ -631,6 +631,7 @@ class WAVELET(torch.nn.Module):
 		all_levels_preds = []
 		for lvl in range(2, self.wavelet_levels+3):
 			lvl_preds, _ = self.base_models_dict['wavelet'][lvl](inputs_dict['wavelet'][lvl])
+			lvl_preds = unnormalize(lvl_preds, norm_dict['wavelet'][lvl])
 			lvl_preds = lvl_preds.detach().numpy()
 			all_levels_preds.append(lvl_preds)
 
@@ -639,5 +640,6 @@ class WAVELET(torch.nn.Module):
 		all_preds = expand(all_preds)
 
 		all_preds = torch.FloatTensor(all_preds)
+		all_preds, _ = normalize(all_preds, norm_dict['wavelet'][1])
 
 		return all_preds, None
