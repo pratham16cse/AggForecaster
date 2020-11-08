@@ -77,6 +77,8 @@ parser.add_argument('--L', type=int, default=2,
                     help='number of levels in the hierarchy, leaves inclusive')
 parser.add_argument('--K_list', type=int, nargs='*', default=[1],
                     help='List of bin sizes of each aggregation')
+parser.add_argument('--wavelet_levels', type=int, default=2,
+                    help='number of levels of wavelet coefficients')
 
 parser.add_argument('--plot_anecdotes', action='store_true', default=False,
                     help='Plot the comparison of various methods')
@@ -109,12 +111,15 @@ args.inference_model_names = [
     'seq2seqmse_optst',
     'seq2seqnll_optst',
     'seq2seqnll_optklst',
+    'seq2seqmse_wavelet',
+    'seq2seqnll_wavelet',
 ]
 args.aggregate_methods = [
     'sum',
     'leastsquare',
     'sumwithtrend',
-    'slope'
+    'slope',
+    'wavelet'
 ]
 
 if 1 not in args.K_list:
@@ -157,6 +162,9 @@ for base_model_name in args.base_model_names:
         base_models[base_model_name][agg_method] = {}
         level2data = dataset[agg_method]
 
+        if agg_method in ['wavelet']:
+            levels = list(range(1, args.wavelet_levels+3))
+
         for level in levels:
             trainloader = level2data[level]['trainloader']
             devloader = level2data[level]['devloader']
@@ -193,7 +201,7 @@ for base_model_name in args.base_model_names:
                 encoder,decoder, N_output, point_estimates,
                 args.teacher_forcing_ratio, args.deep_std, args.device
             ).to(args.device)
-            if agg_method in ['leastsquare', 'sumwithtrend', 'slope'] and level == 1:
+            if agg_method in ['leastsquare', 'sumwithtrend', 'slope', 'wavelet'] and level == 1:
                 base_models[base_model_name][agg_method][level] = base_models[base_model_name]['sum'][1]
             else:
                 train_model(
@@ -215,7 +223,13 @@ for agg_method in args.aggregate_methods:
     test_inputs_dict[agg_method] = dict()
     test_targets_dict[agg_method] = dict()
     test_norm_dict[agg_method] = dict()
-    for level in args.K_list:
+
+    if agg_method in ['wavelet']:
+        levels = list(range(1, args.wavelet_levels+3))
+    else:
+        levels = args.K_list
+
+    for level in levels:
         gen_test = iter(dataset[agg_method][level]['testloader'])
         test_inputs, test_targets, breaks = next(gen_test)
 
@@ -300,6 +314,20 @@ for inf_model_name in args.inference_model_names:
     elif inf_model_name in ['seq2seqnll_optklst']:
         base_models_dict = base_models['seq2seqnll']
         inf_net = inf_models.OPT_KL_st(args.K_list, base_models_dict, intercept_type='sum')
+        inf_test_inputs_dict = test_inputs_dict
+        inf_test_norm_dict = test_norm_dict
+        inf_test_targets = test_targets_dict['sum'][1]
+        inf_norm = test_norm_dict['sum'][1]
+    elif inf_model_name in ['seq2seqmse_wavelet']:
+        base_models_dict = base_models['seq2seqmse']
+        inf_net = inf_models.WAVELET(args.wavelet_levels, base_models_dict)
+        inf_test_inputs_dict = test_inputs_dict
+        inf_test_norm_dict = test_norm_dict
+        inf_test_targets = test_targets_dict['sum'][1]
+        inf_norm = test_norm_dict['sum'][1]
+    elif inf_model_name in ['seq2seqnll_wavelet']:
+        base_models_dict = base_models['seq2seqnll']
+        inf_net = inf_models.WAVELET(args.wavelet_levels, base_models_dict)
         inf_test_inputs_dict = test_inputs_dict
         inf_test_norm_dict = test_norm_dict
         inf_test_targets = test_targets_dict['sum'][1]

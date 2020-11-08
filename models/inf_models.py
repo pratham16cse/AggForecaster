@@ -4,8 +4,9 @@ import torch.nn.functional as F
 
 import numpy as np
 import cvxpy as cp
+import pywt
 
-from utils import normalize, unnormalize
+from utils import normalize, unnormalize, sqz, expand
 
 
 class DILATE(torch.nn.Module):
@@ -408,15 +409,17 @@ class OPT_st(torch.nn.Module):
 		params_dict = dict()
 		for agg_method in self.base_models_dict.keys():
 			params_dict[agg_method] = dict()
-			for level in self.K_list:
-				model = self.base_models_dict[agg_method][level]
-				inputs = inputs_dict[agg_method][level]
-				means, stds = model(inputs)
-
-				if model.point_estimates:
-					stds = torch.ones_like(means)
-				params = [means, stds]
-				params_dict[agg_method][level] = params
+			if agg_method in ['slope', 'sum']:
+				for level in self.K_list:
+					print(agg_method, level)
+					model = self.base_models_dict[agg_method][level]
+					inputs = inputs_dict[agg_method][level]
+					means, stds = model(inputs)
+	
+					if model.point_estimates:
+						stds = torch.ones_like(means)
+					params = [means, stds]
+					params_dict[agg_method][level] = params
 
 		all_preds = []
 		for i in range(params_dict['sum'][1][0].size()[0]):
@@ -581,15 +584,16 @@ class OPT_KL_st(OPT_st):
 		params_dict = dict()
 		for agg_method in self.base_models_dict.keys():
 			params_dict[agg_method] = dict()
-			for level in self.K_list:
-				model = self.base_models_dict[agg_method][level]
-				inputs = inputs_dict[agg_method][level]
-				means, stds = model(inputs)
-
-				if model.point_estimates:
-					stds = torch.ones_like(means)
-				params = [means, stds]
-				params_dict[agg_method][level] = params
+			if agg_method in ['slope', 'sum']:
+				for level in self.K_list:
+					model = self.base_models_dict[agg_method][level]
+					inputs = inputs_dict[agg_method][level]
+					means, stds = model(inputs)
+	
+					if model.point_estimates:
+						stds = torch.ones_like(means)
+					params = [means, stds]
+					params_dict[agg_method][level] = params
 
 		all_preds = []
 		for i in range(params_dict['sum'][1][0].size()[0]):
@@ -608,5 +612,32 @@ class OPT_KL_st(OPT_st):
 		all_preds = torch.FloatTensor(all_preds)
 
 		#all_preds, _ = normalize(all_preds, norm_dict[0])
+
+		return all_preds, None
+
+
+class WAVELET(torch.nn.Module):
+	"""docstring for WAVELET"""
+	def __init__(self, wavelet_levels, base_models_dict):
+		'''
+		base_models_dict (dict) : Dictionary of base models for each level
+		wavelet_levels (int) : Number of wavelet levels
+		'''
+		super(WAVELET, self).__init__()
+		self.base_models_dict = base_models_dict
+		self.wavelet_levels = wavelet_levels
+		
+	def forward(self, inputs_dict, norm_dict):
+		all_levels_preds = []
+		for lvl in range(2, self.wavelet_levels+3):
+			lvl_preds, _ = self.base_models_dict['wavelet'][lvl](inputs_dict['wavelet'][lvl])
+			lvl_preds = lvl_preds.detach().numpy()
+			all_levels_preds.append(lvl_preds)
+
+		all_levels_preds = [sqz(x) for x in all_levels_preds]
+		all_preds = pywt.waverec(all_levels_preds, 'haar', mode='periodic')
+		all_preds = expand(all_preds)
+
+		all_preds = torch.FloatTensor(all_preds)
 
 		return all_preds, None
