@@ -334,28 +334,29 @@ for inf_model_name in args.inference_model_names:
         inf_norm = test_norm_dict['sum'][1]
 
     inf_net.eval()
-    preds, metric_mse, metric_dtw, metric_tdi = eval_inf_model(
+    pred_mu, pred_std, metric_mse, metric_dtw, metric_tdi, metric_crps = eval_inf_model(
         args, inf_net, inf_test_inputs_dict, inf_test_norm_dict,
         inf_test_targets, inf_norm, args.gamma, verbose=1
     )
     inference_models[inf_model_name] = inf_net
     metric_mse = metric_mse.item()
 
-    print('Metrics for Inference model {}: MSE:{:f}, DTW:{:f}, TDI:{:f}'.format(
-        inf_model_name, metric_mse, metric_dtw, metric_tdi)
+    print('Metrics for Inference model {}: MSE:{:f}, DTW:{:f}, TDI:{:f}, CRPS:{:f}'.format(
+        inf_model_name, metric_mse, metric_dtw, metric_tdi, metric_crps)
     )
 
     model2metrics = utils.add_metrics_to_dict(
-        model2metrics, inf_model_name, metric_mse, metric_dtw, metric_tdi
+        model2metrics, inf_model_name,
+        metric_mse, metric_dtw, metric_tdi, metric_crps
     )
-    infmodel2preds[inf_model_name] = preds
+    infmodel2preds[inf_model_name] = pred_mu
     output_dir = os.path.join(args.output_dir, args.dataset_name)
     os.makedirs(output_dir, exist_ok=True)
     utils.write_arr_to_file(
         output_dir, inf_model_name,
         utils.unnormalize(test_inputs_dict['sum'][1].detach().numpy(), inf_norm.detach().numpy()),
         test_targets_dict['sum'][1].detach().numpy(),
-        preds.detach().numpy()
+        pred_mu.detach().numpy()
     )
 
 
@@ -388,16 +389,16 @@ if args.plot_anecdotes:
         plt.figure()
         plt.rcParams['figure.figsize'] = (16.0,8.0)
         k = 1
-        for inf_mdl_name, preds in infmodel2preds.items():
+        for inf_mdl_name, pred_mu in infmodel2preds.items():
 
             input = test_inputs_dict['sum'][1].detach().cpu().numpy()[ind,:,:]
             target = test_targets_dict['sum'][1].detach().cpu().numpy()[ind,:,:]
-            preds = preds.detach().cpu().numpy()[ind,:,:]
+            pred_mu = pred_mu.detach().cpu().numpy()[ind,:,:]
 
             plt.subplot(len(inference_models),1,k)
             plt.plot(range(0,args.N_input) ,input,label='input',linewidth=3)
             plt.plot(range(args.N_input-1,args.N_input+args.N_output), np.concatenate([ input[args.N_input-1:args.N_input], target ]) ,label='target',linewidth=3)
-            plt.plot(range(args.N_input-1,args.N_input+args.N_output),  np.concatenate([ input[args.N_input-1:args.N_input], preds ])  ,label=inf_mdl_name,linewidth=3)
+            plt.plot(range(args.N_input-1,args.N_input+args.N_output),  np.concatenate([ input[args.N_input-1:args.N_input], pred_mu ])  ,label=inf_mdl_name,linewidth=3)
             plt.xticks(range(0,40,2))
             plt.legend()
             k = k+1

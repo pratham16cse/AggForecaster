@@ -87,4 +87,6 @@ class Net_GRU(nn.Module):
                 decoder_input = step_means
             means[:, di:di+1, :] = step_means
             stds[:, di:di+1, :] = step_stds
+        if self.point_estimates:
+            stds = None
         return means, stds

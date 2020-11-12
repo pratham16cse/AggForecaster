@@ -6,11 +6,11 @@ from collections import OrderedDict
 import pywt
 
 from data.synthetic_dataset import create_synthetic_dataset, create_sin_dataset, SyntheticDataset
-from data.real_dataset import parse_ECG5000, parse_Traffic, parse_Taxi, parse_Traffic911
+from data.real_dataset import parse_ECG5000, parse_Traffic, parse_Taxi, parse_Traffic911, parse_exchange_rate
 
 
 def add_metrics_to_dict(
-	metrics_dict, model_name, metric_mse, metric_dtw, metric_tdi,
+	metrics_dict, model_name, metric_mse, metric_dtw, metric_tdi, metric_crps
 ):
 	if model_name not in metrics_dict:
 		metrics_dict[model_name] = dict()
@@ -18,6 +18,7 @@ def add_metrics_to_dict(
 	metrics_dict[model_name]['mse'] = metric_mse
 	metrics_dict[model_name]['dtw'] = metric_dtw
 	metrics_dict[model_name]['tdi'] = metric_tdi
+	metrics_dict[model_name]['crps'] = metric_crps
 
 	return metrics_dict
 
@@ -401,6 +402,13 @@ def get_processed_data(args):
 			X_test_input, X_test_target,
 			train_bkp, dev_bkp, test_bkp,
 		) = parse_Traffic911(args.N_input, args.N_output)
+	elif args.dataset_name in ['Exchange']:
+		(
+			X_train_input, X_train_target,
+			X_dev_input, X_dev_target,
+			X_test_input, X_test_target,
+			train_bkp, dev_bkp, test_bkp,
+		) = parse_exchange_rate(args.N_input, args.N_output)
 
 
 	K2data_sum = create_hierarchical_data(

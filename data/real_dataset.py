@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import torch
 import random
+import json
 from torch.utils.data import Dataset, DataLoader
 
 def generate_train_dev_test_data(data, N_input):
@@ -19,7 +20,7 @@ def create_forecast_io_seqs(data, enc_len, dec_len, stride):
 
 	data_in, data_out = [], []
 	for idx in range(0, len(data), stride):
-		if idx+enc_len+dec_len < len(data):
+		if idx+enc_len+dec_len <= len(data):
 			data_in.append(data[idx:idx+enc_len])
 			data_out.append(data[idx+enc_len:idx+enc_len+dec_len])
 
@@ -207,6 +208,62 @@ def parse_Traffic911(N_input, N_output):
 		data_train_out.append(batch_train_out)
 		data_dev_in.append(batch_dev_in)
 		data_dev_out.append(batch_dev_out)
+		data_test_in.append(batch_test_in)
+		data_test_out.append(batch_test_out)
+
+	data_train_in = np.concatenate(data_train_in, axis=0)
+	data_train_out = np.concatenate(data_train_out, axis=0)
+	data_dev_in = np.concatenate(data_dev_in, axis=0)
+	data_dev_out = np.concatenate(data_dev_out, axis=0)
+	data_test_in = np.concatenate(data_test_in, axis=0)
+	data_test_out = np.concatenate(data_test_out, axis=0)
+
+	train_bkp = np.ones(data_train_in.shape[0]) * N_input
+	dev_bkp = np.ones(data_dev_in.shape[0]) * N_input
+	test_bkp = np.ones(data_test_in.shape[0]) * N_input
+
+	return (
+		data_train_in, data_train_out, data_dev_in, data_dev_out,
+		data_test_in, data_test_out, train_bkp, dev_bkp, test_bkp,
+	)
+
+def parse_exchange_rate(N_input, N_output):
+	'''
+	N_output = 30
+	num_rolling_windows = 5
+	'''
+	num_rolling_windows = 5
+
+	data = []
+	with open('data/exchange_rate_nips/train/train.json') as f:
+		for line in f:
+			data.append(json.loads(line))
+
+	data_test = []
+	with open('data/exchange_rate_nips/test/test.json') as f:
+		for line in f:
+			data_test.append(json.loads(line))
+
+	metadata = json.load(open('data/exchange_rate_nips/metadata/metadata.json'))
+
+	data_train_in, data_train_out = [], []
+	data_dev_in, data_dev_out = [], []
+	data_test_in, data_test_out = [], []
+	for entry in data:
+		seq_train = entry['target'][ : -N_output*num_rolling_windows]
+		seq_dev = entry['target'][ -N_output*num_rolling_windows - N_input : ]
+		seq_train = np.expand_dims(seq_train, axis=-1)
+		seq_dev = np.expand_dims(seq_dev, axis=-1)
+		batch_train_in, batch_train_out = create_forecast_io_seqs(seq_train, N_input, N_output, int(N_output/3))
+		batch_dev_in, batch_dev_out = create_forecast_io_seqs(seq_dev, N_input, N_output, N_output)
+		data_train_in.append(batch_train_in)
+		data_train_out.append(batch_train_out)
+		data_dev_in.append(batch_dev_in)
+		data_dev_out.append(batch_dev_out)
+	for entry in data_test:
+		seq_test = entry['target'][ -(N_input+N_output) : ]
+		seq_test = np.expand_dims(seq_test, axis=-1)
+		batch_test_in, batch_test_out = create_forecast_io_seqs(seq_test, N_input, N_output, N_output)
 		data_test_in.append(batch_test_in)
 		data_test_out.append(batch_test_out)
 
