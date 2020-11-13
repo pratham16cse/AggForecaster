@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pandas as pd
 import torch
@@ -227,24 +228,29 @@ def parse_Traffic911(N_input, N_output):
 		data_test_in, data_test_out, train_bkp, dev_bkp, test_bkp,
 	)
 
-def parse_exchange_rate(N_input, N_output):
-	'''
-	N_output = 30
-	num_rolling_windows = 5
-	'''
-	num_rolling_windows = 5
+def parse_gc_datasets(dataset_name, N_input, N_output):
+	if dataset_name in ['Exchange']:
+		num_rolling_windows = 5
+		dataset_dir = 'exchange_rate_nips'
+	elif dataset_name in ['Wiki']:
+		num_rolling_windows = 5
+		dataset_dir = 'wiki-rolling_nips'
+	elif dataset_name in ['Solar']:
+		num_rolling_windows = 7
+		dataset_dir = 'solar_nips'
 
 	data = []
-	with open('data/exchange_rate_nips/train/train.json') as f:
+	with open(os.path.join('data', dataset_dir, 'train', 'train.json')) as f:
 		for line in f:
 			data.append(json.loads(line))
 
 	data_test = []
-	with open('data/exchange_rate_nips/test/test.json') as f:
+	with open(os.path.join('data', dataset_dir, 'test', 'test.json')) as f:
 		for line in f:
 			data_test.append(json.loads(line))
 
-	metadata = json.load(open('data/exchange_rate_nips/metadata/metadata.json'))
+	metadata = json.load(open(os.path.join('data', dataset_dir, 'metadata', 'metadata.json')))
+
 
 	data_train_in, data_train_out = [], []
 	data_dev_in, data_dev_out = [], []

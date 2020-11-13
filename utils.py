@@ -6,7 +6,7 @@ from collections import OrderedDict
 import pywt
 
 from data.synthetic_dataset import create_synthetic_dataset, create_sin_dataset, SyntheticDataset
-from data.real_dataset import parse_ECG5000, parse_Traffic, parse_Taxi, parse_Traffic911, parse_exchange_rate
+from data.real_dataset import parse_ECG5000, parse_Traffic, parse_Taxi, parse_Traffic911, parse_gc_datasets
 
 
 def add_metrics_to_dict(
@@ -402,13 +402,13 @@ def get_processed_data(args):
 			X_test_input, X_test_target,
 			train_bkp, dev_bkp, test_bkp,
 		) = parse_Traffic911(args.N_input, args.N_output)
-	elif args.dataset_name in ['Exchange']:
+	elif args.dataset_name in ['Exchange', 'Solar', 'Wiki']:
 		(
 			X_train_input, X_train_target,
 			X_dev_input, X_dev_target,
 			X_test_input, X_test_target,
 			train_bkp, dev_bkp, test_bkp,
-		) = parse_exchange_rate(args.N_input, args.N_output)
+		) = parse_gc_datasets(args.dataset_name, args.N_input, args.N_output)
 
 
 	K2data_sum = create_hierarchical_data(
@@ -418,6 +418,7 @@ def get_processed_data(args):
 		train_bkp, dev_bkp, test_bkp,
 		aggregation_type='sum'
 	)
+	print('sum done')
 	K2data_ls = create_hierarchical_data(
 		args, X_train_input, X_train_target,
 		X_dev_input, X_dev_target,
@@ -425,6 +426,7 @@ def get_processed_data(args):
 		train_bkp, dev_bkp, test_bkp,
 		aggregation_type='leastsquare'
 	)
+	print('ls done')
 	K2data_st = create_hierarchical_data(
 		args, X_train_input, X_train_target,
 		X_dev_input, X_dev_target,
@@ -432,6 +434,7 @@ def get_processed_data(args):
 		train_bkp, dev_bkp, test_bkp,
 		aggregation_type='sumwithtrend'
 	)
+	print('sumwithtrend done')
 	K2data_slope = create_hierarchical_data(
 		args, X_train_input, X_train_target,
 		X_dev_input, X_dev_target,
@@ -439,6 +442,7 @@ def get_processed_data(args):
 		train_bkp, dev_bkp, test_bkp,
 		aggregation_type='slope'
 	)
+	print('slope done')
 	K2data_wavelet = create_hierarchical_wavelet_data(
 		args, X_train_input, X_train_target,
 		X_dev_input, X_dev_target,
@@ -446,6 +450,7 @@ def get_processed_data(args):
 		train_bkp, dev_bkp, test_bkp,
 		aggregation_type='wavelet'
 	)
+	print('wavelet done')
 
 	dataset = dict()
 	dataset['sum'] = K2data_sum
