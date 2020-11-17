@@ -49,9 +49,14 @@ def parse_Traffic(N_input, N_output):
 	dev_bkp = np.ones(data_dev_in.shape[0]) * N_input
 	test_bkp = np.ones(data_test_in.shape[0]) * N_input
 
+	data_train = np.expand_dims(data_train.T, axis=-1)
+	data_dev = np.expand_dims(data_dev.T, axis=-1)
+	data_test = np.expand_dims(data_test.T, axis=-1)
+
 	return (
 		data_train_in, data_train_out, data_dev_in, data_dev_out,
 		data_test_in, data_test_out, train_bkp, dev_bkp, test_bkp,
+		data_train, data_dev, data_test
 	)
 
 def parse_ECG5000(N_input, N_output):
@@ -84,6 +89,7 @@ def parse_ECG5000(N_input, N_output):
 	return (
 		data_train_in, data_train_out, data_dev_in, data_dev_out,
 		data_test_in, data_test_out, train_bkp, dev_bkp, test_bkp,
+		data_train, data_dev, data_test
 	)
 
 def create_bins(sequence, bin_size, num_bins):
@@ -138,6 +144,7 @@ def parse_Taxi(N_input, N_output):
 
 	data = np.array([val for val in loc2counts.values()])
 	data = np.expand_dims(data, axis=2)
+	data_train, data_dev, data_test = [], [], []
 	data_train_in, data_train_out = [], []
 	data_dev_in, data_dev_out = [], []
 	data_test_in, data_test_out = [], []
@@ -146,6 +153,9 @@ def parse_Taxi(N_input, N_output):
 		batch_train_in, batch_train_out = create_forecast_io_seqs(seq_train, N_input, N_output, int(N_output/3))
 		batch_dev_in, batch_dev_out = create_forecast_io_seqs(seq_dev, N_input, N_output, N_output)
 		batch_test_in, batch_test_out = create_forecast_io_seqs(seq_test, N_input, N_output, N_output)
+		data_train.append(seq_train)
+		data_dev.append(seq_dev)
+		data_test.append(seq_test)
 		data_train_in.append(batch_train_in)
 		data_train_out.append(batch_train_out)
 		data_dev_in.append(batch_dev_in)
@@ -167,6 +177,7 @@ def parse_Taxi(N_input, N_output):
 	return (
 		data_train_in, data_train_out, data_dev_in, data_dev_out,
 		data_test_in, data_test_out, train_bkp, dev_bkp, test_bkp,
+		data_train, data_dev, data_test
 	)
 
 def parse_Traffic911(N_input, N_output):
@@ -197,6 +208,7 @@ def parse_Traffic911(N_input, N_output):
 	counts = create_bins(timestamps, bin_size=3600., num_bins=num_hrs)
 	data = np.expand_dims(np.array(counts), axis=0)
 	data = np.expand_dims(data, axis=2)
+	data_train, data_dev, data_test = [], [], []
 	data_train_in, data_train_out = [], []
 	data_dev_in, data_dev_out = [], []
 	data_test_in, data_test_out = [], []
@@ -205,6 +217,9 @@ def parse_Traffic911(N_input, N_output):
 		batch_train_in, batch_train_out = create_forecast_io_seqs(seq_train, N_input, N_output, int(N_output/3))
 		batch_dev_in, batch_dev_out = create_forecast_io_seqs(seq_dev, N_input, N_output, N_output)
 		batch_test_in, batch_test_out = create_forecast_io_seqs(seq_test, N_input, N_output, N_output)
+		data_train.append(seq_train)
+		data_dev.append(seq_dev)
+		data_test.append(seq_test)
 		data_train_in.append(batch_train_in)
 		data_train_out.append(batch_train_out)
 		data_dev_in.append(batch_dev_in)
@@ -226,6 +241,7 @@ def parse_Traffic911(N_input, N_output):
 	return (
 		data_train_in, data_train_out, data_dev_in, data_dev_out,
 		data_test_in, data_test_out, train_bkp, dev_bkp, test_bkp,
+		data_train, data_dev, data_test
 	)
 
 def parse_gc_datasets(dataset_name, N_input, N_output):
@@ -244,14 +260,15 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 		for line in f:
 			data.append(json.loads(line))
 
-	data_test = []
+	data_test_full = []
 	with open(os.path.join('data', dataset_dir, 'test', 'test.json')) as f:
 		for line in f:
-			data_test.append(json.loads(line))
+			data_test_full.append(json.loads(line))
 
 	metadata = json.load(open(os.path.join('data', dataset_dir, 'metadata', 'metadata.json')))
 
 
+	data_train, data_dev, data_test = [], [], []
 	data_train_in, data_train_out = [], []
 	data_dev_in, data_dev_out = [], []
 	data_test_in, data_test_out = [], []
@@ -260,15 +277,18 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 		seq_dev = entry['target'][ -N_output*num_rolling_windows - N_input : ]
 		seq_train = np.expand_dims(seq_train, axis=-1)
 		seq_dev = np.expand_dims(seq_dev, axis=-1)
+		data_train.append(seq_train)
+		data_dev.append(seq_dev)
 		batch_train_in, batch_train_out = create_forecast_io_seqs(seq_train, N_input, N_output, int(N_output/3))
 		batch_dev_in, batch_dev_out = create_forecast_io_seqs(seq_dev, N_input, N_output, N_output)
 		data_train_in.append(batch_train_in)
 		data_train_out.append(batch_train_out)
 		data_dev_in.append(batch_dev_in)
 		data_dev_out.append(batch_dev_out)
-	for entry in data_test:
+	for entry in data_test_full:
 		seq_test = entry['target'][ -(N_input+N_output) : ]
 		seq_test = np.expand_dims(seq_test, axis=-1)
+		data_test.append(seq_test)
 		batch_test_in, batch_test_out = create_forecast_io_seqs(seq_test, N_input, N_output, N_output)
 		data_test_in.append(batch_test_in)
 		data_test_out.append(batch_test_out)
@@ -287,4 +307,5 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 	return (
 		data_train_in, data_train_out, data_dev_in, data_dev_out,
 		data_test_in, data_test_out, train_bkp, dev_bkp, test_bkp,
+		data_train, data_dev, data_test
 	)

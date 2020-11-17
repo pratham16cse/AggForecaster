@@ -106,8 +106,8 @@ args.inference_model_names = [
 #    'NLLls',
     'seq2seqmse_dualtpp',
     'seq2seqnll_dualtpp',
-    'seq2seqmse_optls',
-    'seq2seqnll_optls',
+#    'seq2seqmse_optls',
+#    'seq2seqnll_optls',
     'seq2seqmse_optst',
     'seq2seqnll_optst',
     'seq2seqnll_optklst',
@@ -116,8 +116,8 @@ args.inference_model_names = [
 ]
 args.aggregate_methods = [
     'sum',
-    'leastsquare',
-    'sumwithtrend',
+#    'leastsquare',
+#    'sumwithtrend',
     'slope',
     'wavelet'
 ]

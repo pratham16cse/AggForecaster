@@ -25,7 +25,8 @@ def create_sin_dataset(N, N_input, N_output, sigma):
         X[0:N, 0:N_input], X[0:N, N_input:N_input+N_output],
         X[N:N+N_dev, 0:N_input], X[N:N+N_dev, N_input:N_input+N_output],
         X[N+N_dev:N+N_dev+N_test, 0:N_input], X[N+N_dev:N+N_dev+N_test, N_input:N_input+N_output], 
-        breakpoints[0:N], breakpoints[N:N+N_dev], breakpoints[N+N_dev:N+N_dev+N_test]
+        breakpoints[0:N], breakpoints[N:N+N_dev], breakpoints[N+N_dev:N+N_dev+N_test],
+        X[0:N], X[N:N+N_dev], X[N+N_dev:N+N_dev+N_test]
     )
 
 
