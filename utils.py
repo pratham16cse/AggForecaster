@@ -284,13 +284,14 @@ def create_hierarchical_data(
 	aggregation_type
 ):
 
-	aggregation2func = {}
-	aggregation2func['sum'] = aggregate_data
-	aggregation2func['leastsquare'] = aggregate_data_leastsquare
-	aggregation2func['sumwithtrend'] = aggregate_data_sumwithtrend
-	aggregation2func['slope'] = aggregate_data_slope
+	#aggregation2func = {}
+	#aggregation2func['sum'] = aggregate_data
+	#aggregation2func['leastsquare'] = aggregate_data_leastsquare
+	#aggregation2func['sumwithtrend'] = aggregate_data_sumwithtrend
+	#aggregation2func['slope'] = aggregate_data_slope
+	#aggregation2func['wavelet'] = aggregate_data_wavelet
 
-	aggregation_func = aggregation2func[aggregation_type]
+	#aggregation_func = aggregation2func[aggregation_type]
 
 	if aggregation_type in ['wavelet']:
 		wavelet_levels = args.wavelet_levels
@@ -303,7 +304,7 @@ def create_hierarchical_data(
 		K_list = args.K_list
 
 	K2data = OrderedDict()
-	for K in args.K_list:
+	for K in K_list:
 		#if K == 1:
 		#	train_input_agg, train_target_agg = train_input, train_target
 		#	dev_input_agg, dev_target_agg = dev_input, dev_target
@@ -412,8 +413,10 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 		input_norm, target_norm, wavelet_levels=None
 	):
 		super(TimeSeriesDataset, self).__init__()
-		assert enc_len%K == 0
-		assert dec_len%K == 0
+
+		if aggregation_type not in ['wavelet']:
+			assert enc_len%K == 0
+			assert dec_len%K == 0
 
 		self.data = data
 		self._enc_len = enc_len
@@ -424,6 +427,7 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 		self.K = K
 		self.input_norm = input_norm
 		self.target_norm = target_norm
+		self.wavelet_levels = wavelet_levels
 
 		self.indices = []
 		for i in range(0, len(data)):
@@ -433,10 +437,24 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 
 	@property
 	def enc_len(self):
+		if self.wavelet_levels is not None:
+
+			if self.K == self.wavelet_levels+2:
+				return self._enc_len // 2**(self.K-2)
+
+			return self._enc_len // 2**(self.K-1)
+
 		return self._enc_len // self.K
 	
 	@property
 	def dec_len(self):
+		if self.wavelet_levels is not None:
+
+			if self.K == self.wavelet_levels+2:
+				return self._dec_len // 2**(self.K-2)
+
+			return self._dec_len // 2**(self.K-1)
+
 		return self._dec_len // self.K
 
 	def __len__(self):
@@ -483,8 +501,8 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 				ex_input_agg, ex_target_agg = list(ex_input_agg), list(ex_target_agg)
 
 			elif self.aggregation_type in ['wavelet']:
-				ex_input_agg = self.aggregate_data_wavelet(ex_input_agg, self.K)
-				ex_target_agg = self.aggregate_data_wavelet(ex_target_agg, self.K)
+				ex_input_agg = self.aggregate_data_wavelet(ex_input, self.K)
+				ex_target_agg = self.aggregate_data_wavelet(ex_target, self.K)
 
 
 			#ex_input, ex_target = zip(*ex_agg)
@@ -519,7 +537,7 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 	def aggregate_data_wavelet(self, values, K):
 		coeffs = pywt.wavedec(sqz(values), 'haar', level=self.wavelet_levels, mode='periodic')
 		coeffs = [expand(x) for x in coeffs]
-		coeffs = coeffs[K-2]
+		coeffs = coeffs[-(K-1)]
 		return coeffs
 
 
@@ -604,24 +622,24 @@ def get_processed_data(args):
 		aggregation_type='sum'
 	)
 	print('sum done')
-	K2data_ls = create_hierarchical_data(
-		args, X_train_input, X_train_target,
-		X_dev_input, X_dev_target,
-		X_test_input, X_test_target,
-		train_bkp, dev_bkp, test_bkp,
-		data_train, data_dev, data_test,
-		aggregation_type='leastsquare'
-	)
-	print('ls done')
-	K2data_st = create_hierarchical_data(
-		args, X_train_input, X_train_target,
-		X_dev_input, X_dev_target,
-		X_test_input, X_test_target,
-		train_bkp, dev_bkp, test_bkp,
-		data_train, data_dev, data_test,
-		aggregation_type='sumwithtrend'
-	)
-	print('sumwithtrend done')
+	#K2data_ls = create_hierarchical_data(
+	#	args, X_train_input, X_train_target,
+	#	X_dev_input, X_dev_target,
+	#	X_test_input, X_test_target,
+	#	train_bkp, dev_bkp, test_bkp,
+	#	data_train, data_dev, data_test,
+	#	aggregation_type='leastsquare'
+	#)
+	#print('ls done')
+	#K2data_st = create_hierarchical_data(
+	#	args, X_train_input, X_train_target,
+	#	X_dev_input, X_dev_target,
+	#	X_test_input, X_test_target,
+	#	train_bkp, dev_bkp, test_bkp,
+	#	data_train, data_dev, data_test,
+	#	aggregation_type='sumwithtrend'
+	#)
+	#print('sumwithtrend done')
 	K2data_slope = create_hierarchical_data(
 		args, X_train_input, X_train_target,
 		X_dev_input, X_dev_target,
@@ -631,19 +649,27 @@ def get_processed_data(args):
 		aggregation_type='slope'
 	)
 	print('slope done')
-	K2data_wavelet = create_hierarchical_wavelet_data(
+	#K2data_wavelet = create_hierarchical_wavelet_data(
+	#	args, X_train_input, X_train_target,
+	#	X_dev_input, X_dev_target,
+	#	X_test_input, X_test_target,
+	#	train_bkp, dev_bkp, test_bkp,
+	#	aggregation_type='wavelet'
+	#)
+	K2data_wavelet = create_hierarchical_data(
 		args, X_train_input, X_train_target,
 		X_dev_input, X_dev_target,
 		X_test_input, X_test_target,
 		train_bkp, dev_bkp, test_bkp,
+		data_train, data_dev, data_test,
 		aggregation_type='wavelet'
 	)
 	print('wavelet done')
 
 	dataset = dict()
 	dataset['sum'] = K2data_sum
-	dataset['leastsquare'] = K2data_ls
-	dataset['sumwithtrend'] = K2data_st
+	#dataset['leastsquare'] = K2data_ls
+	#dataset['sumwithtrend'] = K2data_st
 	dataset['slope'] = K2data_slope
 	dataset['wavelet'] = K2data_wavelet
 

@@ -635,7 +635,7 @@ class WAVELET(torch.nn.Module):
 			lvl_preds = lvl_preds.detach().numpy()
 			all_levels_preds.append(lvl_preds)
 
-		all_levels_preds = [sqz(x) for x in all_levels_preds]
+		all_levels_preds = [sqz(x) for x in reversed(all_levels_preds)]
 		all_preds = pywt.waverec(all_levels_preds, 'haar', mode='periodic')
 		all_preds = expand(all_preds)
 
