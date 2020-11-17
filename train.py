@@ -66,6 +66,9 @@ def train_model(
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            if i>=100:
+                break
+
 
         if(verbose):
             if (curr_epoch % args.print_every == 0):
