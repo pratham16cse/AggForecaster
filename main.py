@@ -70,6 +70,10 @@ parser.add_argument('--train_twostage', action='store_true', default=False,
                           mean in first stage, train both in second stage')
 parser.add_argument('--mse_loss_with_nll', action='store_true', default=False,
                     help='Add extra mse_loss when training with nll')
+parser.add_argument('--second_moment', action='store_true', default=False,
+                    help='compute std as std = second_moment - mean')
+parser.add_argument('--variance_rnn', action='store_true', default=False,
+                    help='Use second RNN to compute variance or variance related values')
 
 
 # Hierarchical model arguments
@@ -111,15 +115,15 @@ args.inference_model_names = [
     'seq2seqmse_optst',
     'seq2seqnll_optst',
     'seq2seqnll_optklst',
-    'seq2seqmse_wavelet',
-    'seq2seqnll_wavelet',
+#    'seq2seqmse_wavelet',
+#    'seq2seqnll_wavelet',
 ]
 args.aggregate_methods = [
     'sum',
 #    'leastsquare',
 #    'sumwithtrend',
     'slope',
-    'wavelet'
+#    'wavelet'
 ]
 
 if 1 not in args.K_list:
@@ -195,7 +199,8 @@ for base_model_name in args.base_model_names:
             ).to(args.device)
             decoder = DecoderRNN(
                 input_size=input_size, hidden_size=args.hidden_size, num_grulstm_layers=args.num_grulstm_layers,
-                fc_units=args.fc_units, output_size=output_size, deep_std=args.deep_std
+                fc_units=args.fc_units, output_size=output_size, deep_std=args.deep_std,
+                second_moment=args.second_moment, variance_rnn=args.variance_rnn
             ).to(args.device)
             net_gru = Net_GRU(
                 encoder,decoder, N_output, point_estimates,

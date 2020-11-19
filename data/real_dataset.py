@@ -255,15 +255,23 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 		num_rolling_windows = 7
 		dataset_dir = 'solar_nips'
 
-	data = []
+	data_ = []
 	with open(os.path.join('data', dataset_dir, 'train', 'train.json')) as f:
 		for line in f:
-			data.append(json.loads(line))
+			data_.append(json.loads(line))
 
-	data_test_full = []
+	data_test_full_ = []
 	with open(os.path.join('data', dataset_dir, 'test', 'test.json')) as f:
 		for line in f:
-			data_test_full.append(json.loads(line))
+			data_test_full_.append(json.loads(line))
+
+	num_ts = len(data_)
+	data = data_[ -2000 : ]
+	data_test_full = []
+	for i in range(0, num_ts*num_rolling_windows, num_ts):
+		data_test_full += data_test_full_[ i : i+num_ts ][ -2000 : ]
+
+
 
 	metadata = json.load(open(os.path.join('data', dataset_dir, 'metadata', 'metadata.json')))
 

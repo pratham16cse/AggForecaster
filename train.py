@@ -3,6 +3,7 @@ import numpy as np
 import torch
 from loss.dilate_loss import dilate_loss
 from eval import eval_base_model
+import time
 
 
 def train_model(
@@ -35,6 +36,7 @@ def train_model(
     for curr_epoch in range(best_epoch+1, best_epoch+1+epochs):
         epoch_loss = 0.
         for i, data in enumerate(trainloader, 0):
+            st = time.time()
             inputs, target, _ = data
             inputs = torch.tensor(inputs, dtype=torch.float32).to(args.device)
             target = torch.tensor(target, dtype=torch.float32).to(args.device)
@@ -56,7 +58,7 @@ def train_model(
                     if curr_epoch-1 <= epochs/2 and curr_epoch > epochs/2:
                         best_metric = np.inf
                 dist = torch.distributions.normal.Normal(means, stds)
-                loss = -torch.sum(dist.log_prob(target))
+                loss = -torch.mean(dist.log_prob(target))
 
                 if args.mse_loss_with_nll:
                     loss += criterion(target, means)
@@ -66,6 +68,8 @@ def train_model(
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            et = time.time()
+            print('Time required for batch ', i, ':', et-st, 'loss:', loss.item())
             if i>=100:
                 break
 

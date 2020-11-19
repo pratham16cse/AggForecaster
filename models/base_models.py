@@ -20,35 +20,63 @@ class EncoderRNN(torch.nn.Module):
         return torch.zeros(self.num_grulstm_layers, batch_size, self.hidden_size, device=device)
     
 class DecoderRNN(nn.Module):
-    def __init__(self, input_size, hidden_size, num_grulstm_layers,fc_units, output_size, deep_std):
+    def __init__(
+        self, input_size, hidden_size, num_grulstm_layers,
+        fc_units, output_size, deep_std, second_moment,
+        variance_rnn
+    ):
         super(DecoderRNN, self).__init__()      
+
         self.output_size = output_size
         self.deep_std = deep_std
+        self.second_moment = second_moment
+        self.variance_rnn = variance_rnn
+
         self.gru = nn.GRU(input_size=input_size, hidden_size=hidden_size, num_layers=num_grulstm_layers,batch_first=True)
         self.fc = nn.Linear(hidden_size, fc_units)
         self.out_mean = nn.Linear(fc_units, output_size)
+        if self.variance_rnn:
+            self.gru_var = nn.GRU(input_size=input_size, hidden_size=hidden_size, num_layers=num_grulstm_layers,batch_first=True)
+            self.fc_var = nn.Linear(hidden_size, fc_units)
         if not self.deep_std:
             self.out_std = nn.Linear(fc_units, output_size)
         else:
             self.out_std_1 = nn.Linear(fc_units, fc_units)
             self.out_std_2 = nn.Linear(fc_units, fc_units)
             self.out_std_3 = nn.Linear(fc_units, output_size)
-        
-    def forward(self, input, hidden):
-        output, hidden = self.gru(input, hidden) 
-        output = F.relu( self.fc(output) )
-        means = self.out_mean(output)      
-        stds = self.out_std(output)
-        #stds = F.relu(stds) + 1e-3
 
+    def get_std(self, output, means):
         if not self.deep_std:
+            stds = self.out_std(output)
             stds = F.softplus(stds) + 1e-3
         else:
             stds_1 = F.relu(self.out_std_1(output))
             stds_2 = F.relu(self.out_std_2(stds_1))
             stds = F.softplus(self.out_std_3(stds_2)) + 1e-3
 
-        return (means, stds), hidden
+        if self.second_moment:
+            stds = stds - torch.pow(means, 2)
+            stds = torch.sqrt(F.softplus(stds)) + 1e-3
+
+        return stds
+
+    def forward(self, input, hidden, hidden_var):
+        output, hidden = self.gru(input, hidden)
+        output = F.relu( self.fc(output) )
+        means = self.out_mean(output)
+
+        if self.variance_rnn:
+            output_var, hidden_var = self.gru_var(input, hidden_var)
+            output_var = F.relu( self.fc_var(output_var) )
+        else:
+            hidden_var = None
+
+        if self.variance_rnn:
+            stds = self.get_std(output_var, means)
+        else:
+            stds = self.get_std(output, means)
+
+        return (means, stds), (hidden, hidden_var)
     
 class Net_GRU(nn.Module):
     def __init__(
@@ -72,11 +100,13 @@ class Net_GRU(nn.Module):
             
         decoder_input = x[:,-1,:].unsqueeze(1) # first decoder input= last element of input sequence
         decoder_hidden = encoder_hidden
+        decoder_hidden_var = encoder_hidden
         
         means = torch.zeros([x.shape[0], self.target_length, self.decoder.output_size]).to(self.device)
         stds = torch.zeros([x.shape[0], self.target_length, self.decoder.output_size]).to(self.device)
         for di in range(self.target_length):
-            (step_means, step_stds), decoder_hidden = self.decoder(decoder_input, decoder_hidden)
+            (step_means, step_stds), (decoder_hidden, decoder_hidden_var) \
+                = self.decoder(decoder_input, decoder_hidden, decoder_hidden_var)
             if target is not None:
                 if random.random() < self.teacher_forcing_ratio:
                     # Teacher Forcing
