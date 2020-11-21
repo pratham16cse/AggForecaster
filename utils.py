@@ -22,10 +22,11 @@ def add_metrics_to_dict(
 
 	return metrics_dict
 
-def write_arr_to_file(output_dir, inf_model_name, inputs, targets, preds):
+def write_arr_to_file(output_dir, inf_model_name, inputs, targets, pred_mu, pred_std):
 
 	# Files are saved in .npy format
-	np.save(os.path.join(output_dir, inf_model_name + '_' + 'preds'), preds)
+	np.save(os.path.join(output_dir, inf_model_name + '_' + 'pred_mu'), pred_mu)
+	np.save(os.path.join(output_dir, inf_model_name + '_' + 'pred_std'), pred_std)
 
 	for fname in os.listdir(output_dir):
 	    if fname.endswith('targets.npy'):
