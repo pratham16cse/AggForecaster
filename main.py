@@ -361,7 +361,8 @@ for inf_model_name in args.inference_model_names:
         output_dir, inf_model_name,
         utils.unnormalize(test_inputs_dict['sum'][1].detach().numpy(), inf_norm.detach().numpy()),
         test_targets_dict['sum'][1].detach().numpy(),
-        pred_mu.detach().numpy()
+        pred_mu.detach().numpy(),
+        pred_std.detach().numpy()
     )
 
 

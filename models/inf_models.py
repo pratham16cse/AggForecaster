@@ -566,7 +566,7 @@ class OPT_KL_st(OPT_st):
 		#import ipdb
 		#ipdb.set_trace()
 
-		return ex_mu.value
+		return ex_mu.value, np.sqrt(ex_var.value)
 
 
 	def forward(self, inputs_dict, norm_dict):
@@ -595,7 +595,7 @@ class OPT_KL_st(OPT_st):
 					params = [means, stds]
 					params_dict[agg_method][level] = params
 
-		all_preds = []
+		all_preds_mu, all_preds_std = [], []
 		for i in range(params_dict['sum'][1][0].size()[0]):
 			print(i)
 			ex_params_dict = dict()
@@ -606,14 +606,16 @@ class OPT_KL_st(OPT_st):
 
 			#import ipdb
 			#ipdb.set_trace()
-			ex_preds_opt = self.optimize(ex_params_dict, norm_dict_np)
-			all_preds.append(ex_preds_opt)
+			ex_mu_opt, ex_std_opt = self.optimize(ex_params_dict, norm_dict_np)
+			all_preds_mu.append(ex_mu_opt)
+			all_preds_std.append(ex_std_opt)
 
-		all_preds = torch.FloatTensor(all_preds)
+		all_preds_mu = torch.FloatTensor(all_preds_mu)
+		all_preds_std = torch.FloatTensor(all_preds_std)
 
 		#all_preds, _ = normalize(all_preds, norm_dict[0])
 
-		return all_preds, None
+		return all_preds_mu, all_preds_std 
 
 
 class WAVELET(torch.nn.Module):
