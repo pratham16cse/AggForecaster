@@ -10,7 +10,7 @@ from data.real_dataset import parse_ECG5000, parse_Traffic, parse_Taxi, parse_Tr
 
 
 def add_metrics_to_dict(
-	metrics_dict, model_name, metric_mse, metric_dtw, metric_tdi, metric_crps
+	metrics_dict, model_name, metric_mse, metric_dtw, metric_tdi, metric_crps, metric_mae
 ):
 	if model_name not in metrics_dict:
 		metrics_dict[model_name] = dict()
@@ -19,6 +19,7 @@ def add_metrics_to_dict(
 	metrics_dict[model_name]['dtw'] = metric_dtw
 	metrics_dict[model_name]['tdi'] = metric_tdi
 	metrics_dict[model_name]['crps'] = metric_crps
+	metrics_dict[model_name]['mae'] = metric_mae
 
 	return metrics_dict
 
