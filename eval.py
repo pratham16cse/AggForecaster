@@ -8,14 +8,16 @@ import properscoring as ps
 
 def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1):
     criterion = torch.nn.MSELoss()
+    criterion_mae = torch.nn.L1Loss()
     losses_dilate = []
     losses_mse = []
+    losses_mae = []
     losses_dtw = []
     losses_tdi = []
     losses_crps = []
 
     for i, data in enumerate(loader, 0):
-        loss_mse, loss_dtw, loss_tdi = torch.tensor(0),torch.tensor(0),torch.tensor(0)
+        loss_mse, loss_dtw, loss_tdi, loss_mae = torch.tensor(0), torch.tensor(0), torch.tensor(0), torch.tensor(0)
         # get the inputs
         inputs, target, breakpoints = data
         inputs = torch.tensor(inputs, dtype=torch.float32).to(args.device)
@@ -32,6 +34,7 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1):
 
         # MSE
         loss_mse = criterion(target, pred_mu)
+        loss_mae = criterion_mae(target, pred_mu)
         if model_name in ['seq2seqdilate']:
             loss_dilate, loss_shape, loss_temporal = dilate_loss(target, pred_mu, args.alpha, args.gamma, args.device)
         else:
@@ -62,11 +65,13 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1):
         losses_crps.append( loss_crps )
         losses_dilate.append( loss_dilate.item() )
         losses_mse.append( loss_mse.item() )
+        losses_mae.append( loss_mae.item() )
         losses_dtw.append( loss_dtw )
         losses_tdi.append( loss_tdi )
 
     metric_dilate = np.array(losses_dilate).mean()
     metric_mse = np.array(losses_mse).mean()
+    metric_mae = np.array(losses_mae).mean()
     metric_dtw = np.array(losses_dtw).mean()
     metric_tdi = np.array(losses_tdi).mean()
     metric_crps = np.array(losses_crps).mean()
@@ -74,11 +79,13 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1):
     print('Eval dilateloss= ', metric_dilate, \
         'mse= ', metric_mse, ' dtw= ', metric_dtw, ' tdi= ', metric_tdi)
 
-    return metric_dilate, metric_mse, metric_dtw, metric_tdi, metric_crps
+    return metric_dilate, metric_mse, metric_dtw, metric_tdi, metric_crps, metric_mae
 
 def eval_inf_model(args, net, inf_test_inputs_dict, inf_test_norm_dict, target, norm, gamma, verbose=1):
     criterion = torch.nn.MSELoss()
+    criterion_mae = torch.nn.L1Loss()
     losses_mse = []
+    losses_mae = []
     losses_dtw = []
     losses_tdi = []
     losses_crps = []
@@ -95,6 +102,7 @@ def eval_inf_model(args, net, inf_test_inputs_dict, inf_test_norm_dict, target, 
 
     # MSE
     loss_mse = criterion(target, pred_mu)
+    loss_mae = criterion_mae(target, pred_mu)
     loss_dtw, loss_tdi = 0,0
     # DTW and TDI
     for k in range(batch_size):
@@ -120,14 +128,16 @@ def eval_inf_model(args, net, inf_test_inputs_dict, inf_test_norm_dict, target, 
     # print statistics
     losses_crps.append( loss_crps )
     losses_mse.append( loss_mse.item() )
+    losses_mae.append( loss_mae.item() )
     losses_dtw.append( loss_dtw )
     losses_tdi.append( loss_tdi )
 
     metric_mse = np.array(losses_mse).mean()
+    metric_mae = np.array(losses_mae).mean()
     metric_dtw = np.array(losses_dtw).mean()
     metric_tdi = np.array(losses_tdi).mean()
     metric_crps = np.array(losses_crps).mean()
 
     #print('Eval mse= ', metric_mse, ' dtw= ', metric_dtw, ' tdi= ', metric_tdi)
 
-    return pred_mu, pred_std, metric_mse, metric_dtw, metric_tdi, metric_crps
+    return pred_mu, pred_std, metric_mse, metric_dtw, metric_tdi, metric_crps, metric_mae

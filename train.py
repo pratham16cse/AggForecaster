@@ -77,7 +77,7 @@ def train_model(
         if(verbose):
             if (curr_epoch % args.print_every == 0):
                 print('curr_epoch ', curr_epoch, ' epoch_loss ', epoch_loss,' loss shape ',loss_shape.item(),' loss temporal ',loss_temporal.item())
-                metric_dilate, metric_mse, metric_dtw, metric_tdi, metric_crps = eval_base_model(
+                metric_dilate, metric_mse, metric_dtw, metric_tdi, metric_crps, metric_mae = eval_base_model(
                     args, model_name, net, devloader, norm, args.gamma, verbose=1
                 )
 
@@ -104,6 +104,6 @@ def train_model(
     net.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     net.eval()
-    metric_dilate, metric_mse, metric_dtw, metric_tdi, metric_crps = eval_base_model(
+    metric_dilate, metric_mse, metric_dtw, metric_tdi, metric_crps, metric_mae = eval_base_model(
         args, model_name, net, devloader, norm, args.gamma,verbose=1
     )

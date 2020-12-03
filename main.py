@@ -339,15 +339,15 @@ for inf_model_name in args.inference_model_names:
         inf_norm = test_norm_dict['sum'][1]
 
     inf_net.eval()
-    pred_mu, pred_std, metric_mse, metric_dtw, metric_tdi, metric_crps = eval_inf_model(
+    pred_mu, pred_std, metric_mse, metric_dtw, metric_tdi, metric_crps, metric_mae = eval_inf_model(
         args, inf_net, inf_test_inputs_dict, inf_test_norm_dict,
         inf_test_targets, inf_norm, args.gamma, verbose=1
     )
     inference_models[inf_model_name] = inf_net
     metric_mse = metric_mse.item()
 
-    print('Metrics for Inference model {}: MSE:{:f}, DTW:{:f}, TDI:{:f}, CRPS:{:f}'.format(
-        inf_model_name, metric_mse, metric_dtw, metric_tdi, metric_crps)
+    print('Metrics for Inference model {}: MAE:{:f}, CRPS:{:f}, MSE:{:f}, DTW:{:f}, TDI:{:f}'.format(
+        inf_model_name, metric_mae, metric_crps, metric_mse, metric_dtw, metric_tdi)
     )
 
     model2metrics = utils.add_metrics_to_dict(
@@ -373,8 +373,10 @@ with open(os.path.join(args.output_dir, 'results_'+args.dataset_name+'.txt'), 'w
     fp.write('\nModel Name, MAE, DTW, TDI')
     for model_name, metrics_dict in model2metrics.items():
         fp.write(
-            '\n{}, {:.3f}, {:.3f}, {:.3f}'.format(
+            '\n{}, {:.6f}, {:.6f}, {:.6f}, {:.6f}, {:.6f}'.format(
                 model_name,
+                metrics_dict['mae'],
+                metrics_dict['crps'],
                 metrics_dict['mse'],
                 metrics_dict['dtw'],
                 metrics_dict['tdi'],
