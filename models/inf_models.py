@@ -593,7 +593,7 @@ class OPT_KL_st(OPT_st):
 			all_preds_std.append(ex_std_opt)
 
 		all_preds_mu = torch.FloatTensor(all_preds_mu)
-		all_preds_std = torch.stack(all_preds_std)
+		all_preds_std = torch.FloatTensor(all_preds_std)
 
 		#all_preds, _ = normalize(all_preds, norm_dict[0])
 
