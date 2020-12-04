@@ -352,7 +352,7 @@ for inf_model_name in args.inference_model_names:
 
     model2metrics = utils.add_metrics_to_dict(
         model2metrics, inf_model_name,
-        metric_mse, metric_dtw, metric_tdi, metric_crps
+        metric_mse, metric_dtw, metric_tdi, metric_crps, metric_mae
     )
     infmodel2preds[inf_model_name] = pred_mu
     output_dir = os.path.join(args.output_dir, args.dataset_name)

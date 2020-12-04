@@ -127,7 +127,8 @@ class DualTPP(torch.nn.Module):
 			params = [means, stds]
 			params_dict[level] = params
 
-		all_preds = []
+		all_preds_mu = []
+		all_preds_std = []
 		for i in range(params_dict[1][0].size()[0]):
 			#print(i)
 			ex_params_dict = dict()
@@ -135,13 +136,15 @@ class DualTPP(torch.nn.Module):
 				ex_params_dict[lvl] = [params_dict[lvl][0][i], params_dict[lvl][1][i]]
 
 			ex_preds_opt = self.optimize(ex_params_dict, norm_dict_np)
-			all_preds.append(ex_preds_opt)
+			all_preds_mu.append(ex_preds_opt)
+			all_preds_std.append(params_dict[1][1][i])
 
-		all_preds = torch.FloatTensor(all_preds)
+		all_preds_mu = torch.FloatTensor(all_preds_mu)
+		all_preds_std = torch.stack(all_preds_std)
 
 		#all_preds, _ = normalize(all_preds, norm_dict[0])
 
-		return all_preds, None
+		return all_preds_mu, all_preds_std
 
 
 class OPT_ls(torch.nn.Module):
@@ -188,33 +191,6 @@ class OPT_ls(torch.nn.Module):
 		return -cp.sum(np.sum(np.log(1/(((2*np.pi)**0.5)*std)) - (((ex_preds - means)**2) / (2*(std)**2))))
 
 	def optimize(self, params_dict, norm_dict):
-
-		#params_dict_detached = dict()
-		#for 
-
-#		ex_preds_dict = dict()
-#
-#		preds = cp.Variable(params_dict[1][0].size())
-#
-#
-#		ls_params, _ = normalize(
-#			self.fit_with_indices(unnormalize(preds, norm_dict[0])),
-#			norm_dict[1]
-#		)
-#		#ls_params = unnormalize(ls_params, norm_dict[1].detach().numpy())
-#		#params_dict[0][0] = unnormalize(params_dict[0][0], norm_dict[0])
-#		#params_dict[0][1] = unnormalize(params_dict[0][1], norm_dict[0])
-#		#params_dict[1][0] = unnormalize(params_dict[1][0], norm_dict[1])
-#		#params_dict[1][1] = unnormalize(params_dict[1][1], norm_dict[1])
-#		ls_loss = self.log_prob(
-#			ls_params,
-#			params_dict[1][0].detach().numpy(), params_dict[1][1].detach().numpy()
-#		)
-#		preds_loss = self.log_prob(
-#			preds,
-#			params_dict[0][0].detach().numpy(), params_dict[0][1].detach().numpy()
-#		)
-#		opt_loss = preds_loss + ls_loss
 
 		for lvl, params in params_dict.items():
 			#params[0] = unnormalize(params[0].detach().numpy(), norm_dict[lvl].detach().numpy())
@@ -270,7 +246,8 @@ class OPT_ls(torch.nn.Module):
 			params = [means, stds]
 			params_dict[level] = params
 
-		all_preds = []
+		all_preds_mu = []
+		all_preds_std = []
 		for i in range(params_dict[1][0].size()[0]):
 			#print(i)
 			ex_params_dict = dict()
@@ -278,13 +255,15 @@ class OPT_ls(torch.nn.Module):
 				ex_params_dict[lvl] = [params_dict[lvl][0][i], params_dict[lvl][1][i]]
 
 			ex_preds_opt = self.optimize(ex_params_dict, norm_dict_np)
-			all_preds.append(ex_preds_opt)
+			all_preds_mu.append(ex_preds_opt)
+			all_preds_std.append(params_dict[1][1][i])
 
-		all_preds = torch.FloatTensor(all_preds)
+		all_preds_mu = torch.FloatTensor(all_preds_mu)
+		all_preds_std = torch.stack(all_preds_std)
 
 		#all_preds, _ = normalize(all_preds, norm_dict[0])
 
-		return all_preds, None
+		return all_preds_mu, all_preds_std
 
 
 class OPT_st(torch.nn.Module):
@@ -421,7 +400,8 @@ class OPT_st(torch.nn.Module):
 					params = [means, stds]
 					params_dict[agg_method][level] = params
 
-		all_preds = []
+		all_preds_mu = []
+		all_preds_std = []
 		for i in range(params_dict['sum'][1][0].size()[0]):
 			#print(i)
 			ex_params_dict = dict()
@@ -433,13 +413,15 @@ class OPT_st(torch.nn.Module):
 			#import ipdb
 			#ipdb.set_trace()
 			ex_preds_opt = self.optimize(ex_params_dict, norm_dict_np)
-			all_preds.append(ex_preds_opt)
+			all_preds_mu.append(ex_preds_opt)
+			all_preds_std.append(params_dict['sum'][1][1][i])
 
-		all_preds = torch.FloatTensor(all_preds)
+		all_preds_mu = torch.FloatTensor(all_preds_mu)
+		all_preds_std = torch.stack(all_preds_std)
 
 		#all_preds, _ = normalize(all_preds, norm_dict[0])
 
-		return all_preds, None
+		return all_preds_mu, all_preds_std
 
 class OPT_KL_st(OPT_st):
 	"""docstring for OPT_st"""
@@ -611,7 +593,7 @@ class OPT_KL_st(OPT_st):
 			all_preds_std.append(ex_std_opt)
 
 		all_preds_mu = torch.FloatTensor(all_preds_mu)
-		all_preds_std = torch.FloatTensor(all_preds_std)
+		all_preds_std = torch.stack(all_preds_std)
 
 		#all_preds, _ = normalize(all_preds, norm_dict[0])
 
