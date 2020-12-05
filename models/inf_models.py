@@ -545,10 +545,13 @@ class OPT_KL_st(OPT_st):
 
 		#if ex_preds.value is None:
 
+		ex_var_np = ex_var.value
+		ex_var_np = np.maximum(ex_var_np, np.ones_like(ex_var_np)*1e-9)
+
 		#import ipdb
 		#ipdb.set_trace()
 
-		return ex_mu.value, np.sqrt(ex_var.value)
+		return ex_mu.value, np.sqrt(ex_var_np)
 
 
 	def forward(self, inputs_dict, norm_dict):
