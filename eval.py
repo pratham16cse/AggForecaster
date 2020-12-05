@@ -79,7 +79,11 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1):
     print('Eval dilateloss= ', metric_dilate, \
         'mse= ', metric_mse, ' dtw= ', metric_dtw, ' tdi= ', metric_tdi)
 
-    return metric_dilate, metric_mse, metric_dtw, metric_tdi, metric_crps, metric_mae
+    return (
+        inputs, target, pred_mu, pred_std,
+        metric_dilate, metric_mse, metric_dtw, metric_tdi,
+        metric_crps, metric_mae
+    )
 
 def eval_inf_model(args, net, inf_test_inputs_dict, inf_test_norm_dict, target, norm, gamma, verbose=1):
     criterion = torch.nn.MSELoss()
@@ -140,4 +144,8 @@ def eval_inf_model(args, net, inf_test_inputs_dict, inf_test_norm_dict, target, 
 
     #print('Eval mse= ', metric_mse, ' dtw= ', metric_dtw, ' tdi= ', metric_tdi)
 
-    return pred_mu, pred_std, metric_mse, metric_dtw, metric_tdi, metric_crps, metric_mae
+    return (
+        pred_mu, pred_std,
+        metric_mse, metric_dtw, metric_tdi,
+        metric_crps, metric_mae
+    )

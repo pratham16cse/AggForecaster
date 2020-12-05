@@ -86,6 +86,8 @@ parser.add_argument('--wavelet_levels', type=int, default=2,
 
 parser.add_argument('--plot_anecdotes', action='store_true', default=False,
                     help='Plot the comparison of various methods')
+parser.add_argument('--save_agg_preds', action='store_true', default=False,
+                    help='Save inputs, targets, and predictions of aggregate base models')
 
 #parser.add_argument('--patience', type=int, default=2,
 #                    help='Number of epochs to wait for \
@@ -216,6 +218,31 @@ for base_model_name in args.base_model_names:
                 )
 
                 base_models[base_model_name][agg_method][level] = net_gru
+
+            if args.save_agg_preds:
+                (
+                    dev_inputs, dev_target, pred_mu, pred_std,
+                    metric_dilate, metric_mse, metric_dtw, metric_tdi,
+                    metric_crps, metric_mae
+                ) = eval_base_model(
+                    args, base_model_name,
+                    base_models[base_model_name][agg_method][level],
+                    testloader, norm,
+                    args.gamma, verbose=1
+                )
+
+                output_dir = os.path.join(args.output_dir, args.dataset_name + '_base')
+                os.makedirs(output_dir, exist_ok=True)
+                utils.write_aggregate_preds_to_file(
+                    output_dir, base_model_name, agg_method, level,
+                    utils.unnormalize(dev_inputs.detach().numpy(), norm.detach().numpy()),
+                    dev_target.detach().numpy(),
+                    pred_mu.detach().numpy(),
+                    pred_std.detach().numpy()
+                )
+
+            #import ipdb
+            #ipdb.set_trace()
 # ----- End: base models training ----- #
 
 # ----- Start: Inference models ----- #

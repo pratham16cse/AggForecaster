@@ -36,6 +36,26 @@ def write_arr_to_file(output_dir, inf_model_name, inputs, targets, pred_mu, pred
 		np.save(os.path.join(output_dir, 'inputs'), inputs)
 		np.save(os.path.join(output_dir, 'targets'), targets)
 
+def write_aggregate_preds_to_file(
+	output_dir, base_model_name, agg_method, level, inputs, targets, pred_mu, pred_std
+):
+
+	# Files are saved in .npy format
+	sep = '__'
+	model_str = base_model_name + sep + agg_method + sep  + str(level)
+	agg_str = agg_method + sep  + str(level)
+
+	np.save(os.path.join(output_dir, model_str + sep + 'pred_mu'), pred_mu)
+	np.save(os.path.join(output_dir, model_str + sep + 'pred_std'), pred_std)
+
+	suffix = agg_str + sep + 'targets.npy'
+	for fname in os.listdir(output_dir):
+	    if fname.endswith(suffix):
+	        break
+	else:
+		np.save(os.path.join(output_dir, agg_str + sep + 'inputs'), inputs)
+		np.save(os.path.join(output_dir, agg_str + sep + 'targets'), targets)
+
 def normalize(data, norm=None):
 	if norm is None:
 		norm = np.mean(data, axis=(0, 1))
