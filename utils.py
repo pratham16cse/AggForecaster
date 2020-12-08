@@ -4,6 +4,8 @@ import numpy as np
 import os
 from collections import OrderedDict
 import pywt
+import pandas as pd
+import re
 
 from data.synthetic_dataset import create_synthetic_dataset, create_sin_dataset, SyntheticDataset
 from data.real_dataset import parse_ECG5000, parse_Traffic, parse_Taxi, parse_Traffic911, parse_gc_datasets
@@ -59,8 +61,10 @@ def write_aggregate_preds_to_file(
 def normalize(data, norm=None):
 	if norm is None:
 		norm = np.mean(data, axis=(0, 1))
+		#norm = np.quantile(data, axis=(0, 1), 0.90)
 
 	data_norm = data * 1.0/norm 
+	#data_norm = data * 10.0/norm
 	return data_norm, norm
 
 def unnormalize(data, norm):
@@ -68,6 +72,93 @@ def unnormalize(data, norm):
 
 sqz = lambda x: np.squeeze(x, axis=-1)
 expand = lambda x: np.expand_dims(x, axis=-1)
+
+def shift_timestamp(ts, offset):
+	result = ts + offset * ts.freq
+	return pd.Timestamp(result, freq=ts.freq)
+
+def get_date_range(start, seq_len):
+	end = shift_timestamp(start, seq_len)
+	full_date_range = pd.date_range(start, end, freq=start.freq)
+	return full_date_range
+
+def get_granularity(freq_str: str):
+    """
+    Splits a frequency string such as "7D" into the multiple 7 and the base
+    granularity "D".
+
+    Parameters
+    ----------
+
+    freq_str
+        Frequency string of the form [multiple][granularity] such as "12H", "5min", "1D" etc.
+    """
+    freq_regex = r'\s*((\d+)?)\s*([^\d]\w*)'
+    m = re.match(freq_regex, freq_str)
+    assert m is not None, "Cannot parse frequency string: %s" % freq_str
+    groups = m.groups()
+    multiple = int(groups[1]) if groups[1] is not None else 1
+    granularity = groups[2]
+    return multiple, granularity
+
+class TimeFeature:
+    """
+    Base class for features that only depend on time.
+    """
+
+    def __init__(self, normalized: bool = True):
+        self.normalized = normalized
+
+    def __call__(self, index: pd.DatetimeIndex) -> np.ndarray:
+        pass
+
+    def __repr__(self):
+        return self.__class__.__name__ + '()'
+
+class FourrierDateFeatures(TimeFeature):
+    def __init__(self, freq: str) -> None:
+        # reocurring freq
+        freqs = [
+            'month',
+            'day',
+            'hour',
+            'minute',
+            'weekofyear',
+            'weekday',
+            'dayofweek',
+            'dayofyear',
+            'daysinmonth',
+        ]
+
+        assert freq in freqs
+        self.freq = freq
+
+    def __call__(self, index: pd.DatetimeIndex) -> np.ndarray:
+        values = getattr(index, self.freq)
+        num_values = max(values) + 1
+        steps = [x * 2.0 * np.pi / num_values for x in values]
+        #return np.vstack([np.cos(steps), np.sin(steps)])
+        return np.stack([np.cos(steps), np.sin(steps)], axis=-1)
+
+def time_features_from_frequency_str(freq_str):
+    multiple, granularity = get_granularity(freq_str)
+
+    features = {
+        'M': ['weekofyear'],
+        'W': ['daysinmonth', 'weekofyear'],
+        'D': ['dayofweek'],
+        'B': ['dayofweek', 'dayofyear'],
+        'H': ['hour', 'dayofweek'],
+        'min': ['minute', 'hour', 'dayofweek'],
+        'T': ['minute', 'hour', 'dayofweek'],
+    }
+
+    assert granularity in features, f"freq {granularity} not supported"
+
+    feature_classes= [
+        FourrierDateFeatures(freq=freq) for freq in features[granularity]
+    ]
+    return feature_classes
 
 def fit_slope_with_indices(seq, K):
     x = np.reshape(np.ones_like(seq), (-1, K))
@@ -369,7 +460,7 @@ def create_hierarchical_data(
 		#	drop_last=False, num_workers=1
 		#)
 
-		_, norm = normalize(np.array([[s for seq in data_train for s in seq]]))
+		_, norm = normalize(np.array([[s for seq in data_train for s in seq['target']]]))
 		if not args.normalize:
 			norm = np.ones_like(norm)
 
@@ -377,18 +468,21 @@ def create_hierarchical_data(
 			data_train, args.N_input, args.N_output, int(args.N_output/3),
 			aggregation_type, K,
 			input_norm=norm, target_norm=norm,
+			use_time_features=args.use_time_features,
 			wavelet_levels=wavelet_levels
 		)
 		lazy_dataset_dev = TimeSeriesDataset(
 			data_dev, args.N_input, args.N_output, args.N_output,
 			aggregation_type, K,
 			input_norm=norm, target_norm=np.ones_like(norm),
+			use_time_features=args.use_time_features,
 			wavelet_levels=wavelet_levels
 		)
 		lazy_dataset_test = TimeSeriesDataset(
 			data_test, args.N_input, args.N_output, args.N_output,
 			aggregation_type, K,
 			input_norm=norm, target_norm=np.ones_like(norm),
+			use_time_features=args.use_time_features,
 			wavelet_levels=wavelet_levels
 		)
 		trainloader = DataLoader(
@@ -421,8 +515,8 @@ def create_hierarchical_data(
 			'devloader': devloader,
 			'testloader': testloader,
 			'N_output': lazy_dataset_test.dec_len,
-			'input_size': lazy_dataset_test.num_values,
-			'output_size': lazy_dataset_test.num_values,
+			'input_size': lazy_dataset_test.input_size,
+			'output_size': lazy_dataset_test.output_size,
 			'norm': norm
 		}
 
@@ -432,7 +526,7 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 	"""docstring for TimeSeriesDataset"""
 	def __init__(
 		self, data, enc_len, dec_len, stride, aggregation_type, K,
-		input_norm, target_norm, wavelet_levels=None
+		input_norm, target_norm, use_time_features, wavelet_levels=None
 	):
 		super(TimeSeriesDataset, self).__init__()
 
@@ -443,19 +537,25 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 		self.data = data
 		self._enc_len = enc_len
 		self._dec_len = dec_len
-		self.num_values = len(data[0][0])
+		#self.num_values = len(data[0]['target'][0])
 		self.stride = stride
 		self.aggregation_type = aggregation_type
 		self.K = K
 		self.input_norm = input_norm
 		self.target_norm = target_norm
+		self.use_time_features = use_time_features
 		self.wavelet_levels = wavelet_levels
 
 		self.indices = []
 		for i in range(0, len(data)):
-			for j in range(0, len(data[i]), stride):
-				if j+self._enc_len+self._dec_len <= len(data[i]):
+			for j in range(0, len(data[i]['target']), stride):
+				if j+self._enc_len+self._dec_len <= len(data[i]['target']):
 					self.indices.append((i, j))
+
+		if self.use_time_features:
+			multiple, granularity = get_granularity(data[0]['freq_str'])
+			freq_str = str(self.K * multiple) + granularity
+			self.time_features_obj = time_features_from_frequency_str(granularity)
 
 	@property
 	def enc_len(self):
@@ -479,6 +579,20 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 
 		return self._dec_len // self.K
 
+	@property
+	def input_size(self):
+		input_size = len(self.data[0]['target'][0])
+		if self.use_time_features:
+			# Multiplied by 2 because of sin and cos
+			input_size += (2 * len(self.time_features_obj))
+		return input_size
+
+	@property
+	def output_size(self):
+		output_size = len(self.data[0]['target'][0])
+		return output_size
+	
+
 	def __len__(self):
 		return len(self.indices)
 
@@ -488,10 +602,10 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 		pos_id = self.indices[idx][1]	
 
 		ex_input = np.array(
-			self.data[ts_id][ pos_id : pos_id+self._enc_len ]
+			self.data[ts_id]['target'][ pos_id : pos_id+self._enc_len ]
 		)
 		ex_target = np.array(
-			self.data[ts_id][ pos_id+self._enc_len : pos_id+self._enc_len+self._dec_len ]
+			self.data[ts_id]['target'][ pos_id+self._enc_len : pos_id+self._enc_len+self._dec_len ]
 		)
 
 		if self.K != 1:
@@ -535,9 +649,49 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 		ex_input, _ = normalize(ex_input, self.input_norm)
 		ex_target, _ = normalize(ex_target, self.target_norm)
 
+		if self.use_time_features:
+			date_range = get_date_range(
+				self.data[ts_id]['start'],
+				len(self.data[ts_id]['target'])
+			)
+			ex_input_dates = date_range[ pos_id : pos_id+self._enc_len ]
+			ex_target_dates = date_range[ pos_id+self._enc_len : pos_id+self._enc_len+self._dec_len ]
+
+			#if self.K != 1:
+				#ex_input_dates = map(
+				#	self.get_avg_date,
+				#	np.split(ex_input_dates, np.arange(self.K, self._enc_len, self.K), axis=0)
+				#)
+				#ex_target_dates = map(
+				#	self.get_avg_date,
+				#	np.split(ex_target_dates, np.arange(self.K, self._dec_len, self.K), axis=0)
+				#)
+
+			ex_input_feats = np.concatenate(
+				[feat(ex_input_dates) for feat in self.time_features_obj],
+				axis=1
+			)
+			ex_target_feats = np.concatenate(
+				[feat(ex_target_dates) for feat in self.time_features_obj],
+				axis=1
+			)
+			if self.K != 1:
+				ex_input_feats = map(
+					self.get_avg_feats,
+					np.split(ex_input_feats, np.arange(self.K, self._enc_len, self.K), axis=0)
+				)
+				ex_target_feats = map(
+					self.get_avg_feats,
+					np.split(ex_target_feats, np.arange(self.K, self._dec_len, self.K), axis=0)
+				)
+				ex_input_feats, ex_target_feats = list(ex_input_feats), list(ex_target_feats)
+		else:
+			raise NotImplementedError
+
 
 		return (
 			ex_input, ex_target,
+			ex_input_feats, ex_target_feats,
 			torch.FloatTensor([ts_id, pos_id])
 		)
 
@@ -561,6 +715,18 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 		coeffs = [expand(x) for x in coeffs]
 		coeffs = coeffs[-(K-1)]
 		return coeffs
+
+	def get_time_features(self, start, seqlen):
+		end = shift_timestamp(start, seqlen)
+		full_date_range = pd.date_range(start, end, freq=start.freq)
+		chunk_range = full_date_range[ pos_id : pos_id+self._enc_len ]
+
+	def get_avg_date(self, date_range):
+		return date_range.mean(axis=0)
+
+	def get_avg_feats(self, time_feats):
+		return np.mean(time_feats, axis=0)
+
 
 
 def get_processed_data(args):

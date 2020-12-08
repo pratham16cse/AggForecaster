@@ -76,6 +76,10 @@ parser.add_argument('--variance_rnn', action='store_true', default=False,
                     help='Use second RNN to compute variance or variance related values')
 
 
+parser.add_argument('--use_time_features', action='store_true', default=False,
+                    help='Use time features derived from calendar-date')
+
+
 # Hierarchical model arguments
 parser.add_argument('--L', type=int, default=2,
                     help='number of levels in the hierarchy, leaves inclusive')
@@ -205,8 +209,9 @@ for base_model_name in args.base_model_names:
                 second_moment=args.second_moment, variance_rnn=args.variance_rnn
             ).to(args.device)
             net_gru = Net_GRU(
-                encoder,decoder, N_output, point_estimates,
-                args.teacher_forcing_ratio, args.deep_std, args.device
+                encoder,decoder, N_output, args.use_time_features,
+                point_estimates, args.teacher_forcing_ratio, args.deep_std,
+                args.device
             ).to(args.device)
             if agg_method in ['leastsquare', 'sumwithtrend', 'slope', 'wavelet'] and level == 1:
                 base_models[base_model_name][agg_method][level] = base_models[base_model_name]['sum'][1]
@@ -263,7 +268,7 @@ for agg_method in args.aggregate_methods:
 
     for level in levels:
         gen_test = iter(dataset[agg_method][level]['testloader'])
-        test_inputs, test_targets, breaks = next(gen_test)
+        test_inputs, test_targets, test_feats_in, test_feats_tgt, breaks = next(gen_test)
 
         test_inputs  = torch.tensor(test_inputs, dtype=torch.float32).to(args.device)
         test_targets = torch.tensor(test_targets, dtype=torch.float32).to(args.device)

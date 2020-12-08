@@ -37,13 +37,15 @@ def train_model(
         epoch_loss = 0.
         for i, data in enumerate(trainloader, 0):
             st = time.time()
-            inputs, target, _ = data
+            inputs, target, feats_in, feats_tgt, _ = data
             inputs = torch.tensor(inputs, dtype=torch.float32).to(args.device)
             target = torch.tensor(target, dtype=torch.float32).to(args.device)
+            feats_in = torch.tensor(feats_in, dtype=torch.float32).to(args.device)
+            feats_tgt = torch.tensor(feats_tgt, dtype=torch.float32).to(args.device)
             batch_size, N_output = target.shape[0:2]
 
             # forward + backward + optimize
-            means, stds = net(inputs, target)
+            means, stds = net(feats_in, inputs, feats_tgt, target)
             loss_mse,loss_shape,loss_temporal = torch.tensor(0),torch.tensor(0),torch.tensor(0)
 
             if model_name in ['seq2seqmse']:

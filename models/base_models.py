@@ -80,43 +80,61 @@ class DecoderRNN(nn.Module):
     
 class Net_GRU(nn.Module):
     def __init__(
-        self, encoder, decoder, target_length, point_estimates,
-        teacher_forcing_ratio, deep_std, device
+        self, encoder, decoder, target_length, use_time_features,
+        point_estimates, teacher_forcing_ratio, deep_std, device
     ):
         super(Net_GRU, self).__init__()
         self.encoder = encoder
         self.decoder = decoder
         self.target_length = target_length
+        self.use_time_features = use_time_features
         self.point_estimates = point_estimates
         self.teacher_forcing_ratio = teacher_forcing_ratio
         self.device = device
         self.deep_std = deep_std
         
-    def forward(self, x, target=None):
-        input_length  = x.shape[1]
-        encoder_hidden = self.encoder.init_hidden(x.shape[0], self.device)
+    def forward(self, feats_in, x_in, feats_tgt, x_tgt=None):
+
+        # Encoder
+        input_length  = x_in.shape[1]
+        if self.use_time_features:
+            enc_in = torch.cat((x_in, feats_in), dim=-1)
+        else:
+            enc_in = x_in
+        encoder_hidden = self.encoder.init_hidden(enc_in.shape[0], self.device)
         for ei in range(input_length):
-            encoder_output, encoder_hidden = self.encoder(x[:,ei:ei+1,:]  , encoder_hidden)
+            encoder_output, encoder_hidden = self.encoder(enc_in[:,ei:ei+1,:]  , encoder_hidden)
             
-        decoder_input = x[:,-1,:].unsqueeze(1) # first decoder input= last element of input sequence
+        dec_in = enc_in[:,-1,:].unsqueeze(1) # first decoder input= last element of input sequence
         decoder_hidden = encoder_hidden
         decoder_hidden_var = encoder_hidden
-        
-        means = torch.zeros([x.shape[0], self.target_length, self.decoder.output_size]).to(self.device)
-        stds = torch.zeros([x.shape[0], self.target_length, self.decoder.output_size]).to(self.device)
+
+        # Decoder
+        means = torch.zeros([x_in.shape[0], self.target_length, self.decoder.output_size]).to(self.device)
+        stds = torch.zeros([x_in.shape[0], self.target_length, self.decoder.output_size]).to(self.device)
         for di in range(self.target_length):
+
             (step_means, step_stds), (decoder_hidden, decoder_hidden_var) \
-                = self.decoder(decoder_input, decoder_hidden, decoder_hidden_var)
-            if target is not None:
+                = self.decoder(dec_in, decoder_hidden, decoder_hidden_var)
+
+            # Training Mode
+            if x_tgt is not None:
                 if random.random() < self.teacher_forcing_ratio:
                     # Teacher Forcing
-                    decoder_input = target[:, di:di+1]
+                    dec_in = x_tgt[:, di:di+1]
                 else:
-                    decoder_input = step_means
+                    dec_in = step_means
             else:
-                decoder_input = step_means
+                dec_in = step_means
+
+            # Add features
+            if self.use_time_features:
+                dec_in = torch.cat((dec_in, feats_tgt[:, di:di+1]), dim=-1)
+
+
             means[:, di:di+1, :] = step_means
             stds[:, di:di+1, :] = step_stds
+            #print('di', di)
         if self.point_estimates:
             stds = None
         return means, stds

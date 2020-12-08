@@ -29,6 +29,41 @@ def create_forecast_io_seqs(data, enc_len, dec_len, stride):
 	data_out = np.array(data_out)
 	return data_in, data_out
 
+
+def process_start_string(start_string, freq):
+	'''
+	Source: 
+	https://github.com/mbohlkeschneider/gluon-ts/blob/442bd4ffffa4a0fcf9ae7aa25db9632fbe58a7ea/src/gluonts/dataset/common.py#L306
+	'''
+
+	timestamp = pd.Timestamp(start_string, freq=freq)
+	# 'W-SUN' is the standardized freqstr for W
+	if timestamp.freq.name in ("M", "W-SUN"):
+	    offset = to_offset(freq)
+	    timestamp = timestamp.replace(
+	        hour=0, minute=0, second=0, microsecond=0, nanosecond=0
+	    )
+	    return pd.Timestamp(
+	        offset.rollback(timestamp), freq=offset.freqstr
+	    )
+	if timestamp.freq == 'B':
+	    # does not floor on business day as it is not allowed
+	    return timestamp
+	return pd.Timestamp(
+	    timestamp.floor(timestamp.freq), freq=timestamp.freq
+	)
+
+def shift_timestamp(ts, offset):
+	result = ts + offset * ts.freq
+	return pd.Timestamp(result, freq=ts.freq)
+
+def get_date_range(start_string, freq, seq_len):
+	start = process_start_string(start_string, freq)
+	end = shift_timestamp(start, seq_len)
+	full_date_range = pd.date_range(start, end, freq=freq)
+	return full_date_range
+
+
 def parse_Traffic(N_input, N_output):
 	with open('data/traffic/traffic.txt', 'r') as f:
 		data = []
@@ -281,22 +316,49 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 	data_dev_in, data_dev_out = [], []
 	data_test_in, data_test_out = [], []
 	for entry in data:
+		entry_train = dict()
+		entry_dev = dict()
+
 		seq_train = entry['target'][ : -N_output*num_rolling_windows]
 		seq_dev = entry['target'][ -N_output*num_rolling_windows - N_input : ]
 		seq_train = np.expand_dims(seq_train, axis=-1)
 		seq_dev = np.expand_dims(seq_dev, axis=-1)
-		data_train.append(seq_train)
-		data_dev.append(seq_dev)
+
+		seq_dates = get_date_range(entry['start'], metadata['time_granularity'], len(entry['target']))
+		start_train = seq_dates[0]
+		start_dev = seq_dates[ -N_output*num_rolling_windows - N_input ]
+		#import ipdb
+		#ipdb.set_trace()
+
+		entry_train['target'] = seq_train
+		entry_train['start'] = start_train
+		entry_train['freq_str'] = metadata['time_granularity']
+		entry_dev['target'] = seq_dev
+		entry_dev['start'] = start_dev
+		entry_dev['freq_str'] = metadata['time_granularity']
+		data_train.append(entry_train)
+		data_dev.append(entry_dev)
+
 		batch_train_in, batch_train_out = create_forecast_io_seqs(seq_train, N_input, N_output, int(N_output/3))
 		batch_dev_in, batch_dev_out = create_forecast_io_seqs(seq_dev, N_input, N_output, N_output)
 		data_train_in.append(batch_train_in)
 		data_train_out.append(batch_train_out)
 		data_dev_in.append(batch_dev_in)
 		data_dev_out.append(batch_dev_out)
+
 	for entry in data_test_full:
+		entry_test = dict()
 		seq_test = entry['target'][ -(N_input+N_output) : ]
 		seq_test = np.expand_dims(seq_test, axis=-1)
-		data_test.append(seq_test)
+
+		seq_dates = get_date_range(entry['start'], metadata['time_granularity'], len(entry['target']))
+		start_test = seq_dates[ -(N_input+N_output) ]
+
+		entry_test['target'] = seq_test
+		entry_test['start'] = start_test
+		entry_test['freq_str'] = metadata['time_granularity']
+		data_test.append(entry_test)
+
 		batch_test_in, batch_test_out = create_forecast_io_seqs(seq_test, N_input, N_output, N_output)
 		data_test_in.append(batch_test_in)
 		data_test_out.append(batch_test_out)

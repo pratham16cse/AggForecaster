@@ -19,11 +19,14 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1):
     for i, data in enumerate(loader, 0):
         loss_mse, loss_dtw, loss_tdi, loss_mae = torch.tensor(0), torch.tensor(0), torch.tensor(0), torch.tensor(0)
         # get the inputs
-        inputs, target, breakpoints = data
+        inputs, target, feats_in, feats_tgt, breakpoints = data
         inputs = torch.tensor(inputs, dtype=torch.float32).to(args.device)
         target = torch.tensor(target, dtype=torch.float32).to(args.device)
+        feats_in = torch.tensor(feats_in, dtype=torch.float32).to(args.device)
+        feats_tgt = torch.tensor(feats_tgt, dtype=torch.float32).to(args.device)
         batch_size, N_output = target.shape[0:2]
-        pred_mu, pred_std = net(inputs)
+        # DO NOT PASS TARGET during forward pass
+        pred_mu, pred_std = net(feats_in, inputs, feats_tgt)
 
         # Unnormalize the data
         pred_mu = unnormalize(pred_mu, norm)
