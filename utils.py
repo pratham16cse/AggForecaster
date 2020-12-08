@@ -6,6 +6,7 @@ from collections import OrderedDict
 import pywt
 import pandas as pd
 import re
+import time
 
 from data.synthetic_dataset import create_synthetic_dataset, create_sin_dataset, SyntheticDataset
 from data.real_dataset import parse_ECG5000, parse_Traffic, parse_Taxi, parse_Traffic911, parse_gc_datasets
@@ -557,6 +558,15 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 			freq_str = str(self.K * multiple) + granularity
 			self.time_features_obj = time_features_from_frequency_str(granularity)
 
+			self.date_range = []
+			for i in range(0, len(data)):
+				self.date_range.append(
+					get_date_range(
+						self.data[i]['start'],
+						len(self.data[i]['target'])
+					)
+				)
+
 	@property
 	def enc_len(self):
 		if self.wavelet_levels is not None:
@@ -650,23 +660,19 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 		ex_target, _ = normalize(ex_target, self.target_norm)
 
 		if self.use_time_features:
-			date_range = get_date_range(
-				self.data[ts_id]['start'],
-				len(self.data[ts_id]['target'])
-			)
-			ex_input_dates = date_range[ pos_id : pos_id+self._enc_len ]
-			ex_target_dates = date_range[ pos_id+self._enc_len : pos_id+self._enc_len+self._dec_len ]
+			#st = time.time()
+			#date_range = get_date_range(
+			#	self.data[ts_id]['start'],
+			#	len(self.data[ts_id]['target'])
+			#)
+			#et = time.time()
+			#print('date range time', et-st)
+			#ex_input_dates = date_range[ pos_id : pos_id+self._enc_len ]
+			#ex_target_dates = date_range[ pos_id+self._enc_len : pos_id+self._enc_len+self._dec_len ]
+			ex_input_dates = self.date_range[ts_id][ pos_id : pos_id+self._enc_len ]
+			ex_target_dates = self.date_range[ts_id][ pos_id+self._enc_len : pos_id+self._enc_len+self._dec_len ]
 
-			#if self.K != 1:
-				#ex_input_dates = map(
-				#	self.get_avg_date,
-				#	np.split(ex_input_dates, np.arange(self.K, self._enc_len, self.K), axis=0)
-				#)
-				#ex_target_dates = map(
-				#	self.get_avg_date,
-				#	np.split(ex_target_dates, np.arange(self.K, self._dec_len, self.K), axis=0)
-				#)
-
+			#st = time.time()
 			ex_input_feats = np.concatenate(
 				[feat(ex_input_dates) for feat in self.time_features_obj],
 				axis=1
@@ -675,7 +681,10 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 				[feat(ex_target_dates) for feat in self.time_features_obj],
 				axis=1
 			)
+			#et = time.time()
+			#print('feat creation time', et-st)
 			if self.K != 1:
+				#st = time.time()
 				ex_input_feats = map(
 					self.get_avg_feats,
 					np.split(ex_input_feats, np.arange(self.K, self._enc_len, self.K), axis=0)
@@ -684,9 +693,13 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 					self.get_avg_feats,
 					np.split(ex_target_feats, np.arange(self.K, self._dec_len, self.K), axis=0)
 				)
+				#et = time.time()
+				#print('feat avg time', et-st)
 				ex_input_feats, ex_target_feats = list(ex_input_feats), list(ex_target_feats)
+				ex_input_feats = torch.FloatTensor(ex_input_feats)
+				ex_target_feats = torch.FloatTensor(ex_target_feats)
 		else:
-			raise NotImplementedError
+			ex_input_feats, ex_target_feats = ex_input, ex_target
 
 
 		return (
