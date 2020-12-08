@@ -15,8 +15,8 @@ class DILATE(torch.nn.Module):
 		super(DILATE, self).__init__()
 		self.base_models_dict = base_models_dict
 
-	def forward(self, inputs_dict, norm_dict):
-		return self.base_models_dict[1](inputs_dict[1])
+	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict):
+		return self.base_models_dict[1](feats_in_dict[1], inputs_dict[1], feats_tgt_dict[1])
 
 class MSE(torch.nn.Module):
 	"""docstring for MSE"""
@@ -24,8 +24,8 @@ class MSE(torch.nn.Module):
 		super(MSE, self).__init__()
 		self.base_models_dict = base_models_dict
 
-	def forward(self, inputs_dict, norm_dict):
-		return self.base_models_dict[1](inputs_dict[1])
+	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict):
+		return self.base_models_dict[1](feats_in_dict[1], inputs_dict[1], feats_tgt_dict[1])
 
 class NLLsum(torch.nn.Module):
 	"""docstring for NLLsum"""
@@ -33,8 +33,8 @@ class NLLsum(torch.nn.Module):
 		super(NLLsum, self).__init__()
 		self.base_models_dict = base_models_dict
 
-	def forward(self, inputs_dict, norm_dict):
-		return self.base_models_dict[1](inputs_dict[1])
+	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict):
+		return self.base_models_dict[1](feats_in_dict[1], inputs_dict[1], feats_tgt_dict[1])
 
 class NLLls(torch.nn.Module):
 	"""docstring for NLLls"""
@@ -42,8 +42,8 @@ class NLLls(torch.nn.Module):
 		super(NLLls, self).__init__()
 		self.base_models_dict = base_models_dict
 
-	def forward(self, inputs_dict, norm_dict):
-		return self.base_models_dict[1](inputs_dict[1])
+	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict):
+		return self.base_models_dict[1](feats_in_dict[1], inputs_dict[1], feats_tgt_dict[1])
 
 class DualTPP(torch.nn.Module):
 	"""docstring for DualTPP"""
@@ -109,7 +109,7 @@ class DualTPP(torch.nn.Module):
 		return ex_preds.value
 
 
-	def forward(self, inputs_dict, norm_dict):
+	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict):
 		bottom_level_model = self.base_models_dict[1]
 
 		norm_dict_np = dict()
@@ -120,7 +120,8 @@ class DualTPP(torch.nn.Module):
 		for level in self.K_list:
 			model = self.base_models_dict[level]
 			inputs = inputs_dict[level]
-			means, stds = model(inputs)
+			feats_in, feats_tgt = feats_in_dict[level], feats_tgt_dict[level]
+			means, stds = model(feats_in, inputs, feats_tgt)
 
 			if model.point_estimates:
 				stds = torch.ones_like(means)
@@ -229,7 +230,7 @@ class OPT_ls(torch.nn.Module):
 		return ex_preds.value
 
 
-	def forward(self, inputs_dict, norm_dict):
+	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict):
 
 		norm_dict_np = dict()
 		for lvl in norm_dict.keys():
@@ -239,7 +240,8 @@ class OPT_ls(torch.nn.Module):
 		for level in self.K_list:
 			model = self.base_models_dict[level]
 			inputs = inputs_dict[level]
-			means, stds = model(inputs)
+			feats_in, feats_tgt = feats_in_dict[level], feats_tgt_dict[level]
+			means, stds = model(feats_in, inputs, feats_tgt)
 
 			if model.point_estimates:
 				stds = torch.ones_like(means)
@@ -373,7 +375,7 @@ class OPT_st(torch.nn.Module):
 		return ex_preds.value
 
 
-	def forward(self, inputs_dict, norm_dict):
+	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict):
 		'''
 		inputs_dict: [aggregation method][level]
 		norm_dict: [aggregation method][level]
@@ -393,7 +395,8 @@ class OPT_st(torch.nn.Module):
 					print(agg_method, level)
 					model = self.base_models_dict[agg_method][level]
 					inputs = inputs_dict[agg_method][level]
-					means, stds = model(inputs)
+					feats_in, feats_tgt = feats_in_dict[agg_method][level], feats_tgt_dict[agg_method][level]
+					means, stds = model(feats_in, inputs, feats_tgt)
 	
 					if model.point_estimates:
 						stds = torch.ones_like(means)
@@ -554,7 +557,7 @@ class OPT_KL_st(OPT_st):
 		return ex_mu.value, np.sqrt(ex_var_np)
 
 
-	def forward(self, inputs_dict, norm_dict):
+	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict):
 		'''
 		inputs_dict: [aggregation method][level]
 		norm_dict: [aggregation method][level]
@@ -573,7 +576,8 @@ class OPT_KL_st(OPT_st):
 				for level in self.K_list:
 					model = self.base_models_dict[agg_method][level]
 					inputs = inputs_dict[agg_method][level]
-					means, stds = model(inputs)
+					feats_in, feats_tgt = feats_in_dict[agg_method][level], feats_tgt_dict[agg_method][level]
+					means, stds = model(feats_in, inputs, feats_tgt)
 	
 					if model.point_estimates:
 						stds = torch.ones_like(means)

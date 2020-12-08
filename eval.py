@@ -88,7 +88,10 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1):
         metric_crps, metric_mae
     )
 
-def eval_inf_model(args, net, inf_test_inputs_dict, inf_test_norm_dict, target, norm, gamma, verbose=1):
+def eval_inf_model(
+    args, net, inf_test_inputs_dict, inf_test_norm_dict, target, norm,
+    inf_test_feats_in_dict, inf_test_feats_tgt_dict,
+    gamma, verbose=1):
     criterion = torch.nn.MSELoss()
     criterion_mae = torch.nn.L1Loss()
     losses_mse = []
@@ -98,7 +101,10 @@ def eval_inf_model(args, net, inf_test_inputs_dict, inf_test_norm_dict, target, 
     losses_crps = []
 
     batch_size, N_output = target.shape[0:2]
-    pred_mu, pred_std = net(inf_test_inputs_dict, inf_test_norm_dict)
+    pred_mu, pred_std = net(
+        inf_test_feats_in_dict, inf_test_inputs_dict,
+        inf_test_feats_tgt_dict, inf_test_norm_dict
+    )
 
     # Unnormalize
     pred_mu = unnormalize(pred_mu, norm)

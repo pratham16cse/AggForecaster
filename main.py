@@ -256,10 +256,14 @@ print('\n Starting Inference Models')
 test_inputs_dict = dict()
 test_targets_dict = dict()
 test_norm_dict = dict()
+test_feats_in_dict = dict()
+test_feats_tgt_dict = dict()
 for agg_method in args.aggregate_methods:
     test_inputs_dict[agg_method] = dict()
     test_targets_dict[agg_method] = dict()
     test_norm_dict[agg_method] = dict()
+    test_feats_in_dict[agg_method] = dict()
+    test_feats_tgt_dict[agg_method] = dict()
 
     if agg_method in ['wavelet']:
         levels = list(range(1, args.wavelet_levels+3))
@@ -272,9 +276,14 @@ for agg_method in args.aggregate_methods:
 
         test_inputs  = torch.tensor(test_inputs, dtype=torch.float32).to(args.device)
         test_targets = torch.tensor(test_targets, dtype=torch.float32).to(args.device)
+        test_feats_in  = torch.tensor(test_feats_in, dtype=torch.float32).to(args.device)
+        test_feats_tgt = torch.tensor(test_feats_tgt, dtype=torch.float32).to(args.device)
+
         test_inputs_dict[agg_method][level] = test_inputs
         test_targets_dict[agg_method][level] = test_targets
         test_norm_dict[agg_method][level] = dataset[agg_method][level]['norm']
+        test_feats_in_dict[agg_method][level] = test_feats_in
+        test_feats_tgt_dict[agg_method][level] = test_feats_tgt
 #criterion = torch.nn.MSELoss()
 
 for inf_model_name in args.inference_model_names:
@@ -285,6 +294,8 @@ for inf_model_name in args.inference_model_names:
         inf_test_norm_dict = test_norm_dict['sum']
         inf_test_targets = test_targets_dict['sum'][1]
         inf_norm = test_norm_dict['sum'][1]
+        inf_test_feats_in_dict = test_feats_in_dict['sum']
+        inf_test_feats_tgt_dict = test_feats_tgt_dict['sum']
     elif inf_model_name in ['MSE']:
         base_models_dict = base_models['seq2seqmse']['sum']
         inf_net = inf_models.MSE(base_models_dict)
@@ -292,6 +303,8 @@ for inf_model_name in args.inference_model_names:
         inf_test_norm_dict = test_norm_dict['sum']
         inf_test_targets = test_targets_dict['sum'][1]
         inf_norm = test_norm_dict['sum'][1]
+        inf_test_feats_in_dict = test_feats_in_dict['sum']
+        inf_test_feats_tgt_dict = test_feats_tgt_dict['sum']
     elif inf_model_name in ['NLLsum']:
         base_models_dict = base_models['seq2seqnll']['sum']
         inf_net = inf_models.NLLsum(base_models_dict)
@@ -299,6 +312,8 @@ for inf_model_name in args.inference_model_names:
         inf_test_norm_dict = test_norm_dict['sum']
         inf_test_targets = test_targets_dict['sum'][1]
         inf_norm = test_norm_dict['sum'][1]
+        inf_test_feats_in_dict = test_feats_in_dict['sum']
+        inf_test_feats_tgt_dict = test_feats_tgt_dict['sum']
     elif inf_model_name in ['NLLls']:
         base_models_dict = base_models['seq2seqnll']['leastsquare']
         inf_net = inf_models.NLLls(base_models_dict)
@@ -306,6 +321,8 @@ for inf_model_name in args.inference_model_names:
         inf_test_norm_dict = test_norm_dict['leastsquare']
         inf_test_targets = test_targets_dict['sum'][1]
         inf_norm = test_norm_dict['sum'][1]
+        inf_test_feats_in_dict = test_feats_in_dict['leastsquare']
+        inf_test_feats_tgt_dict = test_feats_tgt_dict['leastsquare']
     elif inf_model_name in ['seq2seqmse_dualtpp']:
         base_models_dict = base_models['seq2seqmse']['sum']
         inf_net = inf_models.DualTPP(args.K_list, base_models_dict)
@@ -313,6 +330,8 @@ for inf_model_name in args.inference_model_names:
         inf_test_norm_dict = test_norm_dict['sum']
         inf_test_targets = test_targets_dict['sum'][1]
         inf_norm = test_norm_dict['sum'][1]
+        inf_test_feats_in_dict = test_feats_in_dict['sum']
+        inf_test_feats_tgt_dict = test_feats_tgt_dict['sum']
     elif inf_model_name in ['seq2seqnll_dualtpp']:
         base_models_dict = base_models['seq2seqnll']['sum']
         inf_net = inf_models.DualTPP(args.K_list, base_models_dict)
@@ -320,6 +339,8 @@ for inf_model_name in args.inference_model_names:
         inf_test_norm_dict = test_norm_dict['sum']
         inf_test_targets = test_targets_dict['sum'][1]
         inf_norm = test_norm_dict['sum'][1]
+        inf_test_feats_in_dict = test_feats_in_dict['sum']
+        inf_test_feats_tgt_dict = test_feats_tgt_dict['sum']
     elif inf_model_name in ['seq2seqmse_optls']:
         base_models_dict = base_models['seq2seqmse']['leastsquare']
         inf_net = inf_models.OPT_ls(args.K_list, base_models_dict)
@@ -327,6 +348,8 @@ for inf_model_name in args.inference_model_names:
         inf_test_norm_dict = test_norm_dict['leastsquare']
         inf_test_targets = test_targets_dict['sum'][1]
         inf_norm = test_norm_dict['sum'][1]
+        inf_test_feats_in_dict = test_feats_in_dict['leastsquare']
+        inf_test_feats_tgt_dict = test_feats_tgt_dict['leastsquare']
     elif inf_model_name in ['seq2seqnll_optls']:
         base_models_dict = base_models['seq2seqnll']['leastsquare']
         inf_net = inf_models.OPT_ls(args.K_list, base_models_dict)
@@ -334,6 +357,8 @@ for inf_model_name in args.inference_model_names:
         inf_test_norm_dict = test_norm_dict['leastsquare']
         inf_test_targets = test_targets_dict['sum'][1]
         inf_norm = test_norm_dict['sum'][1]
+        inf_test_feats_in_dict = test_feats_in_dict['leastsquare']
+        inf_test_feats_tgt_dict = test_feats_tgt_dict['leastsquare']
     elif inf_model_name in ['seq2seqmse_optst']:
         base_models_dict = base_models['seq2seqmse']
         inf_net = inf_models.OPT_st(args.K_list, base_models_dict, intercept_type='sum')
@@ -341,6 +366,8 @@ for inf_model_name in args.inference_model_names:
         inf_test_norm_dict = test_norm_dict
         inf_test_targets = test_targets_dict['sum'][1]
         inf_norm = test_norm_dict['sum'][1]
+        inf_test_feats_in_dict = test_feats_in_dict
+        inf_test_feats_tgt_dict = test_feats_tgt_dict
     elif inf_model_name in ['seq2seqnll_optst']:
         base_models_dict = base_models['seq2seqnll']
         inf_net = inf_models.OPT_st(args.K_list, base_models_dict, intercept_type='sum')
@@ -348,6 +375,8 @@ for inf_model_name in args.inference_model_names:
         inf_test_norm_dict = test_norm_dict
         inf_test_targets = test_targets_dict['sum'][1]
         inf_norm = test_norm_dict['sum'][1]
+        inf_test_feats_in_dict = test_feats_in_dict
+        inf_test_feats_tgt_dict = test_feats_tgt_dict
     elif inf_model_name in ['seq2seqnll_optklst']:
         base_models_dict = base_models['seq2seqnll']
         inf_net = inf_models.OPT_KL_st(args.K_list, base_models_dict, intercept_type='sum')
@@ -355,6 +384,8 @@ for inf_model_name in args.inference_model_names:
         inf_test_norm_dict = test_norm_dict
         inf_test_targets = test_targets_dict['sum'][1]
         inf_norm = test_norm_dict['sum'][1]
+        inf_test_feats_in_dict = test_feats_in_dict
+        inf_test_feats_tgt_dict = test_feats_tgt_dict
     elif inf_model_name in ['seq2seqmse_wavelet']:
         base_models_dict = base_models['seq2seqmse']
         inf_net = inf_models.WAVELET(args.wavelet_levels, base_models_dict)
@@ -373,7 +404,9 @@ for inf_model_name in args.inference_model_names:
     inf_net.eval()
     pred_mu, pred_std, metric_mse, metric_dtw, metric_tdi, metric_crps, metric_mae = eval_inf_model(
         args, inf_net, inf_test_inputs_dict, inf_test_norm_dict,
-        inf_test_targets, inf_norm, args.gamma, verbose=1
+        inf_test_targets, inf_norm,
+        inf_test_feats_in_dict, inf_test_feats_tgt_dict,
+        args.gamma, verbose=1
     )
     inference_models[inf_model_name] = inf_net
     metric_mse = metric_mse.item()
