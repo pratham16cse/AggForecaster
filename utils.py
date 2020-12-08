@@ -813,6 +813,9 @@ def get_processed_data(args):
 			data_train, data_dev, data_test
 		) = parse_gc_datasets(args.dataset_name, args.N_input, args.N_output)
 
+	if args.use_time_features:
+		assert 'start' in data_train[0].keys()
+
 
 	K2data_sum = create_hierarchical_data(
 		args, X_train_input, X_train_target,

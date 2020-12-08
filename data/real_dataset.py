@@ -64,6 +64,14 @@ def get_date_range(start_string, freq, seq_len):
 	return full_date_range
 
 
+def get_list_of_dict_format(data):
+	data_new = list()
+	for entry in data:
+		entry_dict = dict()
+		entry_dict['target'] = entry
+		data_new.append(entry_dict)
+	return data_new
+
 def parse_Traffic(N_input, N_output):
 	with open('data/traffic/traffic.txt', 'r') as f:
 		data = []
@@ -87,6 +95,10 @@ def parse_Traffic(N_input, N_output):
 	data_train = np.expand_dims(data_train.T, axis=-1)
 	data_dev = np.expand_dims(data_dev.T, axis=-1)
 	data_test = np.expand_dims(data_test.T, axis=-1)
+
+	data_train = get_list_of_dict_format(data_train)
+	data_dev = get_list_of_dict_format(data_dev)
+	data_test = get_list_of_dict_format(data_test)
 
 	return (
 		data_train_in, data_train_out, data_dev_in, data_dev_out,
@@ -120,6 +132,10 @@ def parse_ECG5000(N_input, N_output):
 	train_bkp = np.ones(data_train_in.shape[0]) * N_input
 	dev_bkp = np.ones(data_dev_in.shape[0]) * N_input
 	test_bkp = np.ones(data_test_in.shape[0]) * N_input
+
+	data_train = get_list_of_dict_format(data_train)
+	data_dev = get_list_of_dict_format(data_dev)
+	data_test = get_list_of_dict_format(data_test)
 
 	return (
 		data_train_in, data_train_out, data_dev_in, data_dev_out,
@@ -167,6 +183,7 @@ def parse_Taxi(N_input, N_output):
 	num_hrs = int(np.ceil((taxi_df['timestamp'].values[-1] - taxi_df['timestamp'].values[0])/3600.))
 	loc2counts = dict()
 	loc2numevents = dict()
+	loc2startts = dict()
 	for loc_id, loc_df in taxi_df.groupby(['PULocationID']):
 		timestamps = loc_df['timestamp'].values
 		timestamps = timestamps - timestamps[0]
@@ -176,6 +193,9 @@ def parse_Taxi(N_input, N_output):
 			counts = create_bins(timestamps, bin_size=3600., num_bins=num_hrs)
 			print(loc_id, len(timestamps), len(timestamps) / num_hrs, len(counts))
 			loc2counts[loc_id] = counts
+
+			start_ts = pd.Timestamp(loc_df['timestamp'][0], unit='s')
+			loc2startts = start_ts
 
 	data = np.array([val for val in loc2counts.values()])
 	data = np.expand_dims(data, axis=2)
@@ -208,6 +228,10 @@ def parse_Taxi(N_input, N_output):
 	train_bkp = np.ones(data_train_in.shape[0]) * N_input
 	dev_bkp = np.ones(data_dev_in.shape[0]) * N_input
 	test_bkp = np.ones(data_test_in.shape[0]) * N_input
+
+	data_train = get_list_of_dict_format(data_train)
+	data_dev = get_list_of_dict_format(data_dev)
+	data_test = get_list_of_dict_format(data_test)
 
 	return (
 		data_train_in, data_train_out, data_dev_in, data_dev_out,
@@ -272,6 +296,10 @@ def parse_Traffic911(N_input, N_output):
 	train_bkp = np.ones(data_train_in.shape[0]) * N_input
 	dev_bkp = np.ones(data_dev_in.shape[0]) * N_input
 	test_bkp = np.ones(data_test_in.shape[0]) * N_input
+
+	data_train = get_list_of_dict_format(data_train)
+	data_dev = get_list_of_dict_format(data_dev)
+	data_test = get_list_of_dict_format(data_test)
 
 	return (
 		data_train_in, data_train_out, data_dev_in, data_dev_out,
