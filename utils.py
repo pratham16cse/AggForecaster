@@ -200,6 +200,23 @@ def fit_with_indices(seq, K):
     agg_seq = np.concatenate((w, b), axis=1)
     return agg_seq
 
+def aggregate_seqs_sum(seqs, K):
+    agg_seqs = []
+    for i, seq in enumerate(seqs):
+        #print(i, len(seqs))
+        assert len(seq)%K == 0
+        agg_seq = [np.mean(seq[i:i+K], axis=0) for i in range(0, len(seq), K)]
+        agg_seqs.append(agg_seq)
+    return np.array(agg_seqs)
+
+def aggregate_seqs_slope(seqs, K):
+    agg_seqs = []
+    for seq in seqs:
+        assert len(seq)%K == 0
+        agg_seq = fit_slope_with_indices(seq, K)
+        agg_seqs.append(agg_seq)
+    return np.array(agg_seqs)
+
 def aggregate_data_wavelet(
 	wavelet_levels, train_input, train_target, dev_input, dev_target,
 	test_input, test_target
@@ -709,7 +726,7 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 		)
 
 	def aggregate_data(self, values):
-		return np.sum(values, axis=0)
+		return np.mean(values, axis=0)
 
 	def aggregate_data_slope(self, values):
 		x = np.expand_dims(np.arange(self.K), axis=1)

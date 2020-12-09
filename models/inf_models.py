@@ -27,19 +27,10 @@ class MSE(torch.nn.Module):
 	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict):
 		return self.base_models_dict[1](feats_in_dict[1], inputs_dict[1], feats_tgt_dict[1])
 
-class NLLsum(torch.nn.Module):
-	"""docstring for NLLsum"""
+class NLL(torch.nn.Module):
+	"""docstring for NLL"""
 	def __init__(self, base_models_dict):
-		super(NLLsum, self).__init__()
-		self.base_models_dict = base_models_dict
-
-	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict):
-		return self.base_models_dict[1](feats_in_dict[1], inputs_dict[1], feats_tgt_dict[1])
-
-class NLLls(torch.nn.Module):
-	"""docstring for NLLls"""
-	def __init__(self, base_models_dict):
-		super(NLLls, self).__init__()
+		super(NLL, self).__init__()
 		self.base_models_dict = base_models_dict
 
 	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict):
@@ -61,7 +52,7 @@ class DualTPP(torch.nn.Module):
 
 	def aggregate_seq_(self, seq, K):
 		assert seq.shape[0]%K == 0
-		agg_seq = np.array([[cp.sum(seq[i:i+K])] for i in range(0, seq.shape[0], K)])
+		agg_seq = np.array([[1./K * cp.sum(seq[i:i+K])] for i in range(0, seq.shape[0], K)])
 		return agg_seq
 
 	def log_prob(self, ex_preds, means, std):
@@ -288,7 +279,7 @@ class OPT_st(torch.nn.Module):
 
 	def aggregate_seq_(self, seq, K):
 		assert seq.shape[0]%K == 0
-		agg_seq = np.array([[cp.sum(seq[i:i+K])] for i in range(0, seq.shape[0], K)])
+		agg_seq = np.array([[1./K * cp.sum(seq[i:i+K])] for i in range(0, seq.shape[0], K)])
 		return agg_seq
 
 	def fit_slope_with_indices(self, seq, K):
@@ -443,8 +434,8 @@ class OPT_KL_st(OPT_st):
 
 	def aggregate_seq_(self, mu, var, K):
 		assert mu.shape[0]%K == 0
-		agg_mu = np.array([[cp.sum(mu[i:i+K])] for i in range(0, mu.shape[0], K)])
-		agg_var = np.array([[cp.sum(var[i:i+K])] for i in range(0, var.shape[0], K)])
+		agg_mu = np.array([[1./K * cp.sum(mu[i:i+K])] for i in range(0, mu.shape[0], K)])
+		agg_var = np.array([[1./(K*K) * cp.sum(var[i:i+K])] for i in range(0, var.shape[0], K)])
 		return agg_mu, agg_var
 
 	def fit_slope_with_indices(self, mu, var, K):

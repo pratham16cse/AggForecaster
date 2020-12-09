@@ -112,7 +112,7 @@ args.base_model_names = [
 args.inference_model_names = [
     'DILATE',
     'MSE',
-    'NLLsum',
+    'NLL',
 #    'NLLls',
     'seq2seqmse_dualtpp',
     'seq2seqnll_dualtpp',
@@ -142,8 +142,10 @@ if args.dataset_name in ['ECG5000']:
     args.teacher_forcing_ratio = 0.0
 
 base_models = {}
+base_models_preds = {}
 for name in args.base_model_names:
     base_models[name] = {}
+    base_models_preds[name] = {}
 inference_models = {}
 for name in args.inference_model_names:
     inference_models[name] = {}
@@ -161,6 +163,7 @@ dataset = utils.get_processed_data(args)
 # ----- Start: base models training ----- #
 for base_model_name in args.base_model_names:
     base_models[base_model_name] = {}
+    base_models_preds[base_model_name] = {}
 
     levels = args.K_list
     aggregate_methods = args.aggregate_methods
@@ -170,6 +173,7 @@ for base_model_name in args.base_model_names:
 
     for agg_method in aggregate_methods:
         base_models[base_model_name][agg_method] = {}
+        base_models_preds[base_model_name][agg_method] = {}
         level2data = dataset[agg_method]
 
         if agg_method in ['wavelet']:
@@ -246,6 +250,32 @@ for base_model_name in args.base_model_names:
                     pred_std.detach().numpy()
                 )
 
+                # Aggregate level 1 predictions using current aggregation.
+                base_models_preds[base_model_name][agg_method][level] = [pred_mu, pred_std]
+
+                dev_target = dev_target.detach().numpy()
+                pred_mu = pred_mu.detach().numpy()
+                pred_mu_bottom = base_models_preds[base_model_name][agg_method][1][0].detach().numpy()
+                pred_std_bottom = base_models_preds[base_model_name][agg_method][1][1].detach().numpy()
+                if level != 1:
+                    if agg_method in ['slope']:
+                        pred_mu_agg = utils.aggregate_seqs_slope(pred_mu_bottom, level)
+                    elif agg_method in ['sum']:
+                        pred_mu_agg = utils.aggregate_seqs_sum(pred_mu_bottom, level)
+                        #import ipdb
+                        #ipdb.set_trace()
+                else:
+                    pred_mu_agg = pred_mu_bottom
+
+                mae_agg = np.mean(np.abs(dev_target - pred_mu_agg))
+                mae_base = np.mean(np.abs(dev_target - pred_mu))
+                print('-------------------------------------------------------')
+                print('{0}, {1}, {2}, mae_base:{3}, mae_agg:{4}'.format(
+                    base_model_name, agg_method, level, mae_base, mae_agg)
+                )
+                print('-------------------------------------------------------')
+
+
             #import ipdb
             #ipdb.set_trace()
 # ----- End: base models training ----- #
@@ -305,24 +335,15 @@ for inf_model_name in args.inference_model_names:
         inf_norm = test_norm_dict['sum'][1]
         inf_test_feats_in_dict = test_feats_in_dict['sum']
         inf_test_feats_tgt_dict = test_feats_tgt_dict['sum']
-    elif inf_model_name in ['NLLsum']:
+    elif inf_model_name in ['NLL']:
         base_models_dict = base_models['seq2seqnll']['sum']
-        inf_net = inf_models.NLLsum(base_models_dict)
+        inf_net = inf_models.NLL(base_models_dict)
         inf_test_inputs_dict = test_inputs_dict['sum']
         inf_test_norm_dict = test_norm_dict['sum']
         inf_test_targets = test_targets_dict['sum'][1]
         inf_norm = test_norm_dict['sum'][1]
         inf_test_feats_in_dict = test_feats_in_dict['sum']
         inf_test_feats_tgt_dict = test_feats_tgt_dict['sum']
-    elif inf_model_name in ['NLLls']:
-        base_models_dict = base_models['seq2seqnll']['leastsquare']
-        inf_net = inf_models.NLLls(base_models_dict)
-        inf_test_inputs_dict = test_inputs_dict['leastsquare']
-        inf_test_norm_dict = test_norm_dict['leastsquare']
-        inf_test_targets = test_targets_dict['sum'][1]
-        inf_norm = test_norm_dict['sum'][1]
-        inf_test_feats_in_dict = test_feats_in_dict['leastsquare']
-        inf_test_feats_tgt_dict = test_feats_tgt_dict['leastsquare']
     elif inf_model_name in ['seq2seqmse_dualtpp']:
         base_models_dict = base_models['seq2seqmse']['sum']
         inf_net = inf_models.DualTPP(args.K_list, base_models_dict)

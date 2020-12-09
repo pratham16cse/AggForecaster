@@ -194,8 +194,8 @@ def parse_Taxi(N_input, N_output):
 			print(loc_id, len(timestamps), len(timestamps) / num_hrs, len(counts))
 			loc2counts[loc_id] = counts
 
-			start_ts = pd.Timestamp(loc_df['timestamp'][0], unit='s')
-			loc2startts = start_ts
+			#start_ts = pd.Timestamp(loc_df['timestamp'][0], unit='s')
+			#loc2startts = start_ts
 
 	data = np.array([val for val in loc2counts.values()])
 	data = np.expand_dims(data, axis=2)
