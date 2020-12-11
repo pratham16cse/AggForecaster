@@ -62,7 +62,8 @@ def write_aggregate_preds_to_file(
 def normalize(data, norm=None):
 	if norm is None:
 		norm = np.mean(data, axis=(0, 1))
-		#norm = np.quantile(data, axis=(0, 1), 0.90)
+		#norm = np.quantile(data, 0.90, axis=(0, 1))
+		#norm = np.std(data, axis=(0,1))
 
 	data_norm = data * 1.0/norm 
 	#data_norm = data * 10.0/norm
@@ -478,17 +479,17 @@ def create_hierarchical_data(
 		#	drop_last=False, num_workers=1
 		#)
 
-		_, norm = normalize(np.array([[s for seq in data_train for s in seq['target']]]))
-		if not args.normalize:
-			norm = np.ones_like(norm)
+		#_, norm = normalize(np.array([[s for seq in data_train for s in seq['target']]]))
+		#if not args.normalize:
+		#	norm = np.ones_like(norm)
 
 		lazy_dataset_train = TimeSeriesDataset(
 			data_train, args.N_input, args.N_output, int(args.N_output/3),
 			aggregation_type, K,
-			input_norm=norm, target_norm=norm,
 			use_time_features=args.use_time_features,
 			wavelet_levels=wavelet_levels
 		)
+		norm = lazy_dataset_train.input_norm
 		lazy_dataset_dev = TimeSeriesDataset(
 			data_dev, args.N_input, args.N_output, args.N_output,
 			aggregation_type, K,
@@ -532,6 +533,7 @@ def create_hierarchical_data(
 			'trainloader': trainloader,
 			'devloader': devloader,
 			'testloader': testloader,
+			'N_input': lazy_dataset_test.enc_len,
 			'N_output': lazy_dataset_test.dec_len,
 			'input_size': lazy_dataset_test.input_size,
 			'output_size': lazy_dataset_test.output_size,
@@ -544,7 +546,7 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 	"""docstring for TimeSeriesDataset"""
 	def __init__(
 		self, data, enc_len, dec_len, stride, aggregation_type, K,
-		input_norm, target_norm, use_time_features, wavelet_levels=None
+		use_time_features, input_norm=None, target_norm=None, wavelet_levels=None
 	):
 		super(TimeSeriesDataset, self).__init__()
 
@@ -569,6 +571,34 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 			for j in range(0, len(data[i]['target']), stride):
 				if j+self._enc_len+self._dec_len <= len(data[i]['target']):
 					self.indices.append((i, j))
+
+		if self.input_norm is None:
+			data_agg = []
+			for i in range(0, len(data)):
+				ex = self.data[i]['target']
+				ex = ex[:len(ex)-len(ex)%self.K]
+				if self.K != 1:
+					if self.aggregation_type in ['sum']:
+						ex_agg = map(
+							self.aggregate_data,
+							np.split(ex, np.arange(self.K, len(ex), self.K), axis=0),
+						)
+						ex_agg = list(ex_agg)
+
+					elif self.aggregation_type in ['slope']:
+						ex_agg = map(
+							self.aggregate_data_slope,
+							np.split(ex, np.arange(self.K, len(ex), self.K), axis=0),
+						)
+						ex_agg = list(ex_agg)
+				else:
+					ex_agg = ex
+
+				data_agg.append(np.array(ex_agg))
+			data_agg = np.array(data_agg)
+
+			_, self.input_norm = normalize(data_agg)
+			self.target_norm = self.input_norm
 
 		if self.use_time_features:
 			multiple, granularity = get_granularity(data[0]['freq_str'])
@@ -877,22 +907,22 @@ def get_processed_data(args):
 	#	train_bkp, dev_bkp, test_bkp,
 	#	aggregation_type='wavelet'
 	#)
-	K2data_wavelet = create_hierarchical_data(
-		args, X_train_input, X_train_target,
-		X_dev_input, X_dev_target,
-		X_test_input, X_test_target,
-		train_bkp, dev_bkp, test_bkp,
-		data_train, data_dev, data_test,
-		aggregation_type='wavelet'
-	)
-	print('wavelet done')
+	#K2data_wavelet = create_hierarchical_data(
+	#	args, X_train_input, X_train_target,
+	#	X_dev_input, X_dev_target,
+	#	X_test_input, X_test_target,
+	#	train_bkp, dev_bkp, test_bkp,
+	#	data_train, data_dev, data_test,
+	#	aggregation_type='wavelet'
+	#)
+	#print('wavelet done')
 
 	dataset = dict()
 	dataset['sum'] = K2data_sum
 	#dataset['leastsquare'] = K2data_ls
 	#dataset['sumwithtrend'] = K2data_st
 	dataset['slope'] = K2data_slope
-	dataset['wavelet'] = K2data_wavelet
+	#dataset['wavelet'] = K2data_wavelet
 
 	return dataset
 	#return {

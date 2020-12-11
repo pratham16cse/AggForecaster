@@ -80,7 +80,8 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1):
     metric_crps = np.array(losses_crps).mean()
 
     print('Eval dilateloss= ', metric_dilate, \
-        'mse= ', metric_mse, ' dtw= ', metric_dtw, ' tdi= ', metric_tdi)
+        'mse= ', metric_mse, ' dtw= ', metric_dtw, ' tdi= ', metric_tdi,
+        'crps=', metric_crps)
 
     return (
         inputs, target, pred_mu, pred_std,
@@ -91,7 +92,7 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1):
 def eval_inf_model(
     args, net, inf_test_inputs_dict, inf_test_norm_dict, target, norm,
     inf_test_feats_in_dict, inf_test_feats_tgt_dict,
-    gamma, verbose=1):
+    gamma, inf_test_targets_dict=None, verbose=1):
     criterion = torch.nn.MSELoss()
     criterion_mae = torch.nn.L1Loss()
     losses_mse = []
@@ -103,7 +104,8 @@ def eval_inf_model(
     batch_size, N_output = target.shape[0:2]
     pred_mu, pred_std = net(
         inf_test_feats_in_dict, inf_test_inputs_dict,
-        inf_test_feats_tgt_dict, inf_test_norm_dict
+        inf_test_feats_tgt_dict, inf_test_norm_dict,
+        targets_dict=inf_test_targets_dict,
     )
 
     # Unnormalize

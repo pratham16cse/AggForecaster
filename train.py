@@ -8,7 +8,7 @@ import time
 
 def train_model(
     args, model_name, net, trainloader, devloader, testloader, norm,
-    saved_models_path, output_dir,
+    saved_models_path, output_dir, writer,
     eval_every=50, verbose=1, Lambda=1
 ):
 
@@ -75,6 +75,14 @@ def train_model(
             if i>=100:
                 break
 
+        # ...log the epoch_loss
+        if model_name in ['seq2seqdilate']:
+            writer.add_scalar('training_loss/DILATE', epoch_loss, curr_epoch)
+        if model_name in ['seq2seqmse']:
+            writer.add_scalar('training_loss/MSE', epoch_loss, curr_epoch)
+        if model_name in ['seq2seqnll']:
+            writer.add_scalar('training_loss/NLL', epoch_loss, curr_epoch)
+
 
         if(verbose):
             if (curr_epoch % args.print_every == 0):
@@ -103,6 +111,13 @@ def train_model(
                                 }
                     torch.save(state_dict, saved_models_path)
                     print('Model saved at epoch', curr_epoch)
+
+                # ...log the metrics
+                if model_name in ['seq2seqdilate']:
+                    writer.add_scalar('dev_metrics/dilate', metric_dilate, curr_epoch)
+                writer.add_scalar('dev_metrics/crps', metric_crps, curr_epoch)
+                writer.add_scalar('dev_metrics/mae', metric_mae, curr_epoch)
+                writer.add_scalar('dev_metrics/mse', metric_mse, curr_epoch)
 
     print('Best model found at epoch', best_epoch)
     #net.load_state_dict(torch.load(saved_models_path))

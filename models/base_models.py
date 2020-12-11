@@ -3,6 +3,102 @@ import torch.nn as nn
 import torch.nn.functional as F
 import random
 
+
+class NetFullyConnected(torch.nn.Module):
+    """docstring for NetFullyConnected"""
+    def __init__(
+        self, input_length, input_size, target_length, output_size,
+        hidden_size, num_hidden_layers, fc_units,
+        point_estimates, deep_std, variance_net, second_moment,
+        device
+    ):
+        super(NetFullyConnected, self).__init__()
+
+        self.point_estimates = point_estimates
+        self.deep_std = deep_std
+        self.variance_net = variance_net
+        self.second_moment = second_moment
+        self.device = device
+
+        self.input_size = input_size
+        self.input_length = input_length
+        self.output_size = output_size
+        self.target_length = target_length
+
+        self.input_dim = self.input_size*self.input_length
+        self.output_dim = self.output_size*self.target_length
+
+        self.hidden_size = hidden_size
+        self.fc_units = fc_units
+        self.num_hidden_layers = num_hidden_layers
+
+        self.layers = self.get_fully_connected_net()
+        self.fc = nn.Linear(self.hidden_size, self.fc_units)
+        self.out_mean = nn.Linear(self.fc_units, self.output_dim)
+        if self.variance_net:
+            self.layers_var = self.get_fully_connected_net()
+            self.fc_var = nn.Linear(self.hidden_size, self.fc_units)
+        if not self.deep_std:
+            self.out_std = nn.Linear(self.fc_units, self.output_dim)
+        else:
+            self.out_std_1 = nn.Linear(self.fc_units, self.fc_units)
+            self.out_std_2 = nn.Linear(self.fc_units, self.fc_units)
+            self.out_std_3 = nn.Linear(self.fc_units, self.output_dim)
+
+    def get_fully_connected_net(self):
+        layers = nn.ModuleList()
+        layers.append(nn.Linear(self.input_dim, self.hidden_size))
+        for i in range(self.num_hidden_layers):
+            layers.append(nn.Linear(self.hidden_size, self.hidden_size))
+        return layers
+
+    def get_std(self, output, means):
+        if not self.deep_std:
+            stds = self.out_std(output)
+            stds = F.softplus(stds) + 1e-3
+        else:
+            stds_1 = F.relu(self.out_std_1(output))
+            stds_2 = F.relu(self.out_std_2(stds_1))
+            stds = F.softplus(self.out_std_3(stds_2)) + 1e-3
+
+        if self.second_moment:
+            stds = stds - torch.pow(means, 2)
+            stds = torch.sqrt(F.softplus(stds)) + 1e-3
+
+        return stds
+
+    def forward(self, feats_in, x_in, feats_tgt, x_tgt=None):
+        '''
+        Parameters of forward(..) are kept same as that of Net_GRU for
+        code sharing. Other parameters tha x_in are ignored.
+        '''
+        x_in_ = x_in.view(-1, self.input_dim)
+
+        output = x_in_
+        for i, layer in enumerate(self.layers):
+            output = layer(output)
+            output = F.relu(output)
+        output = F.relu( self.fc(output) )
+        means = self.out_mean(output)
+
+        if self.variance_net:
+            output_var = x_in_
+            for i, layer in enumerate(self.layers_var):
+                output_var = layer(output_var)
+                output_var = F.relu(output_var)
+            output_var = F.relu( self.fc_var(output_var) )
+
+        if self.variance_net:
+            stds = self.get_std(output_var, means)
+        else:
+            stds = self.get_std(output, means)
+
+        means = means.view(-1, self.target_length, self.output_size)
+        stds = stds.view(-1, self.target_length, self.output_size)
+
+        return means, stds
+
+
 class EncoderRNN(torch.nn.Module):
     def __init__(self,input_size, hidden_size, num_grulstm_layers, batch_size):
         super(EncoderRNN, self).__init__()  

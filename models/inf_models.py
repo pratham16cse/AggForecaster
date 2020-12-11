@@ -15,7 +15,7 @@ class DILATE(torch.nn.Module):
 		super(DILATE, self).__init__()
 		self.base_models_dict = base_models_dict
 
-	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict):
+	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict, targets_dict=None):
 		return self.base_models_dict[1](feats_in_dict[1], inputs_dict[1], feats_tgt_dict[1])
 
 class MSE(torch.nn.Module):
@@ -24,7 +24,7 @@ class MSE(torch.nn.Module):
 		super(MSE, self).__init__()
 		self.base_models_dict = base_models_dict
 
-	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict):
+	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict, targets_dict=None):
 		return self.base_models_dict[1](feats_in_dict[1], inputs_dict[1], feats_tgt_dict[1])
 
 class NLL(torch.nn.Module):
@@ -33,7 +33,7 @@ class NLL(torch.nn.Module):
 		super(NLL, self).__init__()
 		self.base_models_dict = base_models_dict
 
-	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict):
+	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict, targets_dict=None):
 		return self.base_models_dict[1](feats_in_dict[1], inputs_dict[1], feats_tgt_dict[1])
 
 class DualTPP(torch.nn.Module):
@@ -100,7 +100,7 @@ class DualTPP(torch.nn.Module):
 		return ex_preds.value
 
 
-	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict):
+	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict, targets_dict=None):
 		bottom_level_model = self.base_models_dict[1]
 
 		norm_dict_np = dict()
@@ -113,6 +113,9 @@ class DualTPP(torch.nn.Module):
 			inputs = inputs_dict[level]
 			feats_in, feats_tgt = feats_in_dict[level], feats_tgt_dict[level]
 			means, stds = model(feats_in, inputs, feats_tgt)
+
+			if targets_dict is not None and level != 1:
+				means = targets_dict[level]
 
 			if model.point_estimates:
 				stds = torch.ones_like(means)
@@ -221,7 +224,7 @@ class OPT_ls(torch.nn.Module):
 		return ex_preds.value
 
 
-	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict):
+	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict, targets_dict=None):
 
 		norm_dict_np = dict()
 		for lvl in norm_dict.keys():
@@ -233,6 +236,9 @@ class OPT_ls(torch.nn.Module):
 			inputs = inputs_dict[level]
 			feats_in, feats_tgt = feats_in_dict[level], feats_tgt_dict[level]
 			means, stds = model(feats_in, inputs, feats_tgt)
+
+			if targets_dict is not None and level != 1:
+				means = targets_dict[level]
 
 			if model.point_estimates:
 				stds = torch.ones_like(means)
@@ -261,7 +267,7 @@ class OPT_ls(torch.nn.Module):
 
 class OPT_st(torch.nn.Module):
 	"""docstring for OPT_st"""
-	def __init__(self, K_list, base_models_dict, intercept_type='intercept'):
+	def __init__(self, K_list, base_models_dict, disable_sum=False, intercept_type='intercept'):
 		'''
 		K_list: list
 			list of K-values used for aggregation
@@ -275,6 +281,7 @@ class OPT_st(torch.nn.Module):
 		self.K_list = K_list
 		self.base_models_dict = base_models_dict
 		self.intercept_type = intercept_type
+		self.disable_sum = disable_sum
 
 
 	def aggregate_seq_(self, seq, K):
@@ -329,23 +336,24 @@ class OPT_st(torch.nn.Module):
 			else:
 				opt_loss += lvl_loss
 
-		for lvl, params in params_dict['sum'].items():
-			if lvl==1:
-				lvl_ex_preds = ex_preds
-			else:
-				lvl_ex_preds, _ = normalize(
-					self.aggregate_seq_(
-						unnormalize(ex_preds, norm_dict['sum'][1]),
-						lvl
-					),
-					norm_dict['sum'][lvl]
+		if not self.disable_sum:
+			for lvl, params in params_dict['sum'].items():
+				if lvl==1:
+					lvl_ex_preds = ex_preds
+				else:
+					lvl_ex_preds, _ = normalize(
+						self.aggregate_seq_(
+							unnormalize(ex_preds, norm_dict['sum'][1]),
+							lvl
+						),
+						norm_dict['sum'][lvl]
+					)
+				lvl_loss = self.log_prob(
+					lvl_ex_preds,
+					params_dict['sum'][lvl][0].detach().numpy(),
+					params_dict['sum'][lvl][1].detach().numpy()
 				)
-			lvl_loss = self.log_prob(
-				lvl_ex_preds,
-				params_dict['sum'][lvl][0].detach().numpy(),
-				params_dict['sum'][lvl][1].detach().numpy()
-			)
-			opt_loss += lvl_loss
+				opt_loss += lvl_loss
 
 		objective = cp.Minimize(opt_loss)
 
@@ -366,7 +374,7 @@ class OPT_st(torch.nn.Module):
 		return ex_preds.value
 
 
-	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict):
+	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict, targets_dict=None):
 		'''
 		inputs_dict: [aggregation method][level]
 		norm_dict: [aggregation method][level]
@@ -388,7 +396,10 @@ class OPT_st(torch.nn.Module):
 					inputs = inputs_dict[agg_method][level]
 					feats_in, feats_tgt = feats_in_dict[agg_method][level], feats_tgt_dict[agg_method][level]
 					means, stds = model(feats_in, inputs, feats_tgt)
-	
+
+					if targets_dict is not None and level != 1:
+						means = targets_dict[agg_method][level]
+
 					if model.point_estimates:
 						stds = torch.ones_like(means)
 					params = [means, stds]
@@ -548,7 +559,7 @@ class OPT_KL_st(OPT_st):
 		return ex_mu.value, np.sqrt(ex_var_np)
 
 
-	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict):
+	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict, targets_dict=None):
 		'''
 		inputs_dict: [aggregation method][level]
 		norm_dict: [aggregation method][level]
@@ -570,6 +581,9 @@ class OPT_KL_st(OPT_st):
 					feats_in, feats_tgt = feats_in_dict[agg_method][level], feats_tgt_dict[agg_method][level]
 					means, stds = model(feats_in, inputs, feats_tgt)
 	
+					if targets_dict is not None and level != 1:
+						means = targets_dict[agg_method][level]
+
 					if model.point_estimates:
 						stds = torch.ones_like(means)
 					params = [means, stds]
@@ -577,7 +591,8 @@ class OPT_KL_st(OPT_st):
 
 		all_preds_mu, all_preds_std = [], []
 		for i in range(params_dict['sum'][1][0].size()[0]):
-			print(i)
+			if i%100==0:
+				print(i)
 			ex_params_dict = dict()
 			for agg_method in params_dict.keys():
 				ex_params_dict[agg_method] = dict()
@@ -609,7 +624,7 @@ class WAVELET(torch.nn.Module):
 		self.base_models_dict = base_models_dict
 		self.wavelet_levels = wavelet_levels
 		
-	def forward(self, inputs_dict, norm_dict):
+	def forward(self, inputs_dict, norm_dict, targets_dict=None):
 		all_levels_preds = []
 		for lvl in range(2, self.wavelet_levels+3):
 			lvl_preds, _ = self.base_models_dict['wavelet'][lvl](inputs_dict['wavelet'][lvl])
