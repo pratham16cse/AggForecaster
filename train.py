@@ -37,7 +37,7 @@ def train_model(
         epoch_loss = 0.
         for i, data in enumerate(trainloader, 0):
             st = time.time()
-            inputs, target, feats_in, feats_tgt, _ = data
+            inputs, target, feats_in, feats_tgt, _, _ = data
             inputs = torch.tensor(inputs, dtype=torch.float32).to(args.device)
             target = torch.tensor(target, dtype=torch.float32).to(args.device)
             feats_in = torch.tensor(feats_in, dtype=torch.float32).to(args.device)

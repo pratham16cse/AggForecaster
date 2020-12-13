@@ -199,7 +199,7 @@ for base_model_name in args.base_model_names:
             N_output = level2data[level]['N_output']
             input_size = level2data[level]['input_size']
             output_size = level2data[level]['output_size']
-            norm = level2data[level]['norm']
+            dev_norm = level2data[level]['dev_norm']
 
             if base_model_name in ['seq2seqmse', 'seq2seqdilate']:
                 point_estimates = True
@@ -250,7 +250,7 @@ for base_model_name in args.base_model_names:
             else:
                 train_model(
                     args, base_model_name, net_gru,
-                    trainloader, devloader, testloader, norm,
+                    trainloader, devloader, testloader, dev_norm,
                     saved_models_path, output_dir, writer, eval_every=50, verbose=1
                 )
 
@@ -335,19 +335,20 @@ for agg_method in args.aggregate_methods:
 
     for level in levels:
         gen_test = iter(dataset[agg_method][level]['testloader'])
-        test_inputs, test_targets, test_feats_in, test_feats_tgt, breaks = next(gen_test)
+        test_inputs, test_targets, test_feats_in, test_feats_tgt, test_norm, breaks = next(gen_test)
 
         test_inputs  = torch.tensor(test_inputs, dtype=torch.float32).to(args.device)
         test_targets = torch.tensor(test_targets, dtype=torch.float32).to(args.device)
         test_feats_in  = torch.tensor(test_feats_in, dtype=torch.float32).to(args.device)
         test_feats_tgt = torch.tensor(test_feats_tgt, dtype=torch.float32).to(args.device)
+        test_norm = torch.tensor(test_norm, dtype=torch.float32).to(args.device)
 
         test_inputs_dict[agg_method][level] = test_inputs
         test_targets_dict[agg_method][level] = test_targets
         test_targets_dict_leak[agg_method][level], _ = utils.normalize(
-            test_targets, dataset[agg_method][level]['norm']
+            test_targets, test_norm
         )
-        test_norm_dict[agg_method][level] = dataset[agg_method][level]['norm']
+        test_norm_dict[agg_method][level] = test_norm
         test_feats_in_dict[agg_method][level] = test_feats_in
         test_feats_tgt_dict[agg_method][level] = test_feats_tgt
 #criterion = torch.nn.MSELoss()

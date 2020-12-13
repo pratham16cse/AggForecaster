@@ -105,7 +105,7 @@ class DualTPP(torch.nn.Module):
 
 		norm_dict_np = dict()
 		for lvl in norm_dict.keys():
-			norm_dict_np[lvl] = np.expand_dims(norm_dict[lvl].detach().numpy(), axis=0)
+			norm_dict_np[lvl] = norm_dict[lvl].detach().numpy()
 
 		params_dict = dict()
 		for level in self.K_list:
@@ -127,10 +127,12 @@ class DualTPP(torch.nn.Module):
 		for i in range(params_dict[1][0].size()[0]):
 			#print(i)
 			ex_params_dict = dict()
+			ex_norm_dict = dict()
 			for lvl, params in params_dict.items():
 				ex_params_dict[lvl] = [params_dict[lvl][0][i], params_dict[lvl][1][i]]
+				ex_norm_dict[lvl] = norm_dict_np[lvl][i]
 
-			ex_preds_opt = self.optimize(ex_params_dict, norm_dict_np)
+			ex_preds_opt = self.optimize(ex_params_dict, ex_norm_dict)
 			all_preds_mu.append(ex_preds_opt)
 			all_preds_std.append(params_dict[1][1][i])
 
@@ -384,7 +386,7 @@ class OPT_st(torch.nn.Module):
 		for agg_method in norm_dict.keys():
 			norm_dict_np[agg_method] = dict()
 			for lvl in norm_dict[agg_method].keys():
-				norm_dict_np[agg_method][lvl] = np.expand_dims(norm_dict[agg_method][lvl].detach().numpy(), axis=0)
+				norm_dict_np[agg_method][lvl] = norm_dict[agg_method][lvl].detach().numpy()
 
 		params_dict = dict()
 		for agg_method in self.base_models_dict.keys():
@@ -410,14 +412,17 @@ class OPT_st(torch.nn.Module):
 		for i in range(params_dict['sum'][1][0].size()[0]):
 			#print(i)
 			ex_params_dict = dict()
+			ex_norm_dict = dict()
 			for agg_method in params_dict.keys():
 				ex_params_dict[agg_method] = dict()
+				ex_norm_dict[agg_method] = dict()
 				for lvl in params_dict[agg_method].keys():
 					ex_params_dict[agg_method][lvl] = [params_dict[agg_method][lvl][0][i], params_dict[agg_method][lvl][1][i]]
+					ex_norm_dict[agg_method][lvl] = norm_dict_np[agg_method][lvl][i]
 
 			#import ipdb
 			#ipdb.set_trace()
-			ex_preds_opt = self.optimize(ex_params_dict, norm_dict_np)
+			ex_preds_opt = self.optimize(ex_params_dict, ex_norm_dict)
 			all_preds_mu.append(ex_preds_opt)
 			all_preds_std.append(params_dict['sum'][1][1][i])
 
@@ -569,7 +574,7 @@ class OPT_KL_st(OPT_st):
 		for agg_method in norm_dict.keys():
 			norm_dict_np[agg_method] = dict()
 			for lvl in norm_dict[agg_method].keys():
-				norm_dict_np[agg_method][lvl] = np.expand_dims(norm_dict[agg_method][lvl].detach().numpy(), axis=0)
+				norm_dict_np[agg_method][lvl] = norm_dict[agg_method][lvl].detach().numpy()
 
 		params_dict = dict()
 		for agg_method in self.base_models_dict.keys():
@@ -594,14 +599,17 @@ class OPT_KL_st(OPT_st):
 			if i%100==0:
 				print(i)
 			ex_params_dict = dict()
+			ex_norm_dict = dict()
 			for agg_method in params_dict.keys():
 				ex_params_dict[agg_method] = dict()
+				ex_norm_dict[agg_method] = dict()
 				for lvl in params_dict[agg_method].keys():
 					ex_params_dict[agg_method][lvl] = [params_dict[agg_method][lvl][0][i], params_dict[agg_method][lvl][1][i]]
+					ex_norm_dict[agg_method][lvl] = norm_dict_np[agg_method][lvl][i]
 
 			#import ipdb
 			#ipdb.set_trace()
-			ex_mu_opt, ex_std_opt = self.optimize(ex_params_dict, norm_dict_np)
+			ex_mu_opt, ex_std_opt = self.optimize(ex_params_dict, ex_norm_dict)
 			all_preds_mu.append(ex_mu_opt)
 			all_preds_std.append(ex_std_opt)
 

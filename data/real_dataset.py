@@ -340,10 +340,11 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 
 
 	data_train, data_dev, data_test = [], [], []
+	dev_tsid_map, test_tsid_map = {}, {}
 	data_train_in, data_train_out = [], []
 	data_dev_in, data_dev_out = [], []
 	data_test_in, data_test_out = [], []
-	for entry in data:
+	for i, entry in enumerate(data, 0):
 		entry_train = dict()
 		entry_dev = dict()
 
@@ -366,6 +367,7 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 		entry_dev['freq_str'] = metadata['time_granularity']
 		data_train.append(entry_train)
 		data_dev.append(entry_dev)
+		dev_tsid_map[i] = i # Only one dev instance per train series
 
 		batch_train_in, batch_train_out = create_forecast_io_seqs(seq_train, N_input, N_output, int(N_output/3))
 		batch_dev_in, batch_dev_out = create_forecast_io_seqs(seq_dev, N_input, N_output, N_output)
@@ -374,7 +376,7 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 		data_dev_in.append(batch_dev_in)
 		data_dev_out.append(batch_dev_out)
 
-	for entry in data_test_full:
+	for i, entry in enumerate(data_test_full, 0):
 		entry_test = dict()
 		seq_test = entry['target'][ -(N_input+N_output) : ]
 		seq_test = np.expand_dims(seq_test, axis=-1)
@@ -386,6 +388,7 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 		entry_test['start'] = start_test
 		entry_test['freq_str'] = metadata['time_granularity']
 		data_test.append(entry_test)
+		test_tsid_map[i] = i%len(data) # Multiple test instances per train series.
 
 		batch_test_in, batch_test_out = create_forecast_io_seqs(seq_test, N_input, N_output, N_output)
 		data_test_in.append(batch_test_in)
@@ -405,5 +408,5 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 	return (
 		data_train_in, data_train_out, data_dev_in, data_dev_out,
 		data_test_in, data_test_out, train_bkp, dev_bkp, test_bkp,
-		data_train, data_dev, data_test
+		data_train, data_dev, data_test, dev_tsid_map, test_tsid_map
 	)

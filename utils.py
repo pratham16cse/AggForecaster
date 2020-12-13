@@ -61,12 +61,15 @@ def write_aggregate_preds_to_file(
 
 def normalize(data, norm=None):
 	if norm is None:
-		norm = np.mean(data, axis=(0, 1))
-		#norm = np.quantile(data, 0.90, axis=(0, 1))
-		#norm = np.std(data, axis=(0,1))
+		#norm = np.mean(data, axis=(0, 1))
+		#norm = np.quantile(data, 0.90, axis=(0, 1)) # 0.9 quantile of entire data
+		#norm = np.std(data, axis=(0,1)) # std of entire data
+		norm = np.std(data, axis=(1), keepdims=True) # per-series std
 
 	data_norm = data * 1.0/norm 
 	#data_norm = data * 10.0/norm
+	#import ipdb
+	#ipdb.set_trace()
 	return data_norm, norm
 
 def unnormalize(data, norm):
@@ -413,6 +416,7 @@ def create_hierarchical_data(
 	args, train_input, train_target, dev_input, dev_target,
 	test_input, test_target, train_bkp, dev_bkp, test_bkp,
 	data_train, data_dev, data_test,
+	dev_tsid_map, test_tsid_map,
 	aggregation_type
 ):
 
@@ -490,18 +494,28 @@ def create_hierarchical_data(
 			wavelet_levels=wavelet_levels
 		)
 		norm = lazy_dataset_train.input_norm
+		dev_norm, test_norm = [], []
+		for i in range(len(data_dev)):
+			dev_norm.append(norm[dev_tsid_map[i]])
+		for i in range(len(data_test)):
+			test_norm.append(norm[test_tsid_map[i]])
+		dev_norm, test_norm = np.stack(dev_norm), np.stack(test_norm)
+		#import ipdb
+		#ipdb.set_trace()
 		lazy_dataset_dev = TimeSeriesDataset(
 			data_dev, args.N_input, args.N_output, args.N_output,
 			aggregation_type, K,
-			input_norm=norm, target_norm=np.ones_like(norm),
+			input_norm=dev_norm, target_norm=np.ones_like(dev_norm),
 			use_time_features=args.use_time_features,
+			tsid_map=dev_tsid_map,
 			wavelet_levels=wavelet_levels
 		)
 		lazy_dataset_test = TimeSeriesDataset(
 			data_test, args.N_input, args.N_output, args.N_output,
 			aggregation_type, K,
-			input_norm=norm, target_norm=np.ones_like(norm),
+			input_norm=test_norm, target_norm=np.ones_like(test_norm),
 			use_time_features=args.use_time_features,
+			tsid_map=test_tsid_map,
 			wavelet_levels=wavelet_levels
 		)
 		trainloader = DataLoader(
@@ -522,13 +536,15 @@ def create_hierarchical_data(
 		#import ipdb
 		#ipdb.set_trace()
 
-		#for i, d in enumerate(lazy_dataset_train):
-		#	print(d[0].shape, d[1].shape)
-		#	if i>10:
-		#		break
-		#import ipdb
-		#ipdb.set_trace()
-		norm = torch.FloatTensor(norm)
+		#for i, d in enumerate(devloader):
+		#	inputs, target, feats_in, feats_tgt, _ = data
+			#print(d[0].shape, d[1].shape)
+			#if i>10:
+			#	break
+		#	print(inputs.shape, target.shape)
+			#import ipdb
+			#ipdb.set_trace()
+		#norm = torch.FloatTensor(norm)
 		K2data[K] = {
 			'trainloader': trainloader,
 			'devloader': devloader,
@@ -537,7 +553,9 @@ def create_hierarchical_data(
 			'N_output': lazy_dataset_test.dec_len,
 			'input_size': lazy_dataset_test.input_size,
 			'output_size': lazy_dataset_test.output_size,
-			'norm': norm
+			'train_norm': norm,
+			'dev_norm': dev_norm,
+			'test_norm': test_norm
 		}
 
 	return K2data
@@ -546,7 +564,8 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 	"""docstring for TimeSeriesDataset"""
 	def __init__(
 		self, data, enc_len, dec_len, stride, aggregation_type, K,
-		use_time_features, input_norm=None, target_norm=None, wavelet_levels=None
+		use_time_features, tsid_map=None, input_norm=None, target_norm=None,
+		wavelet_levels=None
 	):
 		super(TimeSeriesDataset, self).__init__()
 
@@ -564,6 +583,7 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 		self.input_norm = input_norm
 		self.target_norm = target_norm
 		self.use_time_features = use_time_features
+		self.tsid_map = tsid_map
 		self.wavelet_levels = wavelet_levels
 
 		self.indices = []
@@ -703,8 +723,13 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 			ex_target = torch.FloatTensor(ex_target_agg)
 
 		#print('after', ex_input.shape, ex_target.shape, ts_id, pos_id)
-		ex_input, _ = normalize(ex_input, self.input_norm)
-		ex_target, _ = normalize(ex_target, self.target_norm)
+		if self.tsid_map is None:
+			mapped_id = ts_id
+		else:
+			mapped_id = self.tsid_map[ts_id]
+		ex_input, _ = normalize(ex_input, self.input_norm[mapped_id])
+		ex_target, _ = normalize(ex_target, self.target_norm[mapped_id])
+		ex_norm = self.input_norm[mapped_id]
 
 		if self.use_time_features:
 			#st = time.time()
@@ -752,6 +777,7 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 		return (
 			ex_input, ex_target,
 			ex_input_feats, ex_target_feats,
+			ex_norm,
 			torch.FloatTensor([ts_id, pos_id])
 		)
 
@@ -857,7 +883,8 @@ def get_processed_data(args):
 			X_dev_input, X_dev_target,
 			X_test_input, X_test_target,
 			train_bkp, dev_bkp, test_bkp,
-			data_train, data_dev, data_test
+			data_train, data_dev, data_test,
+			dev_tsid_map, test_tsid_map
 		) = parse_gc_datasets(args.dataset_name, args.N_input, args.N_output)
 
 	if args.use_time_features:
@@ -870,6 +897,7 @@ def get_processed_data(args):
 		X_test_input, X_test_target,
 		train_bkp, dev_bkp, test_bkp,
 		data_train, data_dev, data_test,
+		dev_tsid_map, test_tsid_map,
 		aggregation_type='sum'
 	)
 	print('sum done')
@@ -897,6 +925,7 @@ def get_processed_data(args):
 		X_test_input, X_test_target,
 		train_bkp, dev_bkp, test_bkp,
 		data_train, data_dev, data_test,
+		dev_tsid_map, test_tsid_map,
 		aggregation_type='slope'
 	)
 	print('slope done')
