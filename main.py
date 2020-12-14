@@ -40,8 +40,8 @@ parser.add_argument('--saved_models_dir', type=str,
                     help='Path to store all saved models', default='saved_models')
 parser.add_argument('--ignore_ckpt', action='store_true', default=False,
                     help='Start the training without loading the checkpoint')
-parser.add_argument('--normalize', action='store_true', default=False,
-                    help='Normalize the dataset using average')
+parser.add_argument('--normalize', type=str, default='same',
+                    help='Normalization type (avg, avg_per_series, quantile90, std)')
 
 parser.add_argument('--epochs', type=int, default=500,
                     help='number of training epochs')

@@ -59,12 +59,21 @@ def write_aggregate_preds_to_file(
 		np.save(os.path.join(output_dir, agg_str + sep + 'inputs'), inputs)
 		np.save(os.path.join(output_dir, agg_str + sep + 'targets'), targets)
 
-def normalize(data, norm=None):
+def normalize(data, norm=None, norm_type=None):
 	if norm is None:
-		#norm = np.mean(data, axis=(0, 1))
-		#norm = np.quantile(data, 0.90, axis=(0, 1)) # 0.9 quantile of entire data
-		#norm = np.std(data, axis=(0,1)) # std of entire data
-		norm = np.std(data, axis=(1), keepdims=True) # per-series std
+		assert norm_type is not None
+
+		if norm_type in ['same']:
+			norm = np.ones_like(np.mean(data, axis=(1), keepdims=True)) # No normalization
+		if norm_type in ['avg']:
+			norm = np.mean(data, axis=(0, 1))
+			norm = np.ones_like(np.mean(data, axis=(1), keepdims=True)) * norm # mean of entire data
+		elif norm_type in ['avg_per_series']:
+			norm = np.std(data, axis=(1), keepdims=True) # per-series std
+		elif norm_type in ['quantile90']:
+			norm = np.quantile(data, 0.90, axis=(0, 1)) # 0.9 quantile of entire data
+		elif norm_type in ['std']:
+			norm = np.std(data, axis=(0,1)) # std of entire data
 
 	data_norm = data * 1.0/norm 
 	#data_norm = data * 10.0/norm
@@ -374,7 +383,7 @@ def create_hierarchical_wavelet_data(
 			test_input_agg, test_target_agg = test_input_coeffs[K-2], test_target_coeffs[K-2]
 
 		if args.normalize:
-			train_input_norm, norm = normalize(train_input_agg)
+			train_input_norm, norm = normalize(train_input_agg, norm_type=args.normalize)
 		else:
 			train_input_norm = train_input_agg
 			norm = np.ones_like(np.mean(train_input_agg, axis=(0, 1)))
@@ -490,6 +499,7 @@ def create_hierarchical_data(
 		lazy_dataset_train = TimeSeriesDataset(
 			data_train, args.N_input, args.N_output, int(args.N_output/3),
 			aggregation_type, K,
+			norm_type=args.normalize,
 			use_time_features=args.use_time_features,
 			wavelet_levels=wavelet_levels
 		)
@@ -565,6 +575,7 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 	def __init__(
 		self, data, enc_len, dec_len, stride, aggregation_type, K,
 		use_time_features, tsid_map=None, input_norm=None, target_norm=None,
+		norm_type=None,
 		wavelet_levels=None
 	):
 		super(TimeSeriesDataset, self).__init__()
@@ -582,6 +593,7 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 		self.K = K
 		self.input_norm = input_norm
 		self.target_norm = target_norm
+		self.norm_type = norm_type
 		self.use_time_features = use_time_features
 		self.tsid_map = tsid_map
 		self.wavelet_levels = wavelet_levels
@@ -593,6 +605,7 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 					self.indices.append((i, j))
 
 		if self.input_norm is None:
+			assert norm_type is not None
 			data_agg = []
 			for i in range(0, len(data)):
 				ex = self.data[i]['target']
@@ -617,7 +630,7 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 				data_agg.append(np.array(ex_agg))
 			data_agg = np.array(data_agg)
 
-			_, self.input_norm = normalize(data_agg)
+			_, self.input_norm = normalize(data_agg, norm_type=self.norm_type)
 			self.target_norm = self.input_norm
 
 		if self.use_time_features:
