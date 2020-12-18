@@ -497,7 +497,7 @@ def create_hierarchical_data(
 		#	norm = np.ones_like(norm)
 
 		lazy_dataset_train = TimeSeriesDataset(
-			data_train, args.N_input, args.N_output, int(args.N_output/3),
+			data_train, args.N_input, args.N_output, -1,
 			aggregation_type, K,
 			norm_type=args.normalize,
 			use_time_features=args.use_time_features,
@@ -598,11 +598,24 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 		self.tsid_map = tsid_map
 		self.wavelet_levels = wavelet_levels
 
+		if self.K != 1:
+			self._enc_len = self.K * enc_len
+
 		self.indices = []
 		for i in range(0, len(data)):
-			for j in range(0, len(data[i]['target']), stride):
-				if j+self._enc_len+self._dec_len <= len(data[i]['target']):
-					self.indices.append((i, j))
+			if stride == -1:
+				j = 0
+				while j < len(data[i]['target']):
+					if j+self._enc_len+self._dec_len <= len(data[i]['target']):
+						self.indices.append((i, j))
+					s = (np.random.randint(0, self._dec_len))
+					j += s
+			else:
+				j = len(data[i]['target']) - self._enc_len - self._dec_len
+				self.indices.append((i, j))
+				#for j in range(start_idx, len(data[i]['target']), stride):
+				#	if j+self._enc_len+self._dec_len <= len(data[i]['target']):
+				#		self.indices.append((i, j))
 
 		if self.input_norm is None:
 			assert norm_type is not None
@@ -853,6 +866,7 @@ def get_processed_data(args):
 			X_test_input, X_test_target,
 			train_bkp, dev_bkp, test_bkp,
 			data_train, data_dev, data_test,
+			dev_tsid_map, test_tsid_map
 		) = create_sin_dataset(N, args.N_input, args.N_output, sigma)
 
 	elif args.dataset_name in ['ECG5000']:

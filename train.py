@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import torch
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from loss.dilate_loss import dilate_loss
 from eval import eval_base_model
 import time
@@ -15,6 +16,8 @@ def train_model(
     criterion = torch.nn.MSELoss()
 
     optimizer = torch.optim.Adam(net.parameters(),lr=args.learning_rate)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.95, patience=5, verbose=True)
+    #optimizer = torch.optim.SGD(net.parameters(),lr=args.learning_rate)
     if (not args.ignore_ckpt) and os.path.isfile(saved_models_path):
         print('Loading from saved model')
         checkpoint = torch.load(saved_models_path)
@@ -36,7 +39,7 @@ def train_model(
     for curr_epoch in range(best_epoch+1, best_epoch+1+epochs):
         epoch_loss = 0.
         for i, data in enumerate(trainloader, 0):
-            st = time.time()
+            #st = time.time()
             inputs, target, feats_in, feats_tgt, _, _ = data
             inputs = torch.tensor(inputs, dtype=torch.float32).to(args.device)
             target = torch.tensor(target, dtype=torch.float32).to(args.device)
@@ -70,8 +73,8 @@ def train_model(
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            et = time.time()
-            print('Time required for batch ', i, ':', et-st, 'loss:', loss.item())
+            #et = time.time()
+            #print('Time required for batch ', i, ':', et-st, 'loss:', loss.item())
             if i>=100:
                 break
 
@@ -86,7 +89,11 @@ def train_model(
 
         if(verbose):
             if (curr_epoch % args.print_every == 0):
-                print('curr_epoch ', curr_epoch, ' epoch_loss ', epoch_loss,' loss shape ',loss_shape.item(),' loss temporal ',loss_temporal.item())
+                print('curr_epoch ', curr_epoch, \
+                      ' epoch_loss ', epoch_loss, \
+                      ' loss shape ',loss_shape.item(), \
+                      ' loss temporal ',loss_temporal.item(), \
+                      'learning_rate:', optimizer.param_groups[0]['lr'])
                 (
                     _, _, pred_mu, pred_std,
                     metric_dilate, metric_mse, metric_dtw, metric_tdi,
@@ -112,12 +119,15 @@ def train_model(
                     torch.save(state_dict, saved_models_path)
                     print('Model saved at epoch', curr_epoch)
 
+                scheduler.step(metric)
+
                 # ...log the metrics
                 if model_name in ['seq2seqdilate']:
                     writer.add_scalar('dev_metrics/dilate', metric_dilate, curr_epoch)
                 writer.add_scalar('dev_metrics/crps', metric_crps, curr_epoch)
                 writer.add_scalar('dev_metrics/mae', metric_mae, curr_epoch)
                 writer.add_scalar('dev_metrics/mse', metric_mse, curr_epoch)
+
 
     print('Best model found at epoch', best_epoch)
     #net.load_state_dict(torch.load(saved_models_path))

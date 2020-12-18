@@ -346,28 +346,36 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 	data_test_in, data_test_out = [], []
 	for i, entry in enumerate(data, 0):
 		entry_train = dict()
-		entry_dev = dict()
 
 		seq_train = entry['target'][ : -N_output*num_rolling_windows]
-		seq_dev = entry['target'][ -N_output*num_rolling_windows - N_input : ]
 		seq_train = np.expand_dims(seq_train, axis=-1)
-		seq_dev = np.expand_dims(seq_dev, axis=-1)
 
 		seq_dates = get_date_range(entry['start'], metadata['time_granularity'], len(entry['target']))
 		start_train = seq_dates[0]
-		start_dev = seq_dates[ -N_output*num_rolling_windows - N_input ]
-		#import ipdb
-		#ipdb.set_trace()
 
 		entry_train['target'] = seq_train
 		entry_train['start'] = start_train
 		entry_train['freq_str'] = metadata['time_granularity']
-		entry_dev['target'] = seq_dev
-		entry_dev['start'] = start_dev
-		entry_dev['freq_str'] = metadata['time_granularity']
+
 		data_train.append(entry_train)
-		data_dev.append(entry_dev)
-		dev_tsid_map[i] = i # Only one dev instance per train series
+
+		for j in range(num_rolling_windows-1, 0, -1):
+			entry_dev = dict()
+
+			if j==0:
+				seq_dev = entry['target']
+			else:
+				seq_dev = entry['target'][ : -N_output*j ]
+			seq_dev = np.expand_dims(seq_dev, axis=-1)
+
+			#start_dev = seq_dates[ -N_output*num_rolling_windows - N_input ]
+			start_dev = seq_dates[0]
+
+			entry_dev['target'] = seq_dev
+			entry_dev['start'] = start_dev
+			entry_dev['freq_str'] = metadata['time_granularity']
+			data_dev.append(entry_dev)
+			dev_tsid_map[len(data_dev)-1] = i
 
 		batch_train_in, batch_train_out = create_forecast_io_seqs(seq_train, N_input, N_output, int(N_output/3))
 		batch_dev_in, batch_dev_out = create_forecast_io_seqs(seq_dev, N_input, N_output, N_output)
@@ -378,11 +386,11 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 
 	for i, entry in enumerate(data_test_full, 0):
 		entry_test = dict()
-		seq_test = entry['target'][ -(N_input+N_output) : ]
+		seq_test = entry['target']
 		seq_test = np.expand_dims(seq_test, axis=-1)
 
 		seq_dates = get_date_range(entry['start'], metadata['time_granularity'], len(entry['target']))
-		start_test = seq_dates[ -(N_input+N_output) ]
+		start_test = seq_dates[0]
 
 		entry_test['target'] = seq_test
 		entry_test['start'] = start_test
