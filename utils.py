@@ -600,6 +600,10 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 
 		if self.K != 1:
 			self._enc_len = self.K * enc_len
+			for i in range(len(data)):
+				if self.K  * enc_len > len(data[i]['target']):
+					self._enc_len = enc_len
+					break
 
 		self.indices = []
 		for i in range(0, len(data)):
@@ -904,7 +908,7 @@ def get_processed_data(args):
 			train_bkp, dev_bkp, test_bkp,
 			data_train, data_dev, data_test
 		) = parse_Traffic911(args.N_input, args.N_output)
-	elif args.dataset_name in ['Exchange', 'Solar', 'Wiki']:
+	elif args.dataset_name in ['Exchange', 'Solar', 'Wiki', 'taxi30min']:
 		(
 			X_train_input, X_train_target,
 			X_dev_input, X_dev_target,

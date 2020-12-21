@@ -317,6 +317,9 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 	elif dataset_name in ['Solar']:
 		num_rolling_windows = 7
 		dataset_dir = 'solar_nips'
+	elif dataset_name in ['taxi30min']:
+		num_rolling_windows = 7
+		dataset_dir = 'taxi_30min'
 
 	data_ = []
 	with open(os.path.join('data', dataset_dir, 'train', 'train.json')) as f:
@@ -328,13 +331,24 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 		for line in f:
 			data_test_full_.append(json.loads(line))
 
-	num_ts = len(data_)
-	data = data_[ -2000 : ]
-	data_test_full = []
-	for i in range(0, num_ts*num_rolling_windows, num_ts):
-		data_test_full += data_test_full_[ i : i+num_ts ][ -2000 : ]
-
-
+	if dataset_name in ['Wiki']:
+		num_ts = len(data_)
+		data = data_[ -2000 : ]
+		data_test_full = []
+		for i in range(0, num_ts*num_rolling_windows, num_ts):
+			data_test_full += data_test_full_[ i : i+num_ts ][ -2000 : ]
+	elif dataset_name in ['taxi30min']:
+		data = data_
+		num_ts = len(data)
+		data_test_full = data_test_full_[ : num_ts*num_rolling_windows ]
+		for i in range(len(data_test_full)):
+			assert data[i % num_ts]['lat'] == data_test_full[i]['lat']
+			assert data[i % num_ts]['lng'] == data_test_full[i]['lng']
+			data_test_full[i]['target'] = data[i % num_ts]['target'] + data_test_full[i]['target']
+			data_test_full[i]['start'] = data[i % num_ts]['start']
+	else:
+		data = data_
+		data_test_full = data_test_full_
 
 	metadata = json.load(open(os.path.join('data', dataset_dir, 'metadata', 'metadata.json')))
 

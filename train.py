@@ -97,7 +97,7 @@ def train_model(
                 (
                     _, _, pred_mu, pred_std,
                     metric_dilate, metric_mse, metric_dtw, metric_tdi,
-                    metric_crps, metric_mae
+                    metric_crps, metric_mae, metric_crps_part
                 )= eval_base_model(
                     args, model_name, net, devloader, norm, args.gamma, verbose=1
                 )
@@ -138,7 +138,7 @@ def train_model(
     (
         _, _, pred_mu, pred_std,
         metric_dilate, metric_mse, metric_dtw, metric_tdi,
-        metric_crps, metric_mae
+        metric_crps, metric_mae, metric_crps_part
     ) = eval_base_model(
         args, model_name, net, devloader, norm, args.gamma,verbose=1
     )

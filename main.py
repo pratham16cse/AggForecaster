@@ -263,7 +263,7 @@ for base_model_name in args.base_model_names:
                 (
                     dev_inputs, dev_target, pred_mu, pred_std,
                     metric_dilate, metric_mse, metric_dtw, metric_tdi,
-                    metric_crps, metric_mae
+                    metric_crps, metric_mae, metric_crps_part
                 ) = eval_base_model(
                     args, base_model_name,
                     base_models[base_model_name][agg_method][level],
@@ -300,10 +300,30 @@ for base_model_name in args.base_model_names:
 
                 mae_agg = np.mean(np.abs(dev_target - pred_mu_agg))
                 mae_base = np.mean(np.abs(dev_target - pred_mu))
+
+                mae_base_parts = []
+                mae_agg_parts = []
+                N = dev_target.shape[1]
+                p = max(int(N/4), 1)
+                for i in range(0, N, p):
+                    mae_base_parts.append(
+                        np.mean(
+                            np.abs(dev_target[:, i:i+p] - pred_mu[:, i:i+p])
+                        )
+                    )
+                    mae_agg_parts.append(
+                        np.mean(
+                            np.abs(dev_target[:, i:i+p] - pred_mu_agg[:, i:i+p])
+                        )
+                    )
+
+
                 print('-------------------------------------------------------')
                 print('{0}, {1}, {2}, mae_base:{3}, mae_agg:{4}'.format(
                     base_model_name, agg_method, level, mae_base, mae_agg)
                 )
+                print('mae_base_parts:', mae_base_parts)
+                print('mae_agg_parts:', mae_agg_parts)
                 print('-------------------------------------------------------')
 
 

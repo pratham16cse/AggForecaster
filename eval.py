@@ -64,6 +64,18 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1):
         loss_crps = ps.crps_gaussian(
             target, mu=pred_mu.detach().numpy(), sig=pred_std.detach().numpy()
         )
+        # CRPS in parts of horizon
+        losses_crps_part = []
+        N = target.shape[1]
+        p = max(int(N/4), 1)
+        for i in range(0, N, p):
+            losses_crps_part.append(
+                ps.crps_gaussian(
+                    target[:, i:i+p],
+                    mu=pred_mu[:, i:i+p].detach().numpy(),
+                    sig=pred_std[:, i:i+p].detach().numpy()
+                )
+            )
 
         # print statistics
         losses_crps.append( loss_crps )
@@ -79,15 +91,16 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1):
     metric_dtw = np.array(losses_dtw).mean()
     metric_tdi = np.array(losses_tdi).mean()
     metric_crps = np.array(losses_crps).mean()
+    metric_crps_part = np.array(losses_crps_part).mean(axis=(1,2,3))
 
     print('Eval dilateloss= ', metric_dilate, \
         'mse= ', metric_mse, ' dtw= ', metric_dtw, ' tdi= ', metric_tdi,
-        'crps=', metric_crps)
+        'crps=', metric_crps, 'crps_parts=', metric_crps_part)
 
     return (
         inputs, target, pred_mu, pred_std,
         metric_dilate, metric_mse, metric_dtw, metric_tdi,
-        metric_crps, metric_mae
+        metric_crps, metric_mae, metric_crps_part
     )
 
 def eval_inf_model(
