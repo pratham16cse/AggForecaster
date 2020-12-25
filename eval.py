@@ -69,13 +69,14 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1):
         N = target.shape[1]
         p = max(int(N/4), 1)
         for i in range(0, N, p):
-            losses_crps_part.append(
-                ps.crps_gaussian(
-                    target[:, i:i+p],
-                    mu=pred_mu[:, i:i+p].detach().numpy(),
-                    sig=pred_std[:, i:i+p].detach().numpy()
+            if i+p<N:
+                losses_crps_part.append(
+                    ps.crps_gaussian(
+                        target[:, i:i+p],
+                        mu=pred_mu[:, i:i+p].detach().numpy(),
+                        sig=pred_std[:, i:i+p].detach().numpy()
+                    )
                 )
-            )
 
         # print statistics
         losses_crps.append( loss_crps )

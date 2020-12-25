@@ -318,7 +318,7 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 		num_rolling_windows = 7
 		dataset_dir = 'solar_nips'
 	elif dataset_name in ['taxi30min']:
-		num_rolling_windows = 7
+		num_rolling_windows = 1
 		dataset_dir = 'taxi_30min'
 
 	data_ = []
@@ -373,10 +373,12 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 
 		data_train.append(entry_train)
 
-		for j in range(num_rolling_windows-1, 0, -1):
+		for j in range(num_rolling_windows-1, -1, -1):
 			entry_dev = dict()
 
-			if j==0:
+			if j==-1:
+				break
+			elif j==0:
 				seq_dev = entry['target']
 			else:
 				seq_dev = entry['target'][ : -N_output*j ]
