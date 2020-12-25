@@ -585,6 +585,13 @@ class OPT_KL_st(OPT_st):
 					inputs = inputs_dict[agg_method][level]
 					feats_in, feats_tgt = feats_in_dict[agg_method][level], feats_tgt_dict[agg_method][level]
 					means, stds = model(feats_in, inputs, feats_tgt)
+
+					#if level==1:
+					#	tl = stds.shape[1]
+					#	stds[:, tl//2:, :] += torch.unsqueeze(
+					#		torch.unsqueeze(torch.linspace(1, 0, tl//2), 0),
+					#		-1
+					#	)
 	
 					if targets_dict is not None and level != 1:
 						means = targets_dict[agg_method][level]
