@@ -7,10 +7,17 @@ import pywt
 import pandas as pd
 import re
 import time
+import shutil
 
 from data.synthetic_dataset import create_synthetic_dataset, create_sin_dataset, SyntheticDataset
 from data.real_dataset import parse_ECG5000, parse_Traffic, parse_Taxi, parse_Traffic911, parse_gc_datasets
 
+
+def clean_trial_checkpoints(result):
+	for trl in result.trials:
+		trl_paths = result.get_trial_checkpoints_paths(trl,'metric')
+		for path, _ in trl_paths:
+			shutil.rmtree(path)
 
 def add_metrics_to_dict(
 	metrics_dict, model_name, metric_mse, metric_dtw, metric_tdi, metric_crps, metric_mae
@@ -861,7 +868,7 @@ def get_processed_data(args):
 		) = create_synthetic_dataset(N, args.N_input, args.N_output, sigma)
 
 	elif args.dataset_name in ['sin']:
-		N = 500
+		N = 100
 		sigma = 0.01
 
 		(

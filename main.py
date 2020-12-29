@@ -4,9 +4,9 @@ import argparse
 import numpy as np
 import torch
 from data.synthetic_dataset import create_synthetic_dataset, SyntheticDataset
-from models.base_models import EncoderRNN, DecoderRNN, Net_GRU, NetFullyConnected
+from models.base_models import EncoderRNN, DecoderRNN, Net_GRU, NetFullyConnected, get_base_model
 from loss.dilate_loss import dilate_loss
-from train import train_model
+from train import train_model, get_optimizer
 from eval import eval_base_model, eval_inf_model
 from torch.utils.data import DataLoader
 import random
@@ -16,6 +16,11 @@ import warnings
 import warnings; warnings.simplefilter('ignore')
 import json
 from torch.utils.tensorboard import SummaryWriter
+
+from ray import tune
+from ray.tune import CLIReporter
+from ray.tune.schedulers import ASHAScheduler
+from functools import partial
 
 from models import inf_models
 import utils
@@ -218,44 +223,111 @@ for base_model_name in args.base_model_names:
             os.makedirs(output_dir, exist_ok=True)
             print('\n {} {} {}'.format(base_model_name, agg_method, str(level)))
 
-            hidden_size = max(int(args.hidden_size*1.0/level), args.fc_units)
-
-            if args.fully_connected_agg_model:
-                net_gru = NetFullyConnected(
-                    input_length=N_input, input_size=input_size,
-                    target_length=N_output, output_size=output_size,
-                    hidden_size=hidden_size, num_hidden_layers=args.num_grulstm_layers,
-                    fc_units=args.fc_units,
-                    point_estimates=point_estimates, deep_std=args.deep_std,
-                    variance_net=args.variance_rnn, second_moment=args.second_moment,
-                    device=args.device
-                )
-            else:
-                encoder = EncoderRNN(
-                    input_size=input_size, hidden_size=hidden_size, num_grulstm_layers=args.num_grulstm_layers,
-                    batch_size=args.batch_size
-                ).to(args.device)
-                decoder = DecoderRNN(
-                    input_size=input_size, hidden_size=hidden_size, num_grulstm_layers=args.num_grulstm_layers,
-                    fc_units=args.fc_units, output_size=output_size, deep_std=args.deep_std,
-                    second_moment=args.second_moment, variance_rnn=args.variance_rnn
-                ).to(args.device)
-                net_gru = Net_GRU(
-                    encoder,decoder, N_output, args.use_time_features,
-                    point_estimates, args.teacher_forcing_ratio, args.deep_std,
-                    args.device
-                ).to(args.device)
-
             if agg_method in ['leastsquare', 'sumwithtrend', 'slope', 'wavelet'] and level == 1:
                 base_models[base_model_name][agg_method][level] = base_models[base_model_name]['sum'][1]
             else:
-                train_model(
-                    args, base_model_name, net_gru,
-                    trainloader, devloader, testloader, dev_norm,
-                    saved_models_path, output_dir, writer, eval_every=50, verbose=1
-                )
+                #train_model(
+                #    args, base_model_name, net_gru,
+                #    trainloader, devloader, testloader, dev_norm,
+                #    saved_models_path, output_dir, writer, eval_every=50, verbose=1
+                #)
 
-                base_models[base_model_name][agg_method][level] = net_gru
+                # Create config dictionaries
+                config_fixed = {
+                    'args': args,
+                    'base_model_name': base_model_name,
+                    'trainloader': trainloader,
+                    'devloader': devloader,
+                    'testloader': testloader,
+                    'dev_norm': dev_norm,
+                    'saved_models_path': saved_models_path,
+                    'output_dir': output_dir,
+                    #'writer': writer,
+                    'eval_every': 50,
+                    'verbose': 1,
+                    'level': level,
+                    'N_input': N_input,
+                    'N_output': N_output,
+                    'input_size': input_size,
+                    'output_size': output_size,
+                    'point_estimates': point_estimates,
+                } # Fixed parameters
+                config_tune = {
+                    'lr': tune.loguniform(1e-5, 1e-1),
+                    'hidden_size': tune.sample_from(lambda _: 2**np.random.randint(2, 8)),
+                } # Tunable parameters
+                # No tuning for level 1 models as of now
+                if agg_method in ['sum'] and level == 1:
+                    config_tune['lr'] = args.learning_rate
+                    config_tune['hidden_size'] = args.hidden_size
+                config = {**config_fixed, **config_tune}
+
+                model_exists = (not args.ignore_ckpt) and os.path.isfile(saved_models_path)
+                if model_exists:
+                    if level != 1:
+                        with open(os.path.join(saved_models_dir, 'best_config_tune.json'), 'r') as f:
+                            best_config_tune = json.load(f)
+                    else:
+                        best_config_tune = config_tune
+                    best_config = {**config_fixed, **best_config_tune}
+                    best_checkpoint_path = saved_models_path
+                else:
+                    scheduler = ASHAScheduler(
+                        metric="metric",
+                        mode="min",
+                        max_t=args.epochs,
+                        grace_period=1,
+                        reduction_factor=2)
+                    reporter = CLIReporter(
+                        # parameter_columns=["l1", "l2", "lr", "batch_size"],
+                        metric_columns=["metric", "training_iteration"])
+                    result = tune.run(
+                        train_model,
+                        resources_per_trial={"cpu": 1},
+                        config=config,
+                        num_samples=5,
+                        scheduler=scheduler,
+                        progress_reporter=reporter
+                    )
+
+                    # Get the best config
+                    best_trial = result.get_best_trial('metric', 'min', 'last')
+                    best_config = best_trial.config
+                    best_epoch = best_trial.last_result['training_iteration']
+                    best_metric = best_trial.last_result['metric']
+                    best_checkpoint_path = os.path.join(best_trial.checkpoint.value, 'checkpoint')
+
+                # Load best model from best_checkpoint
+                best_model = get_base_model(
+                    args, best_config, level,
+                    N_input, N_output, input_size, output_size,
+                    point_estimates
+                )
+                best_optimizer, best_scheduler = get_optimizer(args, best_config, best_model)
+                best_checkpoint = torch.load(best_checkpoint_path)
+                best_model.load_state_dict(best_checkpoint['model_state_dict'])
+                best_optimizer.load_state_dict(best_checkpoint['optimizer_state_dict'])
+                if model_exists:
+                    best_epoch = best_checkpoint['epoch']
+                    best_metric = best_checkpoint['metric']
+
+                if not model_exists:
+                    # Save best model
+                    state_dict = {
+                                'model_state_dict': best_model.state_dict(),
+                                'optimizer_state_dict': best_optimizer.state_dict(),
+                                'epoch': best_epoch,
+                                'metric': best_metric,
+                                }
+                    torch.save(state_dict, saved_models_path)
+                    best_config_tune = {k:best_config[k] for k in config_tune.keys()}
+                    with open(os.path.join(saved_models_dir, 'best_config_tune.json'), 'w') as f:
+                        json.dump(best_config_tune, f)
+
+                    utils.clean_trial_checkpoints(result)
+
+                base_models[base_model_name][agg_method][level] = best_model
+
 
             writer.flush()
 

@@ -234,3 +234,39 @@ class Net_GRU(nn.Module):
         if self.point_estimates:
             stds = None
         return means, stds
+
+
+def get_base_model(
+    args, config, level, N_input, N_output,
+    input_size, output_size, point_estimates
+):
+
+    hidden_size = max(int(config['hidden_size']*1.0/int(np.sqrt(level))), args.fc_units)
+
+    if args.fully_connected_agg_model:
+        net_gru = NetFullyConnected(
+            input_length=N_input, input_size=input_size,
+            target_length=N_output, output_size=output_size,
+            hidden_size=hidden_size, num_hidden_layers=args.num_grulstm_layers,
+            fc_units=args.fc_units,
+            point_estimates=point_estimates, deep_std=args.deep_std,
+            variance_net=args.variance_rnn, second_moment=args.second_moment,
+            device=args.device
+        )
+    else:
+        encoder = EncoderRNN(
+            input_size=input_size, hidden_size=hidden_size, num_grulstm_layers=args.num_grulstm_layers,
+            batch_size=args.batch_size
+        ).to(args.device)
+        decoder = DecoderRNN(
+            input_size=input_size, hidden_size=hidden_size, num_grulstm_layers=args.num_grulstm_layers,
+            fc_units=args.fc_units, output_size=output_size, deep_std=args.deep_std,
+            second_moment=args.second_moment, variance_rnn=args.variance_rnn
+        ).to(args.device)
+        net_gru = Net_GRU(
+            encoder,decoder, N_output, args.use_time_features,
+            point_estimates, args.teacher_forcing_ratio, args.deep_std,
+            args.device
+        ).to(args.device)
+
+    return net_gru

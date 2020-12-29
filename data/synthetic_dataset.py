@@ -10,12 +10,12 @@ def create_sin_dataset(N, N_input, N_output, sigma):
     # sigma: standard deviation of additional noise
     N_dev = int(0.2 * N)
     N_test = int(0.2 * N)
-    num_rolling_windows = 2
+    num_rolling_windows = 1
 
     X = []
     breakpoints = []
     for k in range(N):
-        inp = np.random.uniform(-np.pi, np.pi) + np.linspace(0, 100, N_input+50*N_output)
+        inp = np.random.uniform(-np.pi, np.pi) + np.linspace(0, 30, N_input+4*N_output)
         #serie = np.sin(inp)*5 + np.random.normal(0, 0.1, size=(inp.shape)) + 5
         serie = np.sin(inp) + np.random.normal(0, 0.1, size=(inp.shape))
         X.append(serie)
@@ -34,10 +34,12 @@ def create_sin_dataset(N, N_input, N_output, sigma):
         trn = ts[:num_rolling_windows*2*N_output]
         data_train.append(entry_dict)
 
-        for j in range(num_rolling_windows-1, 0, -1):
+        for j in range(num_rolling_windows-1, -1, -1):
             entry_dev = dict()
 
-            if j==0:
+            if j==-1:
+                break
+            elif j==0:
                 seq_dev = ts
             else:
                 seq_dev = ts[ : - N_output*j - num_rolling_windows*N_output ]
@@ -46,10 +48,12 @@ def create_sin_dataset(N, N_input, N_output, sigma):
             data_dev.append(entry_dict)
             dev_tsid_map[len(data_dev)-1] = i
 
-        for j in range(num_rolling_windows-1, 0, -1):
+        for j in range(num_rolling_windows-1, -1, -1):
             entry_test = dict()
 
-            if j==0:
+            if j==-1:
+                break
+            elif j==0:
                 seq_test = ts
             else:
                 seq_test = ts[ : - N_output*j ]
