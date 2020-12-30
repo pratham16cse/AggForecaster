@@ -25,6 +25,8 @@ from functools import partial
 from models import inf_models
 import utils
 
+os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "1000000"
+
 random.seed(0)
 torch.manual_seed(0)
 np.random.seed(0)
@@ -251,6 +253,7 @@ for base_model_name in args.base_model_names:
                     'input_size': input_size,
                     'output_size': output_size,
                     'point_estimates': point_estimates,
+                    'epochs': args.epochs * np.sqrt(level),
                 } # Fixed parameters
                 config_tune = {
                     'lr': tune.loguniform(1e-5, 1e-1),
@@ -261,6 +264,12 @@ for base_model_name in args.base_model_names:
                     config_tune['lr'] = args.learning_rate
                     config_tune['hidden_size'] = args.hidden_size
                 config = {**config_fixed, **config_tune}
+
+                # Set number of samples
+                if level == 1:
+                    num_samples = 1
+                else:
+                    num_samples = 20
 
                 model_exists = (not args.ignore_ckpt) and os.path.isfile(saved_models_path)
                 if model_exists:
@@ -280,12 +289,13 @@ for base_model_name in args.base_model_names:
                         reduction_factor=2)
                     reporter = CLIReporter(
                         # parameter_columns=["l1", "l2", "lr", "batch_size"],
-                        metric_columns=["metric", "training_iteration"])
+                        metric_columns=["metric", "training_iteration"],
+                        max_report_frequency=30)
                     result = tune.run(
                         train_model,
                         resources_per_trial={"cpu": 1},
                         config=config,
-                        num_samples=5,
+                        num_samples=num_samples,
                         scheduler=scheduler,
                         progress_reporter=reporter
                     )
@@ -293,8 +303,8 @@ for base_model_name in args.base_model_names:
                     # Get the best config
                     best_trial = result.get_best_trial('metric', 'min', 'last')
                     best_config = best_trial.config
-                    best_epoch = best_trial.last_result['training_iteration']
-                    best_metric = best_trial.last_result['metric']
+                    #best_epoch = best_trial.last_result['training_iteration']
+                    #best_metric = best_trial.last_result['metric']
                     best_checkpoint_path = os.path.join(best_trial.checkpoint.value, 'checkpoint')
 
                 # Load best model from best_checkpoint
@@ -307,9 +317,9 @@ for base_model_name in args.base_model_names:
                 best_checkpoint = torch.load(best_checkpoint_path)
                 best_model.load_state_dict(best_checkpoint['model_state_dict'])
                 best_optimizer.load_state_dict(best_checkpoint['optimizer_state_dict'])
-                if model_exists:
-                    best_epoch = best_checkpoint['epoch']
-                    best_metric = best_checkpoint['metric']
+                #if model_exists:
+                best_epoch = best_checkpoint['epoch']
+                best_metric = best_checkpoint['metric']
 
                 if not model_exists:
                     # Save best model

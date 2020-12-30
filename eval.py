@@ -20,11 +20,11 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1):
         loss_mse, loss_dtw, loss_tdi, loss_mae = torch.tensor(0), torch.tensor(0), torch.tensor(0), torch.tensor(0)
         # get the inputs
         inputs, target, feats_in, feats_tgt, norm, breakpoints = data
-        inputs = torch.tensor(inputs, dtype=torch.float32).to(args.device)
-        target = torch.tensor(target, dtype=torch.float32).to(args.device)
-        feats_in = torch.tensor(feats_in, dtype=torch.float32).to(args.device)
-        feats_tgt = torch.tensor(feats_tgt, dtype=torch.float32).to(args.device)
-        norm = torch.tensor(norm, dtype=torch.float32).to(args.device)
+        #inputs = torch.tensor(inputs, dtype=torch.float32).to(args.device)
+        #target = torch.tensor(target, dtype=torch.float32).to(args.device)
+        #feats_in = torch.tensor(feats_in, dtype=torch.float32).to(args.device)
+        #feats_tgt = torch.tensor(feats_tgt, dtype=torch.float32).to(args.device)
+        #norm = torch.tensor(norm, dtype=torch.float32).to(args.device)
         batch_size, N_output = target.shape[0:2]
         # DO NOT PASS TARGET during forward pass
         pred_mu, pred_std = net(feats_in, inputs, feats_tgt)

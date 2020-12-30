@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import random
+import numpy as np
+from torch.distributions.normal import Normal
 
 
 class NetFullyConnected(torch.nn.Module):
@@ -189,7 +191,7 @@ class Net_GRU(nn.Module):
         self.device = device
         self.deep_std = deep_std
         
-    def forward(self, feats_in, x_in, feats_tgt, x_tgt=None):
+    def forward(self, feats_in, x_in, feats_tgt, x_tgt=None, sample_variance=False):
 
         # Encoder
         input_length  = x_in.shape[1]
@@ -201,36 +203,56 @@ class Net_GRU(nn.Module):
         for ei in range(input_length):
             encoder_output, encoder_hidden = self.encoder(enc_in[:,ei:ei+1,:]  , encoder_hidden)
             
-        dec_in = enc_in[:,-1,:].unsqueeze(1) # first decoder input= last element of input sequence
-        decoder_hidden = encoder_hidden
-        decoder_hidden_var = encoder_hidden
 
         # Decoder
-        means = torch.zeros([x_in.shape[0], self.target_length, self.decoder.output_size]).to(self.device)
-        stds = torch.zeros([x_in.shape[0], self.target_length, self.decoder.output_size]).to(self.device)
-        for di in range(self.target_length):
+        if sample_variance and x_tgt is None:
+            M = 40
+        else:
+            M = 1
+        means = torch.zeros([M, x_in.shape[0], self.target_length, self.decoder.output_size]).to(self.device)
+        stds = torch.zeros([M, x_in.shape[0], self.target_length, self.decoder.output_size]).to(self.device)
 
-            (step_means, step_stds), (decoder_hidden, decoder_hidden_var) \
-                = self.decoder(dec_in, decoder_hidden, decoder_hidden_var)
+        for m in range(M):
+            dec_in = enc_in[:,-1,:].unsqueeze(1) # first decoder input= last element of input sequence
+            decoder_hidden = encoder_hidden
+            decoder_hidden_var = encoder_hidden
+            for di in range(self.target_length):
 
-            # Training Mode
-            if x_tgt is not None:
-                if random.random() < self.teacher_forcing_ratio:
-                    # Teacher Forcing
-                    dec_in = x_tgt[:, di:di+1]
+                (step_means, step_stds), (decoder_hidden, decoder_hidden_var) \
+                    = self.decoder(dec_in, decoder_hidden, decoder_hidden_var)
+
+                # Training Mode
+                if x_tgt is not None:
+                    if random.random() < self.teacher_forcing_ratio:
+                        # Teacher Forcing
+                        dec_in = x_tgt[:, di:di+1]
+                    else:
+                        dec_in = step_means
                 else:
-                    dec_in = step_means
-            else:
-                dec_in = step_means
+                    if sample_variance:
+                        dist = Normal(step_means, step_stds)
+                        sample = dist.sample()
+                        dec_in  = sample
+                    else:
+                        dec_in = step_means
 
-            # Add features
-            if self.use_time_features:
-                dec_in = torch.cat((dec_in, feats_tgt[:, di:di+1]), dim=-1)
+
+                # Add features
+                if self.use_time_features:
+                    dec_in = torch.cat((dec_in, feats_tgt[:, di:di+1]), dim=-1)
 
 
-            means[:, di:di+1, :] = step_means
-            stds[:, di:di+1, :] = step_stds
-            #print('di', di)
+                if x_tgt is None and sample_variance:
+                    means[m, :, di:di+1, :] = sample
+                else:
+                    means[m, :, di:di+1, :] = step_means
+                stds[m, :, di:di+1, :] = step_stds
+                #print('di', di)
+        if sample_variance and x_tgt is None:
+            var, means = torch.var_mean(means, 0)
+            stds = torch.sqrt(var)
+        else:
+            means, stds = torch.squeeze(means, 0), torch.squeeze(stds, 0)
         if self.point_estimates:
             stds = None
         return means, stds
@@ -241,7 +263,7 @@ def get_base_model(
     input_size, output_size, point_estimates
 ):
 
-    hidden_size = max(int(config['hidden_size']*1.0/int(np.sqrt(level))), args.fc_units)
+    #hidden_size = max(int(config['hidden_size']*1.0/int(np.sqrt(level))), args.fc_units)
 
     if args.fully_connected_agg_model:
         net_gru = NetFullyConnected(

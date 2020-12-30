@@ -38,6 +38,7 @@ def train_model(config):
     input_size = config['input_size']
     output_size = config['output_size']
     point_estimates = config['point_estimates']
+    epochs = config['epochs']
     Lambda=1
 
 
@@ -73,7 +74,6 @@ def train_model(config):
             print('No saved model found')
         best_epoch = -1
         best_metric = np.inf
-        epochs = args.epochs
     net.train()
 
     for curr_epoch in range(best_epoch+1, best_epoch+1+epochs):
@@ -81,10 +81,10 @@ def train_model(config):
         for i, data in enumerate(trainloader, 0):
             #st = time.time()
             inputs, target, feats_in, feats_tgt, _, _ = data
-            inputs = torch.tensor(inputs, dtype=torch.float32).to(args.device)
-            target = torch.tensor(target, dtype=torch.float32).to(args.device)
-            feats_in = torch.tensor(feats_in, dtype=torch.float32).to(args.device)
-            feats_tgt = torch.tensor(feats_tgt, dtype=torch.float32).to(args.device)
+            #inputs = torch.tensor(inputs, dtype=torch.float32).to(args.device)
+            #target = torch.tensor(target, dtype=torch.float32).to(args.device)
+            #feats_in = torch.tensor(feats_in, dtype=torch.float32).to(args.device)
+            #feats_tgt = torch.tensor(feats_tgt, dtype=torch.float32).to(args.device)
             batch_size, N_output = target.shape[0:2]
 
             # forward + backward + optimize

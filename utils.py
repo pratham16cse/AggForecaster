@@ -13,6 +13,8 @@ from data.synthetic_dataset import create_synthetic_dataset, create_sin_dataset,
 from data.real_dataset import parse_ECG5000, parse_Traffic, parse_Taxi, parse_Traffic911, parse_gc_datasets
 
 
+to_tensor = lambda x: torch.FloatTensor(x.copy())
+
 def clean_trial_checkpoints(result):
 	for trl in result.trials:
 		trl_paths = result.get_trial_checkpoints_paths(trl,'metric')
@@ -756,8 +758,8 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 
 
 			#ex_input, ex_target = zip(*ex_agg)
-			ex_input = torch.FloatTensor(ex_input_agg)
-			ex_target = torch.FloatTensor(ex_target_agg)
+			ex_input = np.array(ex_input_agg)
+			ex_target = np.array(ex_target_agg)
 
 		#print('after', ex_input.shape, ex_target.shape, ts_id, pos_id)
 		if self.tsid_map is None:
@@ -805,10 +807,17 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 				#et = time.time()
 				#print('feat avg time', et-st)
 				ex_input_feats, ex_target_feats = list(ex_input_feats), list(ex_target_feats)
-				ex_input_feats = torch.FloatTensor(ex_input_feats)
-				ex_target_feats = torch.FloatTensor(ex_target_feats)
+				ex_input_feats = np.array(ex_input_feats)
+				ex_target_feats = np.array(ex_target_feats)
 		else:
 			ex_input_feats, ex_target_feats = ex_input, ex_target
+
+		#print(type(ex_input), type(ex_target), type(ex_input_feats), type(ex_target_feats))
+		ex_input = to_tensor(ex_input)
+		ex_target = to_tensor(ex_target)
+		ex_input_feats = to_tensor(ex_input_feats)
+		ex_target_feats = to_tensor(ex_target_feats)
+		ex_norm = to_tensor(ex_norm)
 
 
 		return (
