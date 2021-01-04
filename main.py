@@ -122,22 +122,22 @@ args = parser.parse_args()
 #args.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 args.base_model_names = [
-    'seq2seqdilate',
-    'seq2seqmse',
+#    'seq2seqdilate',
+#    'seq2seqmse',
     'seq2seqnll'
 ]
 args.inference_model_names = [
-    'DILATE',
-    'MSE',
+#    'DILATE',
+#    'MSE',
     'NLL',
 #    'NLLls',
-    'seq2seqmse_dualtpp',
+#    'seq2seqmse_dualtpp',
     'seq2seqnll_dualtpp',
 #    'seq2seqmse_optls',
 #    'seq2seqnll_optls',
-    'seq2seqmse_optst',
+#    'seq2seqmse_optst',
     'seq2seqnll_optst',
-    'seq2seqmse_opttrend',
+#    'seq2seqmse_opttrend',
     'seq2seqnll_opttrend',
     'seq2seqnll_optklst',
 #    'seq2seqmse_wavelet',
@@ -253,7 +253,7 @@ for base_model_name in args.base_model_names:
                     'input_size': input_size,
                     'output_size': output_size,
                     'point_estimates': point_estimates,
-                    'epochs': args.epochs * np.sqrt(level),
+                    'epochs': int(args.epochs * np.sqrt(level)),
                 } # Fixed parameters
                 config_tune = {
                     'lr': tune.loguniform(1e-5, 1e-1),
@@ -293,7 +293,7 @@ for base_model_name in args.base_model_names:
                         max_report_frequency=30)
                     result = tune.run(
                         train_model,
-                        resources_per_trial={"cpu": 1},
+                        resources_per_trial={"cpu": 4},
                         config=config,
                         num_samples=num_samples,
                         scheduler=scheduler,

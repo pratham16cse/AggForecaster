@@ -158,13 +158,13 @@ class DecoderRNN(nn.Module):
 
         return stds
 
-    def forward(self, input, hidden, hidden_var):
+    def forward(self, input, input_var, hidden, hidden_var):
         output, hidden = self.gru(input, hidden)
         output = F.relu( self.fc(output) )
         means = self.out_mean(output)
 
         if self.variance_rnn:
-            output_var, hidden_var = self.gru_var(input, hidden_var)
+            output_var, hidden_var = self.gru_var(input_var, hidden_var)
             output_var = F.relu( self.fc_var(output_var) )
         else:
             hidden_var = None
@@ -214,12 +214,13 @@ class Net_GRU(nn.Module):
 
         for m in range(M):
             dec_in = enc_in[:,-1,:].unsqueeze(1) # first decoder input= last element of input sequence
+            dec_in_var = enc_in[:,-1,:].unsqueeze(1) # first decoder input= last element of input sequence
             decoder_hidden = encoder_hidden
             decoder_hidden_var = encoder_hidden
             for di in range(self.target_length):
 
                 (step_means, step_stds), (decoder_hidden, decoder_hidden_var) \
-                    = self.decoder(dec_in, decoder_hidden, decoder_hidden_var)
+                    = self.decoder(dec_in, dec_in_var, decoder_hidden, decoder_hidden_var)
 
                 # Training Mode
                 if x_tgt is not None:
@@ -235,11 +236,13 @@ class Net_GRU(nn.Module):
                         dec_in  = sample
                     else:
                         dec_in = step_means
+                dec_in_var = step_stds
 
 
                 # Add features
                 if self.use_time_features:
                     dec_in = torch.cat((dec_in, feats_tgt[:, di:di+1]), dim=-1)
+                    dec_in_var = torch.cat((dec_in_var, feats_tgt[:, di:di+1]), dim=-1)
 
 
                 if x_tgt is None and sample_variance:
@@ -264,6 +267,7 @@ def get_base_model(
 ):
 
     #hidden_size = max(int(config['hidden_size']*1.0/int(np.sqrt(level))), args.fc_units)
+    hidden_size = config['hidden_size']
 
     if args.fully_connected_agg_model:
         net_gru = NetFullyConnected(
