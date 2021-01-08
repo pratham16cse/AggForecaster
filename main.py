@@ -59,7 +59,7 @@ parser.add_argument('--learning_rate', type=float, default=0.001,# nargs='+',
 
 parser.add_argument('-hls', '--hidden_size', type=int, default=128, nargs='+',
                    help='Number of units in RNN')
-parser.add_argument('--num_grulstm_layers', type=int, default=1, nargs='+',
+parser.add_argument('--num_grulstm_layers', type=int, default=1,# nargs='+',
                    help='Number of layers in RNN')
 parser.add_argument('--fc_units', type=int, default=16, nargs='+',
                    help='Number of fully connected units on top of RNN state')
@@ -97,6 +97,8 @@ parser.add_argument('--wavelet_levels', type=int, default=2,
                     help='number of levels of wavelet coefficients')
 parser.add_argument('--fully_connected_agg_model', action='store_true', default=False,
                     help='If True, aggregate model will be a feed-forward network')
+parser.add_argument('--transformer_agg_model', action='store_true', default=False,
+                    help='If True, aggregate model will be a Transformer')
 
 parser.add_argument('--plot_anecdotes', action='store_true', default=False,
                     help='Plot the comparison of various methods')
@@ -284,7 +286,7 @@ for base_model_name in args.base_model_names:
                     scheduler = ASHAScheduler(
                         metric="metric",
                         mode="min",
-                        max_t=args.epochs,
+                        max_t=config_fixed['epochs'],
                         grace_period=1,
                         reduction_factor=2)
                     reporter = CLIReporter(
@@ -382,6 +384,28 @@ for base_model_name in args.base_model_names:
 
                 mae_agg = np.mean(np.abs(dev_target - pred_mu_agg))
                 mae_base = np.mean(np.abs(dev_target - pred_mu))
+
+                if level!=1:
+                    h_t = dev_inputs.shape[1]
+                    n_e = dev_target.shape[1]
+                    plt_dir = os.path.join(
+                        output_dir, 'plots', agg_method,
+                        'level_'+str(level),
+                    )
+                    os.makedirs(plt_dir, exist_ok=True)
+                    for i in range(0, dev_inputs.shape[0]):
+                        plt.plot(
+                            np.arange(1, h_t+n_e+1),
+                            np.concatenate([dev_inputs[i,:,0][-h_t:], dev_target[i,:,0]]),
+                            'ko-'
+                        )
+                        plt.plot(np.arange(h_t+1, h_t+n_e+1), pred_mu[i,:,0], 'bo-')
+                        plt.plot(np.arange(h_t+1, h_t+n_e+1), pred_mu_agg[i,:,0], 'ro-')
+                        plt.savefig(
+                            os.path.join(plt_dir, str(i)+'.svg'),
+                            format='svg', dpi=1200
+                        )
+                        plt.close()
 
                 mae_base_parts = []
                 mae_agg_parts = []

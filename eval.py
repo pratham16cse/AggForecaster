@@ -69,7 +69,7 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1):
         N = target.shape[1]
         p = max(int(N/4), 1)
         for i in range(0, N, p):
-            if i+p<N:
+            if i+p<=N:
                 losses_crps_part.append(
                     ps.crps_gaussian(
                         target[:, i:i+p],

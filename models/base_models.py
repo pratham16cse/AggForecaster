@@ -2,9 +2,137 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import random
+import math
 import numpy as np
 from torch.distributions.normal import Normal
+from torch.nn import TransformerEncoder, TransformerEncoderLayer
 
+
+class PositionalEncoding(torch.nn.Module):
+
+    def __init__(self, d_model, dropout=0.1, max_len=5000):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0, 1)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x):
+        x = x + self.pe[:x.size(0), :]
+        return self.dropout(x)
+
+class TransformerDecoder(torch.nn.Module):
+
+    def __init__(self, input_length, ninp, target_length, output_size, hidden_size):
+
+        super(TransformerDecoder, self).__init__()
+
+        self.input_length = input_length
+        self.ninp = ninp
+        self.target_length = target_length
+        self.output_size = output_size
+        self.hidden_size = hidden_size
+
+        self.hidden_layer = nn.Linear(self.input_length*self.ninp, hidden_size)
+        self.output_layer = nn.Linear(
+            self.hidden_size,
+            self.target_length*self.output_size
+        )
+
+    def forward(self, x): # x: (batch, input_length, ninp)
+        #print(x.shape, self.input_length, self.ninp)
+        out = self.hidden_layer(x.reshape(-1, self.input_length*self.ninp))
+        out = F.relu(out)
+        out = self.output_layer(out)
+        out = out.view(-1, self.target_length, self.output_size)
+        return out
+
+class TransformerModel(torch.nn.Module):
+
+    def __init__(
+        self, input_length, input_size, target_length, output_size,
+        hidden_size, num_enc_layers, fc_units,
+        use_time_features, point_estimates, teacher_forcing_ratio,
+        deep_std, device,
+        ninp, nhead, dropout=0.5
+    ):
+        super(TransformerModel, self).__init__()
+
+        self.input_size = input_size
+        self.input_length = input_length
+        self.output_size = output_size
+        self.target_length = target_length
+
+        self.target_length = target_length
+        self.use_time_features = use_time_features
+        self.point_estimates = point_estimates
+        self.teacher_forcing_ratio = teacher_forcing_ratio
+        self.device = device
+        self.deep_std = deep_std
+
+        self.model_type = 'Transformer'
+        self.pos_encoder = PositionalEncoding(ninp, dropout)
+        encoder_layers = TransformerEncoderLayer(ninp, nhead, hidden_size, dropout)
+        self.transformer_encoder = TransformerEncoder(encoder_layers, num_enc_layers)
+        #self.encoder = nn.Embedding(input_size, ninp)
+        self.encoder = nn.Linear(input_size, ninp)
+        self.ninp = ninp
+        #self.decoder = nn.Linear(ninp, output_size)
+        self.decoder_mean = TransformerDecoder(input_length, ninp, target_length, output_size, hidden_size)
+        self.decoder_std = TransformerDecoder(input_length, ninp, target_length, output_size, hidden_size)
+
+        self.kernel_size = max(input_length//5, 2)
+
+        self.conv_layer = torch.nn.Conv1d(input_size, input_size, self.kernel_size)
+
+        self.init_weights()
+
+        self.src_mask = self.generate_square_subsequent_mask(self.input_length)
+
+    def generate_square_subsequent_mask(self, sz):
+        mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
+        mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
+        return mask
+
+    def init_weights(self):
+        initrange = 0.1
+        #self.encoder.weight.data.uniform_(-initrange, initrange)
+        #self.decoder.bias.data.zero_()
+        #self.decoder.weight.data.uniform_(-initrange, initrange)
+
+    #def forward(self, src, src_mask):
+    def forward(self, feats_in, x_in, feats_tgt, x_tgt=None, sample_variance=False):
+
+        # Apply Convolution
+        #c_in = x_in.transpose(2, 1)
+        #c_in = F.pad(c_in, (self.kernel_size-1, 0), "constant", 0)
+        #c_in = self.conv_layer(c_in)
+        #x_in = c_in.transpose(2, 1)
+
+        src = self.encoder(x_in) * math.sqrt(self.ninp)
+        src = self.pos_encoder(src)
+        input_length  = x_in.shape[1]
+        if self.use_time_features:
+            enc_in = torch.cat((src, feats_in), dim=-1)
+        else:
+            enc_in = src
+
+        # Apply Transformer Encoder
+        enc_in = enc_in.transpose(1, 0)
+        output = self.transformer_encoder(enc_in)#, self.src_mask)
+        output = output.transpose(1, 0)
+
+        # Apply Transformer Decoder
+        means = self.decoder_mean(output)
+        stds = self.decoder_std(output)
+        stds = F.softplus(stds) + 1e-3
+
+        return means, stds
 
 class NetFullyConnected(torch.nn.Module):
     """docstring for NetFullyConnected"""
@@ -269,7 +397,7 @@ def get_base_model(
     #hidden_size = max(int(config['hidden_size']*1.0/int(np.sqrt(level))), args.fc_units)
     hidden_size = config['hidden_size']
 
-    if args.fully_connected_agg_model:
+    if level != 1 and args.fully_connected_agg_model:
         net_gru = NetFullyConnected(
             input_length=N_input, input_size=input_size,
             target_length=N_output, output_size=output_size,
@@ -278,6 +406,18 @@ def get_base_model(
             point_estimates=point_estimates, deep_std=args.deep_std,
             variance_net=args.variance_rnn, second_moment=args.second_moment,
             device=args.device
+        )
+    elif level != 1 and args.transformer_agg_model:
+        net_gru = TransformerModel(
+            input_length=N_input, input_size=input_size,
+            target_length=N_output, output_size=output_size,
+            hidden_size=hidden_size, num_enc_layers=args.num_grulstm_layers,
+            fc_units=args.fc_units,
+            use_time_features=args.use_time_features,
+            point_estimates=point_estimates,
+            teacher_forcing_ratio=args.teacher_forcing_ratio,
+            deep_std=args.deep_std, device=args.device,
+            ninp=args.fc_units, nhead=4, dropout=0.5
         )
     else:
         encoder = EncoderRNN(
