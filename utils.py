@@ -431,11 +431,9 @@ def create_hierarchical_wavelet_data(
 	return K2data
 
 def create_hierarchical_data(
-	args, train_input, train_target, dev_input, dev_target,
-	test_input, test_target, train_bkp, dev_bkp, test_bkp,
-	data_train, data_dev, data_test,
+	args, data_train, data_dev, data_test,
 	dev_tsid_map, test_tsid_map,
-	aggregation_type
+	aggregation_type, K
 ):
 
 	#aggregation2func = {}
@@ -457,127 +455,64 @@ def create_hierarchical_data(
 		wavelet_levels = None
 		K_list = args.K_list
 
-	K2data = OrderedDict()
-	for K in K_list:
-		#if K == 1:
-		#	train_input_agg, train_target_agg = train_input, train_target
-		#	dev_input_agg, dev_target_agg = dev_input, dev_target
-		#	test_input_agg, test_target_agg = test_input, test_target
-		#else:
-		#	(
-		#		train_input_agg, train_target_agg, dev_input_agg, dev_target_agg,
-		#		test_input_agg, test_target_agg,
-		#	)= aggregation_func(
-		#		K, train_input, train_target,
-		#		dev_input, dev_target, test_input, test_target,
-		#	)
 
-		#if args.normalize:
-		#	train_input_norm, norm = normalize(train_input_agg)
-		#	_, norm = normalize(np.array(data_train))
-		#else:
-		#	train_input_norm = train_input_agg
-		#	norm = np.ones_like(np.mean(train_input_agg, axis=(0, 1)))
-		#train_target_norm, _ = normalize(train_target_agg, norm)
-		#dev_input_norm, _ = normalize(dev_input_agg, norm)
-		#dev_target_norm = dev_target_agg
-		#test_input_norm, _ = normalize(test_input_agg, norm)
-		#test_target_norm = test_target_agg
+	lazy_dataset_train = TimeSeriesDataset(
+		data_train, args.N_input, args.N_output, -1,
+		aggregation_type, K,
+		norm_type=args.normalize,
+		use_time_features=args.use_time_features,
+		wavelet_levels=wavelet_levels
+	)
+	norm = lazy_dataset_train.input_norm
+	dev_norm, test_norm = [], []
+	for i in range(len(data_dev)):
+		dev_norm.append(norm[dev_tsid_map[i]])
+	for i in range(len(data_test)):
+		test_norm.append(norm[test_tsid_map[i]])
+	dev_norm, test_norm = np.stack(dev_norm), np.stack(test_norm)
+	#import ipdb
+	#ipdb.set_trace()
+	lazy_dataset_dev = TimeSeriesDataset(
+		data_dev, args.N_input, args.N_output, args.N_output,
+		aggregation_type, K,
+		input_norm=dev_norm, target_norm=np.ones_like(dev_norm),
+		use_time_features=args.use_time_features,
+		tsid_map=dev_tsid_map,
+		wavelet_levels=wavelet_levels
+	)
+	lazy_dataset_test = TimeSeriesDataset(
+		data_test, args.N_input, args.N_output, args.N_output,
+		aggregation_type, K,
+		input_norm=test_norm, target_norm=np.ones_like(test_norm),
+		use_time_features=args.use_time_features,
+		tsid_map=test_tsid_map,
+		wavelet_levels=wavelet_levels
+	)
+	trainloader = DataLoader(
+		lazy_dataset_train, batch_size=args.batch_size, shuffle=True,
+		drop_last=True, num_workers=2
+	)
+	devloader = DataLoader(
+		lazy_dataset_dev, batch_size=args.batch_size, shuffle=False,
+		drop_last=False, num_workers=1
+	)
+	testloader = DataLoader(
+		lazy_dataset_test, batch_size=args.batch_size, shuffle=False,
+		drop_last=False, num_workers=1
+	)
 
-		#dataset_train = SyntheticDataset(train_input_norm, train_target_norm, train_bkp)
-		#dataset_dev = SyntheticDataset(dev_input_norm, dev_target_norm, dev_bkp)
-		#dataset_test  = SyntheticDataset(test_input_norm, test_target_norm, test_bkp)
-
-		#trainloader = DataLoader(
-		#	dataset_train, batch_size=args.batch_size, shuffle=True,
-		#	drop_last=True, num_workers=1
-		#)
-		#devloader = DataLoader(
-		#	dataset_dev, batch_size=dev_input.shape[0], shuffle=False,
-		#	drop_last=False, num_workers=1
-		#)
-		#testloader  = DataLoader(
-		#	dataset_test, batch_size=test_input.shape[0], shuffle=False,
-		#	drop_last=False, num_workers=1
-		#)
-
-		#_, norm = normalize(np.array([[s for seq in data_train for s in seq['target']]]))
-		#if not args.normalize:
-		#	norm = np.ones_like(norm)
-
-		lazy_dataset_train = TimeSeriesDataset(
-			data_train, args.N_input, args.N_output, -1,
-			aggregation_type, K,
-			norm_type=args.normalize,
-			use_time_features=args.use_time_features,
-			wavelet_levels=wavelet_levels
-		)
-		norm = lazy_dataset_train.input_norm
-		dev_norm, test_norm = [], []
-		for i in range(len(data_dev)):
-			dev_norm.append(norm[dev_tsid_map[i]])
-		for i in range(len(data_test)):
-			test_norm.append(norm[test_tsid_map[i]])
-		dev_norm, test_norm = np.stack(dev_norm), np.stack(test_norm)
-		#import ipdb
-		#ipdb.set_trace()
-		lazy_dataset_dev = TimeSeriesDataset(
-			data_dev, args.N_input, args.N_output, args.N_output,
-			aggregation_type, K,
-			input_norm=dev_norm, target_norm=np.ones_like(dev_norm),
-			use_time_features=args.use_time_features,
-			tsid_map=dev_tsid_map,
-			wavelet_levels=wavelet_levels
-		)
-		lazy_dataset_test = TimeSeriesDataset(
-			data_test, args.N_input, args.N_output, args.N_output,
-			aggregation_type, K,
-			input_norm=test_norm, target_norm=np.ones_like(test_norm),
-			use_time_features=args.use_time_features,
-			tsid_map=test_tsid_map,
-			wavelet_levels=wavelet_levels
-		)
-		trainloader = DataLoader(
-			lazy_dataset_train, batch_size=args.batch_size, shuffle=True,
-			drop_last=True, num_workers=2
-		)
-		devloader = DataLoader(
-			lazy_dataset_dev, batch_size=len(lazy_dataset_dev), shuffle=False,
-			drop_last=True, num_workers=1
-		)
-		testloader = DataLoader(
-			lazy_dataset_test, batch_size=len(lazy_dataset_test), shuffle=False,
-			drop_last=True, num_workers=1
-		)
-		#for i, b in enumerate(trainloader):
-		#	print(b[0].shape, b[1].shape)
-		#	if i>10: break
-		#import ipdb
-		#ipdb.set_trace()
-
-		#for i, d in enumerate(devloader):
-		#	inputs, target, feats_in, feats_tgt, _ = data
-			#print(d[0].shape, d[1].shape)
-			#if i>10:
-			#	break
-		#	print(inputs.shape, target.shape)
-			#import ipdb
-			#ipdb.set_trace()
-		#norm = torch.FloatTensor(norm)
-		K2data[K] = {
-			'trainloader': trainloader,
-			'devloader': devloader,
-			'testloader': testloader,
-			'N_input': lazy_dataset_test.enc_len,
-			'N_output': lazy_dataset_test.dec_len,
-			'input_size': lazy_dataset_test.input_size,
-			'output_size': lazy_dataset_test.output_size,
-			'train_norm': norm,
-			'dev_norm': dev_norm,
-			'test_norm': test_norm
-		}
-
-	return K2data
+	return {
+		'trainloader': trainloader,
+		'devloader': devloader,
+		'testloader': testloader,
+		'N_input': lazy_dataset_test.enc_len,
+		'N_output': lazy_dataset_test.dec_len,
+		'input_size': lazy_dataset_test.input_size,
+		'output_size': lazy_dataset_test.output_size,
+		'train_norm': norm,
+		'dev_norm': dev_norm,
+		'test_norm': test_norm
+	}
 
 class TimeSeriesDataset(torch.utils.data.Dataset):
 	"""docstring for TimeSeriesDataset"""
@@ -607,12 +542,12 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 		self.tsid_map = tsid_map
 		self.wavelet_levels = wavelet_levels
 
-		if self.K != 1:
-			self._enc_len = self.K * enc_len
-			for i in range(len(data)):
-				if self.K  * enc_len > len(data[i]['target']):
-					self._enc_len = enc_len
-					break
+		#if self.K != 1:
+		#	self._enc_len = self.K * enc_len
+		#	for i in range(len(data)):
+		#		if self.K  * enc_len > len(data[i]['target']):
+		#			self._enc_len = enc_len
+		#			break
 
 		self.indices = []
 		for i in range(0, len(data)):
@@ -861,150 +796,147 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 
 
 
-def get_processed_data(args):
+class DataProcessor(object):
+	"""docstring for DataProcessor"""
+	def __init__(self, args):
+		super(DataProcessor, self).__init__()
+		self.args = args
 
-	if args.dataset_name in ['synth']:
-		# parameters
-		N = 500
-		sigma = 0.01
+		if args.dataset_name in ['synth']:
+			# parameters
+			N = 500
+			sigma = 0.01
+	
+			# Load synthetic dataset
+			(
+				X_train_input, X_train_target,
+				X_dev_input, X_dev_target,
+				X_test_input, X_test_target,
+				train_bkp, dev_bkp, test_bkp,
+			) = create_synthetic_dataset(N, args.N_input, args.N_output, sigma)
+	
+		elif args.dataset_name in ['sin']:
+			N = 100
+			sigma = 0.01
+	
+			(
+				data_train, data_dev, data_test,
+				dev_tsid_map, test_tsid_map
+			) = create_sin_dataset(N, args.N_input, args.N_output, sigma)
+	
+		elif args.dataset_name in ['ECG5000']:
+			(
+				X_train_input, X_train_target,
+				X_dev_input, X_dev_target,
+				X_test_input, X_test_target,
+				train_bkp, dev_bkp, test_bkp,
+				data_train, data_dev, data_test
+			) = parse_ECG5000(args.N_input, args.N_output)
+	
+		elif args.dataset_name in ['Traffic']:
+			(
+				X_train_input, X_train_target,
+				X_dev_input, X_dev_target,
+				X_test_input, X_test_target,
+				train_bkp, dev_bkp, test_bkp,
+				data_train, data_dev, data_test
+			) = parse_Traffic(args.N_input, args.N_output)
+	
+		elif args.dataset_name in ['Taxi']:
+			(
+				X_train_input, X_train_target,
+				X_dev_input, X_dev_target,
+				X_test_input, X_test_target,
+				train_bkp, dev_bkp, test_bkp,
+				data_train, data_dev, data_test
+			) = parse_Taxi(args.N_input, args.N_output)
+	
+		elif args.dataset_name in ['Traffic911']:
+			(
+				X_train_input, X_train_target,
+				X_dev_input, X_dev_target,
+				X_test_input, X_test_target,
+				train_bkp, dev_bkp, test_bkp,
+				data_train, data_dev, data_test
+			) = parse_Traffic911(args.N_input, args.N_output)
+		elif args.dataset_name in ['Exchange', 'Solar', 'Wiki', 'taxi30min']:
+			(
+				data_train, data_dev, data_test,
+				dev_tsid_map, test_tsid_map
+			) = parse_gc_datasets(args.dataset_name, args.N_input, args.N_output)
+	
+		if args.use_time_features:
+			assert 'start' in data_train[0].keys()
 
-		# Load synthetic dataset
-		(
-			X_train_input, X_train_target,
-			X_dev_input, X_dev_target,
-			X_test_input, X_test_target,
-			train_bkp, dev_bkp, test_bkp,
-		) = create_synthetic_dataset(N, args.N_input, args.N_output, sigma)
-
-	elif args.dataset_name in ['sin']:
-		N = 100
-		sigma = 0.01
-
-		(
-			X_train_input, X_train_target,
-			X_dev_input, X_dev_target,
-			X_test_input, X_test_target,
-			train_bkp, dev_bkp, test_bkp,
-			data_train, data_dev, data_test,
-			dev_tsid_map, test_tsid_map
-		) = create_sin_dataset(N, args.N_input, args.N_output, sigma)
-
-	elif args.dataset_name in ['ECG5000']:
-		(
-			X_train_input, X_train_target,
-			X_dev_input, X_dev_target,
-			X_test_input, X_test_target,
-			train_bkp, dev_bkp, test_bkp,
-			data_train, data_dev, data_test
-		) = parse_ECG5000(args.N_input, args.N_output)
-
-	elif args.dataset_name in ['Traffic']:
-		(
-			X_train_input, X_train_target,
-			X_dev_input, X_dev_target,
-			X_test_input, X_test_target,
-			train_bkp, dev_bkp, test_bkp,
-			data_train, data_dev, data_test
-		) = parse_Traffic(args.N_input, args.N_output)
-
-	elif args.dataset_name in ['Taxi']:
-		(
-			X_train_input, X_train_target,
-			X_dev_input, X_dev_target,
-			X_test_input, X_test_target,
-			train_bkp, dev_bkp, test_bkp,
-			data_train, data_dev, data_test
-		) = parse_Taxi(args.N_input, args.N_output)
-
-	elif args.dataset_name in ['Traffic911']:
-		(
-			X_train_input, X_train_target,
-			X_dev_input, X_dev_target,
-			X_test_input, X_test_target,
-			train_bkp, dev_bkp, test_bkp,
-			data_train, data_dev, data_test
-		) = parse_Traffic911(args.N_input, args.N_output)
-	elif args.dataset_name in ['Exchange', 'Solar', 'Wiki', 'taxi30min']:
-		(
-			X_train_input, X_train_target,
-			X_dev_input, X_dev_target,
-			X_test_input, X_test_target,
-			train_bkp, dev_bkp, test_bkp,
-			data_train, data_dev, data_test,
-			dev_tsid_map, test_tsid_map
-		) = parse_gc_datasets(args.dataset_name, args.N_input, args.N_output)
-
-	if args.use_time_features:
-		assert 'start' in data_train[0].keys()
+		self.data_train = data_train
+		self.data_dev = data_dev
+		self.data_test = data_test
+		self.dev_tsid_map = dev_tsid_map
+		self.test_tsid_map = test_tsid_map
 
 
-	K2data_sum = create_hierarchical_data(
-		args, X_train_input, X_train_target,
-		X_dev_input, X_dev_target,
-		X_test_input, X_test_target,
-		train_bkp, dev_bkp, test_bkp,
-		data_train, data_dev, data_test,
-		dev_tsid_map, test_tsid_map,
-		aggregation_type='sum'
-	)
-	print('sum done')
-	#K2data_ls = create_hierarchical_data(
-	#	args, X_train_input, X_train_target,
-	#	X_dev_input, X_dev_target,
-	#	X_test_input, X_test_target,
-	#	train_bkp, dev_bkp, test_bkp,
-	#	data_train, data_dev, data_test,
-	#	aggregation_type='leastsquare'
-	#)
-	#print('ls done')
-	#K2data_st = create_hierarchical_data(
-	#	args, X_train_input, X_train_target,
-	#	X_dev_input, X_dev_target,
-	#	X_test_input, X_test_target,
-	#	train_bkp, dev_bkp, test_bkp,
-	#	data_train, data_dev, data_test,
-	#	aggregation_type='sumwithtrend'
-	#)
-	#print('sumwithtrend done')
-	K2data_slope = create_hierarchical_data(
-		args, X_train_input, X_train_target,
-		X_dev_input, X_dev_target,
-		X_test_input, X_test_target,
-		train_bkp, dev_bkp, test_bkp,
-		data_train, data_dev, data_test,
-		dev_tsid_map, test_tsid_map,
-		aggregation_type='slope'
-	)
-	print('slope done')
-	#K2data_wavelet = create_hierarchical_wavelet_data(
-	#	args, X_train_input, X_train_target,
-	#	X_dev_input, X_dev_target,
-	#	X_test_input, X_test_target,
-	#	train_bkp, dev_bkp, test_bkp,
-	#	aggregation_type='wavelet'
-	#)
-	#K2data_wavelet = create_hierarchical_data(
-	#	args, X_train_input, X_train_target,
-	#	X_dev_input, X_dev_target,
-	#	X_test_input, X_test_target,
-	#	train_bkp, dev_bkp, test_bkp,
-	#	data_train, data_dev, data_test,
-	#	aggregation_type='wavelet'
-	#)
-	#print('wavelet done')
-
-	dataset = dict()
-	dataset['sum'] = K2data_sum
-	#dataset['leastsquare'] = K2data_ls
-	#dataset['sumwithtrend'] = K2data_st
-	dataset['slope'] = K2data_slope
-	#dataset['wavelet'] = K2data_wavelet
-
-	return dataset
-	#return {
-		#'trainloader': trainloader,
-		#'testloader': testloader,
-		#'K2data_sum': K2data_sum,
-		#'K2data_ls': K2data_ls,
-		#'K2data': K2data
-	#}
+	def get_processed_data(self, args, agg_method, K):
+	
+	
+		dataset = create_hierarchical_data(
+			args, self.data_train, self.data_dev, self.data_test,
+			self.dev_tsid_map, self.test_tsid_map,
+			aggregation_type=agg_method, K=K
+		)
+		#print('sum done')
+		#K2data_ls = create_hierarchical_data(
+		#	args, X_train_input, X_train_target,
+		#	X_dev_input, X_dev_target,
+		#	X_test_input, X_test_target,
+		#	train_bkp, dev_bkp, test_bkp,
+		#	data_train, data_dev, data_test,
+		#	aggregation_type='leastsquare'
+		#)
+		#print('ls done')
+		#K2data_st = create_hierarchical_data(
+		#	args, X_train_input, X_train_target,
+		#	X_dev_input, X_dev_target,
+		#	X_test_input, X_test_target,
+		#	train_bkp, dev_bkp, test_bkp,
+		#	data_train, data_dev, data_test,
+		#	aggregation_type='sumwithtrend'
+		#)
+		#print('sumwithtrend done')
+		#K2data_slope = create_hierarchical_data(
+		#	args, data_train, data_dev, data_test,
+		#	dev_tsid_map, test_tsid_map,
+		#	aggregation_type='slope'
+		#)
+		#print('slope done')
+		#K2data_wavelet = create_hierarchical_wavelet_data(
+		#	args, X_train_input, X_train_target,
+		#	X_dev_input, X_dev_target,
+		#	X_test_input, X_test_target,
+		#	train_bkp, dev_bkp, test_bkp,
+		#	aggregation_type='wavelet'
+		#)
+		#K2data_wavelet = create_hierarchical_data(
+		#	args, X_train_input, X_train_target,
+		#	X_dev_input, X_dev_target,
+		#	X_test_input, X_test_target,
+		#	train_bkp, dev_bkp, test_bkp,
+		#	data_train, data_dev, data_test,
+		#	aggregation_type='wavelet'
+		#)
+		#print('wavelet done')
+	
+		#dataset = dict()
+		#dataset['sum'] = K2data_sum
+		#dataset['leastsquare'] = K2data_ls
+		#dataset['sumwithtrend'] = K2data_st
+		#dataset['slope'] = K2data_slope
+		#dataset['wavelet'] = K2data_wavelet
+	
+		return dataset
+		#return {
+			#'trainloader': trainloader,
+			#'testloader': testloader,
+			#'K2data_sum': K2data_sum,
+			#'K2data_ls': K2data_ls,
+			#'K2data': K2data
+		#}

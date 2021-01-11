@@ -2,26 +2,26 @@ import numpy as np
 import torch
 import random
 from torch.utils.data import Dataset, DataLoader
+from copy import deepcopy
 
 def create_sin_dataset(N, N_input, N_output, sigma):
     # N: number of samples in each split (train, test)
     # N_input: import of time steps in input series
     # N_output: import of time steps in output series
     # sigma: standard deviation of additional noise
+    #N = 2
     N_dev = int(0.2 * N)
     N_test = int(0.2 * N)
     num_rolling_windows = 1
 
     X = []
-    breakpoints = []
+    init_offset = np.linspace(-np.pi, np.pi, N)
     for k in range(N):
-        inp = np.random.uniform(-np.pi, np.pi) + np.linspace(0, 30, N_input+4*N_output)
+        inp = init_offset[k] + np.linspace(0, 30, N_input*10+4*N_output)
         #serie = np.sin(inp)*5 + np.random.normal(0, 0.1, size=(inp.shape)) + 5
         serie = np.sin(inp) + np.random.normal(0, 0.1, size=(inp.shape))
         X.append(serie)
-        breakpoints.append(N_input)
     X = np.expand_dims(np.stack(X), axis=-1)
-    breakpoints = np.array(breakpoints)
 
     data_train = []
     data_dev = []
@@ -29,42 +29,34 @@ def create_sin_dataset(N, N_input, N_output, sigma):
     dev_tsid_map, test_tsid_map = {}, {}
 
     for i, ts in enumerate(X):
-        entry_dict = {}
-        entry_dict['target'] = ts
-        trn = ts[:num_rolling_windows*2*N_output]
-        data_train.append(entry_dict)
+        entry_train = {}
+        train_len = len(ts) - 2 * num_rolling_windows * N_output
+        seq_trn = ts[ : train_len ] # leaving two blocks for dev and test
+        entry_train['target'] = seq_trn
+        data_train.append(entry_train)
 
-        for j in range(num_rolling_windows-1, -1, -1):
+        for j in range(1, num_rolling_windows+1):
             entry_dev = dict()
 
-            if j==-1:
-                break
-            elif j==0:
-                seq_dev = ts
-            else:
-                seq_dev = ts[ : - N_output*j - num_rolling_windows*N_output ]
+            dev_len = train_len + j*N_output
+            seq_dev = ts[ : dev_len ]
 
-            entry_dict['target'] = seq_dev
-            data_dev.append(entry_dict)
+            entry_dev['target'] = seq_dev
+            data_dev.append(entry_dev)
             dev_tsid_map[len(data_dev)-1] = i
 
-        for j in range(num_rolling_windows-1, -1, -1):
+        for j in range(1, num_rolling_windows+1):
             entry_test = dict()
 
-            if j==-1:
-                break
-            elif j==0:
-                seq_test = ts
-            else:
-                seq_test = ts[ : - N_output*j ]
+            test_len = train_len + num_rolling_windows*N_output + j*N_output
+            seq_test = deepcopy(ts[ : test_len])
 
-            entry_dict['target'] = seq_test
-            data_test.append(entry_dict)
+            entry_test['target'] = seq_test
+            data_test.append(entry_test)
             test_tsid_map[len(data_dev)-1] = i
 
+
     return (
-        X, X, X, X, X, X,
-        breakpoints, breakpoints, breakpoints,
         data_train, data_dev, data_test,
         dev_tsid_map, test_tsid_map
     )

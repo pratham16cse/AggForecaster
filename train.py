@@ -6,6 +6,7 @@ from loss.dilate_loss import dilate_loss
 from eval import eval_base_model
 import time
 from models.base_models import get_base_model
+from utils import DataProcessor
 
 import optuna
 from ray import tune
@@ -23,23 +24,36 @@ def train_model(config):
     lr = config["lr"]
     args = config['args']
     model_name = config['base_model_name']
-    trainloader = config['trainloader']
-    devloader = config['devloader']
-    testloader = config['testloader']
-    norm = config['dev_norm']
+    #trainloader = config['trainloader']
+    #devloader = config['devloader']
+    #testloader = config['testloader']
+    #norm = config['dev_norm']
     saved_models_path = config['saved_models_path']
     output_dir = config['output_dir']
     #writer = config['writer']
     eval_every = config['eval_every']
     verbose = config['verbose']
     level = config['level']
-    N_input = config['N_input']
-    N_output = config['N_output']
-    input_size = config['input_size']
-    output_size = config['output_size']
+    #N_input = config['N_input']
+    #N_output = config['N_output']
+    #input_size = config['input_size']
+    #output_size = config['output_size']
     point_estimates = config['point_estimates']
     epochs = config['epochs']
     Lambda=1
+
+    agg_method = config['agg_method']
+    level = config['level']
+
+    dataset = DataProcessor(args).get_processed_data(args, agg_method, level)
+    trainloader = dataset['trainloader']
+    devloader = dataset['devloader']
+    N_input = dataset['N_input']
+    N_output = dataset['N_output']
+    input_size = dataset['input_size']
+    output_size = dataset['output_size']
+    norm = dataset['dev_norm']
+    #testloader = level2data[level]['testloader']
 
 
     #lr = trial.suggest_float("lr", 1e-5, 1e-1, log=True)

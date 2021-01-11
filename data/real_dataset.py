@@ -308,6 +308,9 @@ def parse_Traffic911(N_input, N_output):
 	)
 
 def parse_gc_datasets(dataset_name, N_input, N_output):
+
+	all_datasets_dir = '/Users/prathamesh/Forecasting/DILATE/data'
+
 	if dataset_name in ['Exchange']:
 		num_rolling_windows = 5
 		dataset_dir = 'exchange_rate_nips'
@@ -322,12 +325,12 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 		dataset_dir = 'taxi_30min'
 
 	data_ = []
-	with open(os.path.join('data', dataset_dir, 'train', 'train.json')) as f:
+	with open(os.path.join(all_datasets_dir, dataset_dir, 'train', 'train.json')) as f:
 		for line in f:
 			data_.append(json.loads(line))
 
 	data_test_full_ = []
-	with open(os.path.join('data', dataset_dir, 'test', 'test.json')) as f:
+	with open(os.path.join(all_datasets_dir, dataset_dir, 'test', 'test.json')) as f:
 		for line in f:
 			data_test_full_.append(json.loads(line))
 
@@ -350,7 +353,7 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 		data = data_
 		data_test_full = data_test_full_
 
-	metadata = json.load(open(os.path.join('data', dataset_dir, 'metadata', 'metadata.json')))
+	metadata = json.load(open(os.path.join(all_datasets_dir, dataset_dir, 'metadata', 'metadata.json')))
 
 
 	data_train, data_dev, data_test = [], [], []
@@ -361,7 +364,8 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 	for i, entry in enumerate(data, 0):
 		entry_train = dict()
 
-		seq_train = entry['target'][ : -N_output*num_rolling_windows]
+		train_len = len(entry['target']) - N_output*num_rolling_windows
+		seq_train = entry['target'][ : train_len ]
 		seq_train = np.expand_dims(seq_train, axis=-1)
 
 		seq_dates = get_date_range(entry['start'], metadata['time_granularity'], len(entry['target']))
@@ -373,15 +377,17 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 
 		data_train.append(entry_train)
 
-		for j in range(num_rolling_windows-1, -1, -1):
+		for j in range(1, num_rolling_windows+1):
 			entry_dev = dict()
 
-			if j==-1:
-				break
-			elif j==0:
-				seq_dev = entry['target']
-			else:
-				seq_dev = entry['target'][ : -N_output*j ]
+			dev_len = train_len + N_output*j
+			#if j==-1:
+			#	break
+			#elif j==0:
+			#	seq_dev = entry['target']
+			#else:
+			#	seq_dev = entry['target'][ : -N_output*j ]
+			seq_dev = entry['target'][ : -N_output*j ]
 			seq_dev = np.expand_dims(seq_dev, axis=-1)
 
 			#start_dev = seq_dates[ -N_output*num_rolling_windows - N_input ]
@@ -392,13 +398,6 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 			entry_dev['freq_str'] = metadata['time_granularity']
 			data_dev.append(entry_dev)
 			dev_tsid_map[len(data_dev)-1] = i
-
-		batch_train_in, batch_train_out = create_forecast_io_seqs(seq_train, N_input, N_output, int(N_output/3))
-		batch_dev_in, batch_dev_out = create_forecast_io_seqs(seq_dev, N_input, N_output, N_output)
-		data_train_in.append(batch_train_in)
-		data_train_out.append(batch_train_out)
-		data_dev_in.append(batch_dev_in)
-		data_dev_out.append(batch_dev_out)
 
 	for i, entry in enumerate(data_test_full, 0):
 		entry_test = dict()
@@ -414,23 +413,6 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 		data_test.append(entry_test)
 		test_tsid_map[i] = i%len(data) # Multiple test instances per train series.
 
-		batch_test_in, batch_test_out = create_forecast_io_seqs(seq_test, N_input, N_output, N_output)
-		data_test_in.append(batch_test_in)
-		data_test_out.append(batch_test_out)
-
-	data_train_in = np.concatenate(data_train_in, axis=0)
-	data_train_out = np.concatenate(data_train_out, axis=0)
-	data_dev_in = np.concatenate(data_dev_in, axis=0)
-	data_dev_out = np.concatenate(data_dev_out, axis=0)
-	data_test_in = np.concatenate(data_test_in, axis=0)
-	data_test_out = np.concatenate(data_test_out, axis=0)
-
-	train_bkp = np.ones(data_train_in.shape[0]) * N_input
-	dev_bkp = np.ones(data_dev_in.shape[0]) * N_input
-	test_bkp = np.ones(data_test_in.shape[0]) * N_input
-
 	return (
-		data_train_in, data_train_out, data_dev_in, data_dev_out,
-		data_test_in, data_test_out, train_bkp, dev_bkp, test_bkp,
 		data_train, data_dev, data_test, dev_tsid_map, test_tsid_map
 	)

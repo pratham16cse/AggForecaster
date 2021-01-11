@@ -142,6 +142,8 @@ args.inference_model_names = [
 #    'seq2seqmse_opttrend',
     'seq2seqnll_opttrend',
     'seq2seqnll_optklst',
+    'seq2seqnll_optkls',
+    'seq2seqnll_optklt',
 #    'seq2seqmse_wavelet',
 #    'seq2seqnll_wavelet',
 ]
@@ -179,7 +181,8 @@ model2metrics = dict()
 infmodel2preds = dict()
 
 
-dataset = utils.get_processed_data(args)
+#dataset = utils.get_processed_data(args)
+data_processor = utils.DataProcessor(args)
 #level2data = dataset['level2data']
 # ----- Start: base models training ----- #
 for base_model_name in args.base_model_names:
@@ -195,21 +198,22 @@ for base_model_name in args.base_model_names:
     for agg_method in aggregate_methods:
         base_models[base_model_name][agg_method] = {}
         base_models_preds[base_model_name][agg_method] = {}
-        level2data = dataset[agg_method]
+        #level2data = dataset[agg_method]
 
         if agg_method in ['wavelet']:
             levels = list(range(1, args.wavelet_levels+3))
 
         for level in levels:
-            trainloader = level2data[level]['trainloader']
-            devloader = level2data[level]['devloader']
-            testloader = level2data[level]['testloader']
-            N_input = level2data[level]['N_input']
-            N_output = level2data[level]['N_output']
-            input_size = level2data[level]['input_size']
-            output_size = level2data[level]['output_size']
-            dev_norm = level2data[level]['dev_norm']
-            test_norm = level2data[level]['test_norm']
+            #level2data = utils.get_processed_data(args, agg_method, level)
+            #trainloader = level2data[level]['trainloader']
+            #devloader = level2data[level]['devloader']
+            #testloader = level2data['testloader']
+            #N_input = level2data['N_input']
+            #N_output = level2data['N_output']
+            #input_size = level2data['input_size']
+            #output_size = level2data['output_size']
+            #dev_norm = level2data['dev_norm']
+            #test_norm = level2data['test_norm']
 
             if base_model_name in ['seq2seqmse', 'seq2seqdilate']:
                 point_estimates = True
@@ -239,21 +243,23 @@ for base_model_name in args.base_model_names:
                 # Create config dictionaries
                 config_fixed = {
                     'args': args,
+                    'agg_method': agg_method,
+                    'level': level,
                     'base_model_name': base_model_name,
-                    'trainloader': trainloader,
-                    'devloader': devloader,
-                    'testloader': testloader,
-                    'dev_norm': dev_norm,
+                    #'trainloader': trainloader,
+                    #'devloader': devloader,
+                    #'testloader': testloader,
+                    #'dev_norm': dev_norm,
                     'saved_models_path': saved_models_path,
                     'output_dir': output_dir,
                     #'writer': writer,
                     'eval_every': 50,
                     'verbose': 1,
-                    'level': level,
-                    'N_input': N_input,
-                    'N_output': N_output,
-                    'input_size': input_size,
-                    'output_size': output_size,
+                    #'level': level,
+                    #'N_input': N_input,
+                    #'N_output': N_output,
+                    #'input_size': input_size,
+                    #'output_size': output_size,
                     'point_estimates': point_estimates,
                     'epochs': int(args.epochs * np.sqrt(level)),
                 } # Fixed parameters
@@ -299,7 +305,8 @@ for base_model_name in args.base_model_names:
                         config=config,
                         num_samples=num_samples,
                         scheduler=scheduler,
-                        progress_reporter=reporter
+                        progress_reporter=reporter,
+                        local_dir='.'
                     )
 
                     # Get the best config
@@ -310,6 +317,15 @@ for base_model_name in args.base_model_names:
                     best_checkpoint_path = os.path.join(best_trial.checkpoint.value, 'checkpoint')
 
                 # Load best model from best_checkpoint
+                # TODO: Need a way to get these variables without having to 
+                #       read the dataset from file
+                dataset = data_processor.get_processed_data(args, agg_method, level)
+                N_input = dataset['N_input']
+                N_output = dataset['N_output']
+                input_size = dataset['input_size']
+                output_size = dataset['output_size']
+                dev_norm = dataset['dev_norm']
+                test_norm = dataset['test_norm']
                 best_model = get_base_model(
                     args, best_config, level,
                     N_input, N_output, input_size, output_size,
@@ -461,7 +477,8 @@ for agg_method in args.aggregate_methods:
         levels = args.K_list
 
     for level in levels:
-        gen_test = iter(dataset[agg_method][level]['testloader'])
+        dataset = data_processor.get_processed_data(args, agg_method, level)
+        gen_test = iter(dataset['testloader'])
         test_inputs, test_targets, test_feats_in, test_feats_tgt, test_norm, breaks = next(gen_test)
 
         test_inputs  = torch.tensor(test_inputs, dtype=torch.float32).to(args.device)
@@ -605,7 +622,38 @@ for inf_model_name in args.inference_model_names:
 
     elif inf_model_name in ['seq2seqnll_optklst']:
         base_models_dict = base_models['seq2seqnll']
-        inf_net = inf_models.OPT_KL_st(args.K_list, base_models_dict, intercept_type='sum')
+        inf_net = inf_models.OPT_KL_st(
+            args.K_list, base_models_dict,
+            agg_methods=['sum', 'slope'],
+            intercept_type='sum')
+        inf_test_inputs_dict = test_inputs_dict
+        inf_test_targets_dict = test_targets_dict_leak
+        inf_test_norm_dict = test_norm_dict
+        inf_test_targets = test_targets_dict['sum'][1]
+        inf_norm = test_norm_dict['sum'][1]
+        inf_test_feats_in_dict = test_feats_in_dict
+        inf_test_feats_tgt_dict = test_feats_tgt_dict
+
+    elif inf_model_name in ['seq2seqnll_optkls']:
+        base_models_dict = base_models['seq2seqnll']
+        inf_net = inf_models.OPT_KL_st(
+            args.K_list, base_models_dict,
+            agg_methods=['sum'],
+            intercept_type='sum')
+        inf_test_inputs_dict = test_inputs_dict
+        inf_test_targets_dict = test_targets_dict_leak
+        inf_test_norm_dict = test_norm_dict
+        inf_test_targets = test_targets_dict['sum'][1]
+        inf_norm = test_norm_dict['sum'][1]
+        inf_test_feats_in_dict = test_feats_in_dict
+        inf_test_feats_tgt_dict = test_feats_tgt_dict
+
+    elif inf_model_name in ['seq2seqnll_optklt']:
+        base_models_dict = base_models['seq2seqnll']
+        inf_net = inf_models.OPT_KL_st(
+            args.K_list, base_models_dict,
+            agg_methods=['slope'],
+            intercept_type='sum')
         inf_test_inputs_dict = test_inputs_dict
         inf_test_targets_dict = test_targets_dict_leak
         inf_test_norm_dict = test_norm_dict

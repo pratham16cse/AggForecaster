@@ -435,7 +435,7 @@ class OPT_st(torch.nn.Module):
 
 class OPT_KL_st(OPT_st):
 	"""docstring for OPT_st"""
-	def __init__(self, K_list, base_models_dict, intercept_type='intercept'):
+	def __init__(self, K_list, base_models_dict, agg_methods, intercept_type='intercept'):
 		'''
 		K_list: list
 			list of K-values used for aggregation
@@ -444,8 +444,11 @@ class OPT_KL_st(OPT_st):
 			value: dict
 				key: level in the hierarchy
 				value: base model at the level 'key'
+		agg_methods: list
+			list of aggregate methods to use
 		'''
 		super(OPT_KL_st, self).__init__(K_list, base_models_dict, intercept_type=intercept_type)
+		self.agg_methods = agg_methods
 
 
 	def aggregate_seq_(self, mu, var, K):
@@ -499,48 +502,56 @@ class OPT_KL_st(OPT_st):
 
 	def optimize(self, params_dict, norm_dict):
 
-		ex_mu = cp.Variable(params_dict['sum'][1][0].shape)
-		ex_var = cp.Variable(params_dict['sum'][1][1].shape)
-		for lvl, params in params_dict['slope'].items():
-			if lvl==1:
-				lvl_ex_mu = ex_mu
-				lvl_ex_var = ex_var
-			else:
-				lvl_ex_mu, lvl_ex_var = self.fit_slope_with_indices(
-					unnormalize(ex_mu, norm_dict['slope'][1]),
-					unnormalize(ex_var, norm_dict['slope'][1]**2),
-					lvl
+		ex_mu = cp.Variable(params_dict[self.agg_methods[0]][1][0].shape)
+		ex_var = cp.Variable(params_dict[self.agg_methods[0]][1][1].shape)
+		for agg_id, agg_method in enumerate(self.agg_methods):
+			for lvl, params in params_dict[agg_method].items():
+				if lvl==1:
+					lvl_ex_mu = ex_mu
+					lvl_ex_var = ex_var
+				else:
+					if agg_method in ['slope']:
+						lvl_ex_mu, lvl_ex_var = self.fit_slope_with_indices(
+							unnormalize(ex_mu, norm_dict[agg_method][1]),
+							unnormalize(ex_var, norm_dict[agg_method][1]**2),
+							lvl
+						)
+					if agg_method in ['sum']:
+						lvl_ex_mu, lvl_ex_var = self.aggregate_seq_(
+							unnormalize(ex_mu, norm_dict[agg_method][1]),
+							unnormalize(ex_var, norm_dict[agg_method][1]**2),
+							lvl
+						)
+					lvl_ex_mu, _ = normalize(lvl_ex_mu, norm_dict[agg_method][lvl])
+					lvl_ex_var, _ = normalize(lvl_ex_var, norm_dict[agg_method][lvl]**2)
+				lvl_loss = self.KL(
+					params_dict[agg_method][lvl][0].detach().numpy(),
+					params_dict[agg_method][lvl][1].detach().numpy()**2,
+					lvl_ex_mu, lvl_ex_var, lvl
 				)
-				lvl_ex_mu, _ = normalize(lvl_ex_mu, norm_dict['slope'][lvl])
-				lvl_ex_var, _ = normalize(lvl_ex_var, norm_dict['slope'][lvl]**2)
-			lvl_loss = self.KL(
-				params_dict['slope'][lvl][0].detach().numpy(),
-				params_dict['slope'][lvl][1].detach().numpy()**2,
-				lvl_ex_mu, lvl_ex_var, lvl
-			)
-			if lvl==1:
-				opt_loss = lvl_loss
-			else:
-				opt_loss += lvl_loss
+				if agg_id==0 and lvl==1:
+					opt_loss = lvl_loss
+				else:
+					opt_loss += lvl_loss
 
-		for lvl, params in params_dict['sum'].items():
-			if lvl==1:
-				lvl_ex_mu = ex_mu
-				lvl_ex_var = ex_var
-			else:
-				lvl_ex_mu, lvl_ex_var = self.aggregate_seq_(
-					unnormalize(ex_mu, norm_dict['sum'][1]),
-					unnormalize(ex_var, norm_dict['sum'][1]**2),
-					lvl
-				)
-				lvl_ex_mu, _ = normalize(lvl_ex_mu, norm_dict['sum'][lvl])
-				lvl_ex_var, _ = normalize(lvl_ex_var, norm_dict['sum'][lvl]**2)
-			lvl_loss = self.KL(
-				params_dict['sum'][lvl][0].detach().numpy(),
-				params_dict['sum'][lvl][1].detach().numpy()**2,
-				lvl_ex_mu, lvl_ex_var, lvl
-			)
-			opt_loss += lvl_loss
+		#for lvl, params in params_dict['sum'].items():
+		#	if lvl==1:
+		#		lvl_ex_mu = ex_mu
+		#		lvl_ex_var = ex_var
+		#	else:
+		#		lvl_ex_mu, lvl_ex_var = self.aggregate_seq_(
+		#			unnormalize(ex_mu, norm_dict['sum'][1]),
+		#			unnormalize(ex_var, norm_dict['sum'][1]**2),
+		#			lvl
+		#		)
+		#		lvl_ex_mu, _ = normalize(lvl_ex_mu, norm_dict['sum'][lvl])
+		#		lvl_ex_var, _ = normalize(lvl_ex_var, norm_dict['sum'][lvl]**2)
+		#	lvl_loss = self.KL(
+		#		params_dict['sum'][lvl][0].detach().numpy(),
+		#		params_dict['sum'][lvl][1].detach().numpy()**2,
+		#		lvl_ex_mu, lvl_ex_var, lvl
+		#	)
+		#	opt_loss += lvl_loss
 
 		objective = cp.Minimize(opt_loss)
 
@@ -579,7 +590,7 @@ class OPT_KL_st(OPT_st):
 		params_dict = dict()
 		for agg_method in self.base_models_dict.keys():
 			params_dict[agg_method] = dict()
-			if agg_method in ['slope', 'sum']:
+			if agg_method in self.agg_methods:
 				for level in self.K_list:
 					model = self.base_models_dict[agg_method][level]
 					inputs = inputs_dict[agg_method][level]
@@ -602,7 +613,7 @@ class OPT_KL_st(OPT_st):
 					params_dict[agg_method][level] = params
 
 		all_preds_mu, all_preds_std = [], []
-		for i in range(params_dict['sum'][1][0].size()[0]):
+		for i in range(params_dict[self.agg_methods[0]][1][0].size()[0]):
 			if i%100==0:
 				print(i)
 			ex_params_dict = dict()
