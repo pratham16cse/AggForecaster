@@ -15,6 +15,11 @@ from data.real_dataset import parse_ECG5000, parse_Traffic, parse_Taxi, parse_Tr
 
 to_tensor = lambda x: torch.FloatTensor(x.copy())
 
+def copy_and_overwrite(from_path, to_path):
+    if os.path.exists(to_path):
+        shutil.rmtree(to_path)
+    shutil.copytree(from_path, to_path)
+
 def clean_trial_checkpoints(result):
 	for trl in result.trials:
 		trl_paths = result.get_trial_checkpoints_paths(trl,'metric')
@@ -183,7 +188,7 @@ def time_features_from_frequency_str(freq_str):
     ]
     return feature_classes
 
-def fit_slope_with_indices(seq, K):
+def fit_slope_with_indices(seq, K, is_var):
     x = np.reshape(np.ones_like(seq), (-1, K))
     x = np.cumsum(x, axis=1) - 1
     y = np.reshape(seq, (-1, K))
@@ -191,7 +196,14 @@ def fit_slope_with_indices(seq, K):
     m_y = np.mean(y, axis=1, keepdims=True)
     s_xy = np.sum((x-m_x)*(y-m_y), axis=1, keepdims=True)
     s_xx = np.sum((x-m_x)**2, axis=1, keepdims=True)
-    w = s_xy/s_xx
+    #w = s_xy/s_xx
+    a = (x - m_x) / s_xx
+    #import ipdb
+    #ipdb.set_trace()
+    if is_var:
+        w = np.sum(a**2 * y, axis=1, keepdims=True)
+    else:
+        w = np.sum(a * y, axis=1, keepdims=True)
     return w
 
 def fit_sum_and_trend_with_indices(seq, K):
@@ -222,20 +234,23 @@ def fit_with_indices(seq, K):
     agg_seq = np.concatenate((w, b), axis=1)
     return agg_seq
 
-def aggregate_seqs_sum(seqs, K):
+def aggregate_seqs_sum(seqs, K, is_var):
     agg_seqs = []
     for i, seq in enumerate(seqs):
         #print(i, len(seqs))
         assert len(seq)%K == 0
-        agg_seq = [np.mean(seq[i:i+K], axis=0) for i in range(0, len(seq), K)]
+        if is_var:
+            agg_seq = [(1./(K*K)) * np.sum(seq[i:i+K], axis=0) for i in range(0, len(seq), K)]
+        else:
+            agg_seq = [np.mean(seq[i:i+K], axis=0) for i in range(0, len(seq), K)]
         agg_seqs.append(agg_seq)
     return np.array(agg_seqs)
 
-def aggregate_seqs_slope(seqs, K):
+def aggregate_seqs_slope(seqs, K, is_var=False):
     agg_seqs = []
     for seq in seqs:
         assert len(seq)%K == 0
-        agg_seq = fit_slope_with_indices(seq, K)
+        agg_seq = fit_slope_with_indices(seq, K, is_var)
         agg_seqs.append(agg_seq)
     return np.array(agg_seqs)
 
@@ -364,72 +379,6 @@ def aggregate_data(
 		agg_test_input, agg_test_target
 	)
 
-def create_hierarchical_wavelet_data(
-	args, train_input, train_target, dev_input, dev_target,
-	test_input, test_target, train_bkp, dev_bkp, test_bkp,
-	aggregation_type
-):
-	(
-		train_input_coeffs, train_target_coeffs, dev_input_coeffs, dev_target_coeffs,
-		test_input_coeffs, test_target_coeffs,
-	)= aggregate_data_wavelet(
-		args.wavelet_levels, train_input, train_target,
-		dev_input, dev_target, test_input, test_target,
-	)
-
-	K2data = OrderedDict()
-	# +1 : wavedec returns args.wavelet_levels+1 coefficients
-	# +1 : Extra slot for base values
-	# +1 : Because starting index is 1.
-	for K in range(1, args.wavelet_levels+1+1+1):
-		if K == 1:
-			train_input_agg, train_target_agg = train_input, train_target
-			dev_input_agg, dev_target_agg = dev_input, dev_target
-			test_input_agg, test_target_agg = test_input, test_target
-		else:
-			train_input_agg, train_target_agg = train_input_coeffs[K-2], train_target_coeffs[K-2]
-			dev_input_agg, dev_target_agg = dev_input_coeffs[K-2], dev_target_coeffs[K-2]
-			test_input_agg, test_target_agg = test_input_coeffs[K-2], test_target_coeffs[K-2]
-
-		if args.normalize:
-			train_input_norm, norm = normalize(train_input_agg, norm_type=args.normalize)
-		else:
-			train_input_norm = train_input_agg
-			norm = np.ones_like(np.mean(train_input_agg, axis=(0, 1)))
-		train_target_norm, _ = normalize(train_target_agg, norm)
-		dev_input_norm, _ = normalize(dev_input_agg, norm)
-		dev_target_norm = dev_target_agg
-		test_input_norm, _ = normalize(test_input_agg, norm)
-		test_target_norm = test_target_agg
-
-		dataset_train = SyntheticDataset(train_input_norm, train_target_norm, train_bkp)
-		dataset_dev = SyntheticDataset(dev_input_norm, dev_target_norm, dev_bkp)
-		dataset_test  = SyntheticDataset(test_input_norm, test_target_norm, test_bkp)
-		trainloader = DataLoader(
-			dataset_train, batch_size=args.batch_size, shuffle=True,
-			drop_last=True, num_workers=1
-		)
-		devloader = DataLoader(
-			dataset_dev, batch_size=dev_input.shape[0], shuffle=False,
-			drop_last=False, num_workers=1
-		)
-		testloader  = DataLoader(
-			dataset_test, batch_size=test_input.shape[0], shuffle=False,
-			drop_last=False, num_workers=1
-		)
-		norm = torch.FloatTensor(norm)
-		K2data[K] = {
-			'trainloader': trainloader,
-			'devloader': devloader,
-			'testloader': testloader,
-			'N_output': test_target_norm.shape[1],
-			'input_size': test_input_norm.shape[2],
-			'output_size': test_target_norm.shape[2],
-			'norm': norm
-		}
-
-	return K2data
-
 def create_hierarchical_data(
 	args, data_train, data_dev, data_test,
 	dev_tsid_map, test_tsid_map,
@@ -456,11 +405,12 @@ def create_hierarchical_data(
 		K_list = args.K_list
 
 
-	lazy_dataset_train = TimeSeriesDataset(
+	lazy_dataset_train = TimeSeriesDatasetOfflineAggregate(
 		data_train, args.N_input, args.N_output, -1,
 		aggregation_type, K,
 		norm_type=args.normalize,
 		use_time_features=args.use_time_features,
+		learnK=args.learnK,
 		wavelet_levels=wavelet_levels
 	)
 	norm = lazy_dataset_train.input_norm
@@ -472,33 +422,35 @@ def create_hierarchical_data(
 	dev_norm, test_norm = np.stack(dev_norm), np.stack(test_norm)
 	#import ipdb
 	#ipdb.set_trace()
-	lazy_dataset_dev = TimeSeriesDataset(
+	lazy_dataset_dev = TimeSeriesDatasetOfflineAggregate(
 		data_dev, args.N_input, args.N_output, args.N_output,
 		aggregation_type, K,
 		input_norm=dev_norm, target_norm=np.ones_like(dev_norm),
 		use_time_features=args.use_time_features,
 		tsid_map=dev_tsid_map,
+		learnK=args.learnK,
 		wavelet_levels=wavelet_levels
 	)
-	lazy_dataset_test = TimeSeriesDataset(
+	lazy_dataset_test = TimeSeriesDatasetOfflineAggregate(
 		data_test, args.N_input, args.N_output, args.N_output,
 		aggregation_type, K,
 		input_norm=test_norm, target_norm=np.ones_like(test_norm),
 		use_time_features=args.use_time_features,
 		tsid_map=test_tsid_map,
+		learnK=args.learnK,
 		wavelet_levels=wavelet_levels
 	)
 	trainloader = DataLoader(
 		lazy_dataset_train, batch_size=args.batch_size, shuffle=True,
-		drop_last=True, num_workers=2
+		drop_last=True, num_workers=0
 	)
 	devloader = DataLoader(
 		lazy_dataset_dev, batch_size=args.batch_size, shuffle=False,
-		drop_last=False, num_workers=1
+		drop_last=False, num_workers=0
 	)
 	testloader = DataLoader(
 		lazy_dataset_test, batch_size=args.batch_size, shuffle=False,
-		drop_last=False, num_workers=1
+		drop_last=False, num_workers=0
 	)
 
 	return {
@@ -520,6 +472,7 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 		self, data, enc_len, dec_len, stride, aggregation_type, K,
 		use_time_features, tsid_map=None, input_norm=None, target_norm=None,
 		norm_type=None,
+		learnK=False,
 		wavelet_levels=None
 	):
 		super(TimeSeriesDataset, self).__init__()
@@ -528,6 +481,7 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 			assert enc_len%K == 0
 			assert dec_len%K == 0
 
+		print('Creating dataset:', aggregation_type, K)
 		self.data = data
 		self._enc_len = enc_len
 		self._dec_len = dec_len
@@ -540,6 +494,7 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 		self.norm_type = norm_type
 		self.use_time_features = use_time_features
 		self.tsid_map = tsid_map
+		self.learnK = learnK
 		self.wavelet_levels = wavelet_levels
 
 		#if self.K != 1:
@@ -617,7 +572,7 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 
 			return self._enc_len // 2**(self.K-1)
 
-		return self._enc_len // self.K
+		return self._enc_len // max(self.K, 1)
 	
 	@property
 	def dec_len(self):
@@ -628,7 +583,7 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 
 			return self._dec_len // 2**(self.K-1)
 
-		return self._dec_len // self.K
+		return self._dec_len // max(self.K, 1)
 
 	@property
 	def input_size(self):
@@ -658,19 +613,30 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 		ex_target = np.array(
 			self.data[ts_id]['target'][ pos_id+self._enc_len : pos_id+self._enc_len+self._dec_len ]
 		)
+		ex_input_bp = np.arange(1, self._enc_len, 1)
+		ex_target_bp = np.arange(1, self._dec_len, 1)
 
 		if self.K != 1:
 
+			if self.K == -1:
+				input_bp = self.get_piecewise_linear_breakpoints(ex_input)
+				target_bp = self.get_piecewise_linear_breakpoints(ex_target)
+				#print(input_bp, target_bp)
+			else:
+				input_bp = np.arange(self.K, self._enc_len, self.K)
+				target_bp = np.arange(self.K, self._dec_len, self.K)
+
 			#print('before', ex_input.shape, ex_target.shape, ts_id, pos_id)
+			#print(input_bp, target_bp)
 			if self.aggregation_type in ['sum']:
 				#print('before', ex_input.shape, ex_target.shape, ts_id, pos_id)
 				ex_input_agg = map(
 					self.aggregate_data,
-					np.split(ex_input, np.arange(self.K, self._enc_len, self.K), axis=0),
+					np.split(ex_input, input_bp, axis=0),
 				)
 				ex_target_agg = map(
 					self.aggregate_data,
-					np.split(ex_target, np.arange(self.K, self._dec_len, self.K), axis=0)
+					np.split(ex_target, target_bp, axis=0)
 				)
 				#print('lengths of aggs:', len(list(ex_agg)[0]), len(list(ex_agg)[1]))
 				ex_input_agg, ex_target_agg = list(ex_input_agg), list(ex_target_agg)
@@ -679,11 +645,11 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 				#print('before', ex_input.shape, ex_target.shape, ts_id, pos_id)
 				ex_input_agg = map(
 					self.aggregate_data_slope,
-					np.split(ex_input, np.arange(self.K, self._enc_len, self.K), axis=0),
+					np.split(ex_input, input_bp, axis=0),
 				)
 				ex_target_agg = map(
 					self.aggregate_data_slope,
-					np.split(ex_target, np.arange(self.K, self._dec_len, self.K), axis=0)
+					np.split(ex_target, target_bp, axis=0)
 				)
 				ex_input_agg, ex_target_agg = list(ex_input_agg), list(ex_target_agg)
 
@@ -695,6 +661,9 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 			#ex_input, ex_target = zip(*ex_agg)
 			ex_input = np.array(ex_input_agg)
 			ex_target = np.array(ex_target_agg)
+		else:
+			input_bp = np.arange(1, self._enc_len, 1)
+			target_bp = np.arange(1, self._dec_len, 1)
 
 		#print('after', ex_input.shape, ex_target.shape, ts_id, pos_id)
 		if self.tsid_map is None:
@@ -753,20 +722,29 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 		ex_input_feats = to_tensor(ex_input_feats)
 		ex_target_feats = to_tensor(ex_target_feats)
 		ex_norm = to_tensor(ex_norm)
-
+		input_bp = np.concatenate((input_bp, np.array([self._enc_len])), axis=-1)
+		target_bp = np.concatenate((target_bp, np.array([self._dec_len])), axis=-1)
+		input_gaps = input_bp - np.concatenate((np.array([0]), input_bp[:-1]), axis=-1)
+		target_gaps = target_bp - np.concatenate((np.array([0]), target_bp[:-1]), axis=-1)
+		input_bp = to_tensor(np.expand_dims(input_bp, axis=-1))
+		target_bp = to_tensor(np.expand_dims(target_bp, axis=-1))
+		input_gaps = to_tensor(np.expand_dims(input_gaps, axis=-1))
+		target_gaps = to_tensor(np.expand_dims(target_gaps, axis=-1))
 
 		return (
 			ex_input, ex_target,
 			ex_input_feats, ex_target_feats,
 			ex_norm,
-			torch.FloatTensor([ts_id, pos_id])
+			torch.FloatTensor([ts_id, pos_id]),
+			input_bp, target_bp,
+			input_gaps, target_gaps
 		)
 
 	def aggregate_data(self, values):
 		return np.mean(values, axis=0)
 
-	def aggregate_data_slope(self, values):
-		x = np.expand_dims(np.arange(self.K), axis=1)
+	def aggregate_data_slope(self, values, compute_b=False):
+		x = np.expand_dims(np.arange(values.shape[0]), axis=1)
 		m_x = np.mean(x, axis=0)
 		s_xx = np.sum((x-m_x)**2, axis=0)
 
@@ -775,7 +753,11 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 		s_xy = np.sum((x-m_x)*(y-m_y), axis=0)
 		w = s_xy/s_xx
 
-		return w
+		if compute_b:
+			b = m_y - w*m_x
+			return w, b
+		else:
+			return w
 
 	def aggregate_data_wavelet(self, values, K):
 		coeffs = pywt.wavedec(sqz(values), 'haar', level=self.wavelet_levels, mode='periodic')
@@ -793,6 +775,314 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
 
 	def get_avg_feats(self, time_feats):
 		return np.mean(time_feats, axis=0)
+
+	def calculate_error(self, segment):
+		w, b = self.aggregate_data_slope(segment, compute_b=True)
+		x = np.expand_dims(np.arange(len(segment)), axis=1)
+		segment_pred = w*x+b
+
+		return np.max(np.abs(segment - segment_pred)) # Using max error
+
+	def get_piecewise_linear_breakpoints(self, values, max_err=2.0): # TODO: set appropriate max_err
+		breakpoints = []
+		approx_series = []
+		anchor = 0
+		while anchor < len(values)-1:
+			i, j = 1, 1
+			segment = values[anchor:anchor+i+1]
+			err = self.calculate_error(segment)
+			while err <= max_err and anchor+i<len(values):
+				j = i
+				i += 1
+				segment = values[anchor:anchor+i+1]
+				err = self.calculate_error(segment)
+			bp = anchor+j+1
+			breakpoints.append(bp)
+			#segment = values[anchor:bp+1]
+			#w = self.aggregate_data_slope(values[anchor:bp+1])
+			#approx_series.append((bp, w))
+			anchor = bp
+			#print(len(values), bp, anchor, w, b)
+			#print(len(segment))
+			#if len(segment)<4:
+			#	print(segment, np.arange(len(segment))*w+b)
+
+		#print(breakpoints)
+		return breakpoints[:-1]
+
+class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
+	"""docstring for TimeSeriesDatasetOfflineAggregate"""
+	def __init__(
+		self, data, enc_len, dec_len, stride, aggregation_type, K,
+		use_time_features, tsid_map=None, input_norm=None, target_norm=None,
+		norm_type=None,
+		learnK=False
+	):
+		super(TimeSeriesDatasetOfflineAggregate, self).__init__()
+
+		if aggregation_type not in ['wavelet']:
+			assert enc_len%K == 0
+			assert dec_len%K == 0
+
+		print('Creating dataset:', aggregation_type, K)
+		self._enc_len = enc_len
+		self._dec_len = dec_len
+		#self.num_values = len(data[0]['target'][0])
+		self.stride = stride
+		self.aggregation_type = aggregation_type
+		self.K = K
+		self.input_norm = input_norm
+		self.target_norm = target_norm
+		self.norm_type = norm_type
+		self.use_time_features = use_time_features
+		self.tsid_map = tsid_map
+		self.learnK = learnK
+
+		# Perform aggregation if level != 1
+		data_agg = []
+		for i in range(0, len(data)):
+			ex = data[i]['target']
+			if self.K >= 1:
+				ex = ex[ len(ex)%self.K: ]
+
+			bp = np.arange(1,len(ex), 1)
+			if self.K == -1:
+				bp = self.get_piecewise_linear_breakpoints(ex)
+				#print(input_bp, target_bp)
+			else:
+				bp = np.arange(self.K, len(ex), self.K)
+
+			if self.K != 1:
+				if self.aggregation_type in ['sum']:
+					ex_agg = map(
+						self.aggregate_data,
+						np.split(ex, bp, axis=0),
+					)
+					ex_agg = list(ex_agg)
+
+				elif self.aggregation_type in ['slope']:
+					ex_agg = map(
+						self.aggregate_data_slope,
+						np.split(ex, bp, axis=0),
+					)
+					ex_agg = list(ex_agg)
+			else:
+				ex_agg = ex
+
+			bp = np.concatenate((bp, np.array([len(ex)])), axis=-1)
+			gaps = bp - np.concatenate((np.array([0]), bp[:-1]), axis=-1)
+
+			data_agg.append(
+				{
+					'target':np.array(ex_agg),
+					'bp': np.array(bp),
+					'gaps': np.array(gaps)
+				}
+			)
+
+			if self.use_time_features:
+				raise NotImplementedError
+
+		if self.input_norm is None:
+			assert norm_type is not None
+			data_for_norm = []
+			for i in range(0, len(data)):
+				ex = data[i]['target']
+				data_for_norm.append(np.array(ex))
+			data_for_norm = np.array(data_for_norm)
+
+			_, self.input_norm = normalize(data_for_norm, norm_type=self.norm_type)
+			self.target_norm = self.input_norm
+			del data_for_norm
+
+		if self.use_time_features:
+			multiple, granularity = get_granularity(data[0]['freq_str'])
+			freq_str = str(self.K * multiple) + granularity
+			self.time_features_obj = time_features_from_frequency_str(granularity)
+
+			self.date_range = []
+			for i in range(0, len(data)):
+				self.date_range.append(
+					get_date_range(
+						data[i]['start'],
+						len(data[i]['target'])
+					)
+				)
+
+		self.data = data_agg
+		self.indices = []
+		for i in range(0, len(self.data)):
+			if stride == -1:
+				j = 0
+				while j < len(self.data[i]['target']):
+					if j+self.enc_len+self.dec_len <= len(self.data[i]['target']):
+						self.indices.append((i, j))
+					s = (np.random.randint(0, self.dec_len))
+					j += s
+			else:
+				j = len(self.data[i]['target']) - self.enc_len - self.dec_len
+				self.indices.append((i, j))
+				#for j in range(start_idx, len(self.data[i]['target']), stride):
+				#	if j+self.enc_len+self.dec_len <= len(self.data[i]['target']):
+				#		self.indices.append((i, j))
+
+		#import ipdb
+		#ipdb.set_trace()
+
+	@property
+	def enc_len(self):
+		if self.K > 1:
+			el = (self._enc_len // self.K) * 2
+		else:
+			el = self._enc_len
+		return el
+	
+	@property
+	def dec_len(self):
+		return self._dec_len // max(self.K, 1)
+
+	@property
+	def input_size(self):
+		input_size = len(self.data[0]['target'][0])
+		if self.use_time_features:
+			# Multiplied by 2 because of sin and cos
+			input_size += (2 * len(self.time_features_obj))
+		return input_size
+
+	@property
+	def output_size(self):
+		output_size = len(self.data[0]['target'][0])
+		return output_size
+	
+
+	def __len__(self):
+		return len(self.indices)
+
+	def __getitem__(self, idx):
+		#print(self.indices)
+		ts_id = self.indices[idx][0]
+		pos_id = self.indices[idx][1]	
+
+		ex_input = np.array(
+			self.data[ts_id]['target'][ pos_id : pos_id+self.enc_len ]
+		)
+		ex_target = np.array(
+			self.data[ts_id]['target'][ pos_id+self.enc_len : pos_id+self.enc_len+self.dec_len ]
+		)
+
+		input_bp = self.data[ts_id]['bp'][ pos_id : pos_id+self.enc_len ]
+		target_bp = self.data[ts_id]['bp'][ pos_id+self.enc_len : pos_id+self.enc_len+self.dec_len ]
+		input_gaps = self.data[ts_id]['gaps'][ pos_id : pos_id+self.enc_len ]
+		target_gaps = self.data[ts_id]['gaps'][ pos_id+self.enc_len : pos_id+self.enc_len+self.dec_len ]
+
+		#print('after', ex_input.shape, ex_target.shape, ts_id, pos_id)
+		if self.tsid_map is None:
+			mapped_id = ts_id
+		else:
+			mapped_id = self.tsid_map[ts_id]
+		ex_input, _ = normalize(ex_input, self.input_norm[mapped_id])
+		ex_target, _ = normalize(ex_target, self.target_norm[mapped_id])
+		ex_norm = self.input_norm[mapped_id]
+
+		if self.use_time_features:
+			raise NotImplementedError
+		else:
+			ex_input_feats, ex_target_feats = ex_input, ex_target
+
+		#print(type(ex_input), type(ex_target), type(ex_input_feats), type(ex_target_feats))
+		ex_input = to_tensor(ex_input)
+		ex_target = to_tensor(ex_target)
+		ex_input_feats = to_tensor(ex_input_feats)
+		ex_target_feats = to_tensor(ex_target_feats)
+		ex_norm = to_tensor(ex_norm)
+		input_bp = to_tensor(np.expand_dims(input_bp, axis=-1))
+		target_bp = to_tensor(np.expand_dims(target_bp, axis=-1))
+		input_gaps = to_tensor(np.expand_dims(input_gaps, axis=-1))
+		target_gaps = to_tensor(np.expand_dims(target_gaps, axis=-1))
+		#print(
+		#	ex_input.shape, ex_target.shape,
+		#	input_bp.shape, target_bp.shape,
+		#	input_gaps.shape, target_gaps.shape
+		#)
+
+		return (
+			ex_input, ex_target,
+			ex_input_feats, ex_target_feats,
+			ex_norm,
+			torch.FloatTensor([ts_id, pos_id]),
+			input_bp, target_bp,
+			input_gaps, target_gaps
+		)
+
+	def aggregate_data(self, values):
+		return np.mean(values, axis=0)
+
+	def aggregate_data_slope(self, values, compute_b=False):
+		x = np.expand_dims(np.arange(values.shape[0]), axis=1)
+		m_x = np.mean(x, axis=0)
+		s_xx = np.sum((x-m_x)**2, axis=0)
+
+		y = values
+		m_y = np.mean(y, axis=0)
+		s_xy = np.sum((x-m_x)*(y-m_y), axis=0)
+		w = s_xy/s_xx
+
+		if compute_b:
+			b = m_y - w*m_x
+			return w, b
+		else:
+			return w
+
+	def aggregate_data_wavelet(self, values, K):
+		coeffs = pywt.wavedec(sqz(values), 'haar', level=self.wavelet_levels, mode='periodic')
+		coeffs = [expand(x) for x in coeffs]
+		coeffs = coeffs[-(K-1)]
+		return coeffs
+
+	def get_time_features(self, start, seqlen):
+		end = shift_timestamp(start, seqlen)
+		full_date_range = pd.date_range(start, end, freq=start.freq)
+		chunk_range = full_date_range[ pos_id : pos_id+self._enc_len ]
+
+	def get_avg_date(self, date_range):
+		return date_range.mean(axis=0)
+
+	def get_avg_feats(self, time_feats):
+		return np.mean(time_feats, axis=0)
+
+	def calculate_error(self, segment):
+		w, b = self.aggregate_data_slope(segment, compute_b=True)
+		x = np.expand_dims(np.arange(len(segment)), axis=1)
+		segment_pred = w*x+b
+
+		return np.max(np.abs(segment - segment_pred)) # Using max error
+
+	def get_piecewise_linear_breakpoints(self, values, max_err=0.0): # TODO: set appropriate max_err
+		breakpoints = []
+		approx_series = []
+		anchor = 0
+		while anchor < len(values)-1:
+			i, j = 1, 1
+			segment = values[anchor:anchor+i+1]
+			err = self.calculate_error(segment)
+			while err <= max_err and anchor+i<len(values):
+				j = i
+				i += 1
+				segment = values[anchor:anchor+i+1]
+				err = self.calculate_error(segment)
+			bp = anchor+j+1
+			breakpoints.append(bp)
+			#segment = values[anchor:bp+1]
+			#w = self.aggregate_data_slope(values[anchor:bp+1])
+			#approx_series.append((bp, w))
+			anchor = bp
+			#print(len(values), bp, anchor, w, b)
+			#print(len(segment))
+			#if len(segment)<4:
+			#	print(segment, np.arange(len(segment))*w+b)
+
+		#print(breakpoints)
+		return breakpoints[:-1]
 
 
 
@@ -883,60 +1173,5 @@ class DataProcessor(object):
 			self.dev_tsid_map, self.test_tsid_map,
 			aggregation_type=agg_method, K=K
 		)
-		#print('sum done')
-		#K2data_ls = create_hierarchical_data(
-		#	args, X_train_input, X_train_target,
-		#	X_dev_input, X_dev_target,
-		#	X_test_input, X_test_target,
-		#	train_bkp, dev_bkp, test_bkp,
-		#	data_train, data_dev, data_test,
-		#	aggregation_type='leastsquare'
-		#)
-		#print('ls done')
-		#K2data_st = create_hierarchical_data(
-		#	args, X_train_input, X_train_target,
-		#	X_dev_input, X_dev_target,
-		#	X_test_input, X_test_target,
-		#	train_bkp, dev_bkp, test_bkp,
-		#	data_train, data_dev, data_test,
-		#	aggregation_type='sumwithtrend'
-		#)
-		#print('sumwithtrend done')
-		#K2data_slope = create_hierarchical_data(
-		#	args, data_train, data_dev, data_test,
-		#	dev_tsid_map, test_tsid_map,
-		#	aggregation_type='slope'
-		#)
-		#print('slope done')
-		#K2data_wavelet = create_hierarchical_wavelet_data(
-		#	args, X_train_input, X_train_target,
-		#	X_dev_input, X_dev_target,
-		#	X_test_input, X_test_target,
-		#	train_bkp, dev_bkp, test_bkp,
-		#	aggregation_type='wavelet'
-		#)
-		#K2data_wavelet = create_hierarchical_data(
-		#	args, X_train_input, X_train_target,
-		#	X_dev_input, X_dev_target,
-		#	X_test_input, X_test_target,
-		#	train_bkp, dev_bkp, test_bkp,
-		#	data_train, data_dev, data_test,
-		#	aggregation_type='wavelet'
-		#)
-		#print('wavelet done')
-	
-		#dataset = dict()
-		#dataset['sum'] = K2data_sum
-		#dataset['leastsquare'] = K2data_ls
-		#dataset['sumwithtrend'] = K2data_st
-		#dataset['slope'] = K2data_slope
-		#dataset['wavelet'] = K2data_wavelet
 	
 		return dataset
-		#return {
-			#'trainloader': trainloader,
-			#'testloader': testloader,
-			#'K2data_sum': K2data_sum,
-			#'K2data_ls': K2data_ls,
-			#'K2data': K2data
-		#}

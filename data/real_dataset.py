@@ -309,7 +309,6 @@ def parse_Traffic911(N_input, N_output):
 
 def parse_gc_datasets(dataset_name, N_input, N_output):
 
-	all_datasets_dir = '/Users/prathamesh/Forecasting/DILATE/data'
 
 	if dataset_name in ['Exchange']:
 		num_rolling_windows = 5
@@ -325,12 +324,12 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 		dataset_dir = 'taxi_30min'
 
 	data_ = []
-	with open(os.path.join(all_datasets_dir, dataset_dir, 'train', 'train.json')) as f:
+	with open(os.path.join('data', dataset_dir, 'train', 'train.json')) as f:
 		for line in f:
 			data_.append(json.loads(line))
 
 	data_test_full_ = []
-	with open(os.path.join(all_datasets_dir, dataset_dir, 'test', 'test.json')) as f:
+	with open(os.path.join('data', dataset_dir, 'test', 'test.json')) as f:
 		for line in f:
 			data_test_full_.append(json.loads(line))
 
@@ -353,7 +352,7 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 		data = data_
 		data_test_full = data_test_full_
 
-	metadata = json.load(open(os.path.join(all_datasets_dir, dataset_dir, 'metadata', 'metadata.json')))
+	metadata = json.load(open(os.path.join('data', dataset_dir, 'metadata', 'metadata.json')))
 
 
 	data_train, data_dev, data_test = [], [], []

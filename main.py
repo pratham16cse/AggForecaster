@@ -5,9 +5,10 @@ import numpy as np
 import torch
 from data.synthetic_dataset import create_synthetic_dataset, SyntheticDataset
 from models.base_models import EncoderRNN, DecoderRNN, Net_GRU, NetFullyConnected, get_base_model
+from models.index_models import get_index_model
 from loss.dilate_loss import dilate_loss
-from train import train_model, get_optimizer
-from eval import eval_base_model, eval_inf_model
+from train import train_model, get_optimizer, train_index_model
+from eval import eval_base_model, eval_inf_model, eval_inf_index_model
 from torch.utils.data import DataLoader
 import random
 from tslearn.metrics import dtw, dtw_path
@@ -16,13 +17,15 @@ import warnings
 import warnings; warnings.simplefilter('ignore')
 import json
 from torch.utils.tensorboard import SummaryWriter
+import shutil
+import properscoring as ps
 
 from ray import tune
 from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler
 from functools import partial
 
-from models import inf_models
+from models import inf_models, inf_index_models
 import utils
 
 os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "1000000"
@@ -93,6 +96,10 @@ parser.add_argument('--L', type=int, default=2,
                     help='number of levels in the hierarchy, leaves inclusive')
 parser.add_argument('--K_list', type=int, nargs='*', default=[1],
                     help='List of bin sizes of each aggregation')
+parser.add_argument('--learnK', action='store_true', default=False,
+                    help='If True, aggregation splits are learned and \
+                          Aggregate data contains dynamically generated \
+                          piecewise linear functions')
 parser.add_argument('--wavelet_levels', type=int, default=2,
                     help='number of levels of wavelet coefficients')
 parser.add_argument('--fully_connected_agg_model', action='store_true', default=False,
@@ -111,6 +118,10 @@ parser.add_argument('--device', type=str,
 # parameters for ablation study
 parser.add_argument('--leak_agg_targets', action='store_true', default=False,
                     help='If True, aggregate targets are leaked to inference models')
+
+# parameter to enable ray-tune
+parser.add_argument('--no_ray_tune', action='store_true', default=False,
+                    help='If True, ray tune is disabled for aggregate models')
 
 #parser.add_argument('--patience', type=int, default=2,
 #                    help='Number of epochs to wait for \
@@ -158,6 +169,10 @@ args.aggregate_methods = [
 if 1 not in args.K_list:
     args.K_list = [1] + args.K_list
 
+if args.learnK:
+    # -1 is special level that denotes K will be leared from the data
+    args.K_list = [1, -1]
+
 if args.dataset_name in ['Traffic']:
     args.alpha = 0.8
 
@@ -166,9 +181,11 @@ if args.dataset_name in ['ECG5000']:
 
 base_models = {}
 base_models_preds = {}
+index_models = {}
 for name in args.base_model_names:
     base_models[name] = {}
     base_models_preds[name] = {}
+    index_models[name] = {}
 inference_models = {}
 for name in args.inference_model_names:
     inference_models[name] = {}
@@ -188,6 +205,7 @@ data_processor = utils.DataProcessor(args)
 for base_model_name in args.base_model_names:
     base_models[base_model_name] = {}
     base_models_preds[base_model_name] = {}
+    index_models[base_model_name] = {}
 
     levels = args.K_list
     aggregate_methods = args.aggregate_methods
@@ -198,22 +216,23 @@ for base_model_name in args.base_model_names:
     for agg_method in aggregate_methods:
         base_models[base_model_name][agg_method] = {}
         base_models_preds[base_model_name][agg_method] = {}
+        index_models[base_model_name][agg_method] = {}
         #level2data = dataset[agg_method]
 
         if agg_method in ['wavelet']:
             levels = list(range(1, args.wavelet_levels+3))
 
         for level in levels:
-            #level2data = utils.get_processed_data(args, agg_method, level)
-            #trainloader = level2data[level]['trainloader']
-            #devloader = level2data[level]['devloader']
-            #testloader = level2data['testloader']
-            #N_input = level2data['N_input']
-            #N_output = level2data['N_output']
-            #input_size = level2data['input_size']
-            #output_size = level2data['output_size']
-            #dev_norm = level2data['dev_norm']
-            #test_norm = level2data['test_norm']
+            level2data = data_processor.get_processed_data(args, agg_method, level)
+            trainloader = level2data['trainloader']
+            devloader = level2data['devloader']
+            testloader = level2data['testloader']
+            N_input = level2data['N_input']
+            N_output = level2data['N_output']
+            input_size = level2data['input_size']
+            output_size = level2data['output_size']
+            dev_norm = level2data['dev_norm']
+            test_norm = level2data['test_norm']
 
             if base_model_name in ['seq2seqmse', 'seq2seqdilate']:
                 point_estimates = True
@@ -231,135 +250,83 @@ for base_model_name in args.base_model_names:
             os.makedirs(output_dir, exist_ok=True)
             print('\n {} {} {}'.format(base_model_name, agg_method, str(level)))
 
-            if agg_method in ['leastsquare', 'sumwithtrend', 'slope', 'wavelet'] and level == 1:
-                base_models[base_model_name][agg_method][level] = base_models[base_model_name]['sum'][1]
-            else:
-                #train_model(
-                #    args, base_model_name, net_gru,
-                #    trainloader, devloader, testloader, dev_norm,
-                #    saved_models_path, output_dir, writer, eval_every=50, verbose=1
-                #)
+            #train_model(
+            #    args, base_model_name, net_gru,
+            #    trainloader, devloader, testloader, dev_norm,
+            #    saved_models_path, output_dir, writer, eval_every=50, verbose=1
+            #)
 
-                # Create config dictionaries
-                config_fixed = {
-                    'args': args,
-                    'agg_method': agg_method,
-                    'level': level,
-                    'base_model_name': base_model_name,
-                    #'trainloader': trainloader,
-                    #'devloader': devloader,
-                    #'testloader': testloader,
-                    #'dev_norm': dev_norm,
-                    'saved_models_path': saved_models_path,
-                    'output_dir': output_dir,
-                    #'writer': writer,
-                    'eval_every': 50,
-                    'verbose': 1,
-                    #'level': level,
-                    #'N_input': N_input,
-                    #'N_output': N_output,
-                    #'input_size': input_size,
-                    #'output_size': output_size,
-                    'point_estimates': point_estimates,
-                    'epochs': int(args.epochs * np.sqrt(level)),
-                } # Fixed parameters
-                config_tune = {
-                    'lr': tune.loguniform(1e-5, 1e-1),
-                    'hidden_size': tune.sample_from(lambda _: 2**np.random.randint(2, 8)),
-                } # Tunable parameters
-                # No tuning for level 1 models as of now
-                if agg_method in ['sum'] and level == 1:
-                    config_tune['lr'] = args.learning_rate
-                    config_tune['hidden_size'] = args.hidden_size
-                config = {**config_fixed, **config_tune}
+            # Create config dictionaries
+            config_fixed = {
+                'args': args,
+                'agg_method': agg_method,
+                'level': level,
+                'base_model_name': base_model_name,
+                'trainloader': trainloader,
+                'devloader': devloader,
+                'testloader': testloader,
+                'dev_norm': dev_norm,
+                'saved_models_path': saved_models_path,
+                'output_dir': output_dir,
+                'writer': writer,
+                'eval_every': 50,
+                'verbose': 1,
+                'level': level,
+                'N_input': N_input,
+                'N_output': N_output,
+                'input_size': input_size,
+                'output_size': output_size,
+                'point_estimates': point_estimates,
+                'epochs': int(args.epochs * np.sqrt(level)) if level>1 else args.epochs,
+            } # Fixed parameters
+            config_tune = {
+                'lr': tune.loguniform(1e-5, 1e-1),
+                'hidden_size': tune.sample_from(lambda _: 2**np.random.randint(2, 8)),
+            } # Tunable parameters
+            # No tuning for level 1 models as of now
+            if level == 1 or args.no_ray_tune:
+                config_tune['lr'] = args.learning_rate
+                config_tune['hidden_size'] = args.hidden_size
+            config = {**config_fixed, **config_tune}
 
-                # Set number of samples
-                if level == 1:
-                    num_samples = 1
-                else:
-                    num_samples = 20
 
-                model_exists = (not args.ignore_ckpt) and os.path.isfile(saved_models_path)
-                if model_exists:
-                    if level != 1:
-                        with open(os.path.join(saved_models_dir, 'best_config_tune.json'), 'r') as f:
-                            best_config_tune = json.load(f)
-                    else:
-                        best_config_tune = config_tune
-                    best_config = {**config_fixed, **best_config_tune}
-                    best_checkpoint_path = saved_models_path
-                else:
-                    scheduler = ASHAScheduler(
-                        metric="metric",
-                        mode="min",
-                        max_t=config_fixed['epochs'],
-                        grace_period=1,
-                        reduction_factor=2)
-                    reporter = CLIReporter(
-                        # parameter_columns=["l1", "l2", "lr", "batch_size"],
-                        metric_columns=["metric", "training_iteration"],
-                        max_report_frequency=30)
-                    result = tune.run(
-                        train_model,
-                        resources_per_trial={"cpu": 4},
-                        config=config,
-                        num_samples=num_samples,
-                        scheduler=scheduler,
-                        progress_reporter=reporter,
-                        local_dir='.'
-                    )
-
-                    # Get the best config
-                    best_trial = result.get_best_trial('metric', 'min', 'last')
-                    best_config = best_trial.config
-                    #best_epoch = best_trial.last_result['training_iteration']
-                    #best_metric = best_trial.last_result['metric']
-                    best_checkpoint_path = os.path.join(best_trial.checkpoint.value, 'checkpoint')
-
-                # Load best model from best_checkpoint
-                # TODO: Need a way to get these variables without having to 
-                #       read the dataset from file
-                dataset = data_processor.get_processed_data(args, agg_method, level)
-                N_input = dataset['N_input']
-                N_output = dataset['N_output']
-                input_size = dataset['input_size']
-                output_size = dataset['output_size']
-                dev_norm = dataset['dev_norm']
-                test_norm = dataset['test_norm']
-                best_model = get_base_model(
-                    args, best_config, level,
+            # Create and train the network
+            if level == -1:
+                net_index = get_index_model(
+                    args, config, level,
                     N_input, N_output, input_size, output_size,
                     point_estimates
                 )
-                best_optimizer, best_scheduler = get_optimizer(args, best_config, best_model)
-                best_checkpoint = torch.load(best_checkpoint_path)
-                best_model.load_state_dict(best_checkpoint['model_state_dict'])
-                best_optimizer.load_state_dict(best_checkpoint['optimizer_state_dict'])
-                #if model_exists:
-                best_epoch = best_checkpoint['epoch']
-                best_metric = best_checkpoint['metric']
+                config['net'] = net_index
 
-                if not model_exists:
-                    # Save best model
-                    state_dict = {
-                                'model_state_dict': best_model.state_dict(),
-                                'optimizer_state_dict': best_optimizer.state_dict(),
-                                'epoch': best_epoch,
-                                'metric': best_metric,
-                                }
-                    torch.save(state_dict, saved_models_path)
-                    best_config_tune = {k:best_config[k] for k in config_tune.keys()}
-                    with open(os.path.join(saved_models_dir, 'best_config_tune.json'), 'w') as f:
-                        json.dump(best_config_tune, f)
+                train_index_model(config)
 
-                    utils.clean_trial_checkpoints(result)
+                index_models[base_model_name][agg_method][level] = net_index
+            else:
+                net_gru = get_base_model(
+                    args, config, level,
+                    N_input, N_output, input_size, output_size,
+                    point_estimates
+                )
+                config['net'] = net_gru
+    
+                if agg_method in ['leastsquare', 'sumwithtrend', 'slope', 'wavelet'] and level == 1:
+                    base_models[base_model_name][agg_method][level] = base_models[base_model_name]['sum'][1]
+                else:
+                    train_model(config)
+                    base_models[base_model_name][agg_method][level] = net_gru
 
-                base_models[base_model_name][agg_method][level] = best_model
+                if args.learnK:
+                    index_models[base_model_name][agg_method][level] \
+                        = base_models[base_model_name][agg_method][level]
 
 
             writer.flush()
 
-            if args.save_agg_preds:
+            if args.save_agg_preds and level>=1:
+                testloader = level2data['testloader']
+                test_norm = level2data['test_norm']
+                print(agg_method, level, level2data['N_output'])
                 (
                     dev_inputs, dev_target, pred_mu, pred_std,
                     metric_dilate, metric_mse, metric_dtw, metric_tdi,
@@ -386,20 +353,31 @@ for base_model_name in args.base_model_names:
 
                 dev_target = dev_target.detach().numpy()
                 pred_mu = pred_mu.detach().numpy()
+                pred_std = pred_std.detach().numpy()
                 pred_mu_bottom = base_models_preds[base_model_name][agg_method][1][0].detach().numpy()
                 pred_std_bottom = base_models_preds[base_model_name][agg_method][1][1].detach().numpy()
                 if level != 1:
                     if agg_method in ['slope']:
-                        pred_mu_agg = utils.aggregate_seqs_slope(pred_mu_bottom, level)
+                        pred_mu_agg = utils.aggregate_seqs_slope(pred_mu_bottom, level, is_var=False)
+                        pred_std_agg = np.sqrt(utils.aggregate_seqs_slope(pred_std_bottom**2, level, is_var=True))
                     elif agg_method in ['sum']:
-                        pred_mu_agg = utils.aggregate_seqs_sum(pred_mu_bottom, level)
+                        pred_mu_agg = utils.aggregate_seqs_sum(pred_mu_bottom, level, is_var=False)
+                        pred_std_agg = np.sqrt(utils.aggregate_seqs_sum(pred_std_bottom**2, level, is_var=True))
                         #import ipdb
                         #ipdb.set_trace()
                 else:
                     pred_mu_agg = pred_mu_bottom
+                    pred_std_agg = pred_std_bottom
 
                 mae_agg = np.mean(np.abs(dev_target - pred_mu_agg))
                 mae_base = np.mean(np.abs(dev_target - pred_mu))
+
+                crps_agg = ps.crps_gaussian(
+                    dev_target, mu=pred_mu_agg, sig=pred_std_agg
+                ).mean()
+                crps_base = ps.crps_gaussian(
+                    dev_target, mu=pred_mu, sig=pred_std
+                ).mean()
 
                 if level!=1:
                     h_t = dev_inputs.shape[1]
@@ -444,6 +422,9 @@ for base_model_name in args.base_model_names:
                 print('{0}, {1}, {2}, mae_base:{3}, mae_agg:{4}'.format(
                     base_model_name, agg_method, level, mae_base, mae_agg)
                 )
+                print('{0}, {1}, {2}, crps_base:{3}, crps_agg:{4}'.format(
+                    base_model_name, agg_method, level, crps_base, crps_agg)
+                )
                 print('mae_base_parts:', mae_base_parts)
                 print('mae_agg_parts:', mae_agg_parts)
                 print('-------------------------------------------------------')
@@ -463,6 +444,9 @@ test_targets_dict_leak = dict()
 test_norm_dict = dict()
 test_feats_in_dict = dict()
 test_feats_tgt_dict = dict()
+test_inputs_gaps_dict = dict()
+test_targets_gaps_dict = dict()
+N_input, N_output = 0, 0
 for agg_method in args.aggregate_methods:
     test_inputs_dict[agg_method] = dict()
     test_targets_dict[agg_method] = dict()
@@ -470,6 +454,8 @@ for agg_method in args.aggregate_methods:
     test_norm_dict[agg_method] = dict()
     test_feats_in_dict[agg_method] = dict()
     test_feats_tgt_dict[agg_method] = dict()
+    test_inputs_gaps_dict[agg_method] = dict()
+    test_targets_gaps_dict[agg_method] = dict()
 
     if agg_method in ['wavelet']:
         levels = list(range(1, args.wavelet_levels+3))
@@ -478,14 +464,33 @@ for agg_method in args.aggregate_methods:
 
     for level in levels:
         dataset = data_processor.get_processed_data(args, agg_method, level)
-        gen_test = iter(dataset['testloader'])
-        test_inputs, test_targets, test_feats_in, test_feats_tgt, test_norm, breaks = next(gen_test)
+        test_inputs, test_targets = [], []
+        test_feats_in, test_feats_tgt = [], []
+        test_norm = []
+        test_inputs_gaps, test_targets_gaps = [], []
+        for i, gen_test in enumerate(dataset['testloader']):
+            (
+                batch_test_inputs, batch_test_targets,
+                batch_test_feats_in, batch_test_feats_tgt,
+                batch_test_norm,
+                _, _, _, batch_test_inputs_gaps, batch_test_targets_gaps
+            ) = gen_test
 
-        test_inputs  = torch.tensor(test_inputs, dtype=torch.float32).to(args.device)
-        test_targets = torch.tensor(test_targets, dtype=torch.float32).to(args.device)
-        test_feats_in  = torch.tensor(test_feats_in, dtype=torch.float32).to(args.device)
-        test_feats_tgt = torch.tensor(test_feats_tgt, dtype=torch.float32).to(args.device)
-        test_norm = torch.tensor(test_norm, dtype=torch.float32).to(args.device)
+            test_inputs.append(batch_test_inputs)
+            test_targets.append(batch_test_targets)
+            test_feats_in.append(batch_test_feats_in)
+            test_feats_tgt.append(batch_test_feats_tgt)
+            test_norm.append(batch_test_norm)
+            test_inputs_gaps.append(batch_test_inputs_gaps)
+            test_targets_gaps.append(batch_test_targets_gaps)
+
+        test_inputs  = torch.cat(test_inputs, dim=0)#, dtype=torch.float32).to(args.device)
+        test_targets = torch.cat(test_targets, dim=0)#, dtype=torch.float32).to(args.device)
+        test_feats_in  = torch.cat(test_feats_in, dim=0)#, dtype=torch.float32).to(args.device)
+        test_feats_tgt = torch.cat(test_feats_tgt, dim=0)#, dtype=torch.float32).to(args.device)
+        test_norm = torch.cat(test_norm, dim=0)#, dtype=torch.float32).to(args.device)
+        test_inputs_gaps  = torch.cat(test_inputs_gaps, dim=0)#, dtype=torch.float32).to(args.device)
+        test_targets_gaps = torch.cat(test_targets_gaps, dim=0)#, dtype=torch.float32).to(args.device)
 
         test_inputs_dict[agg_method][level] = test_inputs
         test_targets_dict[agg_method][level] = test_targets
@@ -495,222 +500,355 @@ for agg_method in args.aggregate_methods:
         test_norm_dict[agg_method][level] = test_norm
         test_feats_in_dict[agg_method][level] = test_feats_in
         test_feats_tgt_dict[agg_method][level] = test_feats_tgt
+        test_inputs_gaps_dict[agg_method][level] = test_inputs_gaps
+        test_targets_gaps_dict[agg_method][level] = test_targets_gaps
+
+        if level == 1:
+            N_input = dataset['N_input']
+            N_output = dataset['N_output']
+
+assert N_input > 0
+assert N_output > 0
 #criterion = torch.nn.MSELoss()
 
-for inf_model_name in args.inference_model_names:
+#import ipdb
+#ipdb.set_trace()
+if args.learnK:
+    for inf_model_name in args.inference_model_names:
 
-    if inf_model_name in ['DILATE']:
-        base_models_dict = base_models['seq2seqdilate']['sum']
-        inf_net = inf_models.DILATE(base_models_dict)
-        inf_test_inputs_dict = test_inputs_dict['sum']
-        inf_test_targets_dict = test_targets_dict_leak['sum']
-        inf_test_norm_dict = test_norm_dict['sum']
-        inf_test_targets = test_targets_dict['sum'][1]
-        inf_norm = test_norm_dict['sum'][1]
-        inf_test_feats_in_dict = test_feats_in_dict['sum']
-        inf_test_feats_tgt_dict = test_feats_tgt_dict['sum']
+        if inf_model_name in ['MSE']:
+            index_models_dict = index_models['seq2seqmse']['sum']
+            inf_net = inf_index_models.MSE(index_models_dict)
+            inf_test_inputs_dict = test_inputs_dict['sum']
+            inf_test_targets_dict = test_targets_dict_leak['sum']
+            inf_test_norm_dict = test_norm_dict['sum']
+            inf_test_targets = test_targets_dict['sum'][1]
+            inf_norm = test_norm_dict['sum'][1]
+            inf_test_feats_in_dict = test_feats_in_dict['sum']
+            inf_test_feats_tgt_dict = test_feats_tgt_dict['sum']
+            inf_test_inputs_gaps_dict = test_inputs_gaps_dict['sum']
 
-    elif inf_model_name in ['MSE']:
-        base_models_dict = base_models['seq2seqmse']['sum']
-        inf_net = inf_models.MSE(base_models_dict)
-        inf_test_inputs_dict = test_inputs_dict['sum']
-        inf_test_targets_dict = test_targets_dict_leak['sum']
-        inf_test_norm_dict = test_norm_dict['sum']
-        inf_test_targets = test_targets_dict['sum'][1]
-        inf_norm = test_norm_dict['sum'][1]
-        inf_test_feats_in_dict = test_feats_in_dict['sum']
-        inf_test_feats_tgt_dict = test_feats_tgt_dict['sum']
+        elif inf_model_name in ['NLL']:
+            index_models_dict = index_models['seq2seqnll']['sum']
+            inf_net = inf_index_models.NLL(index_models_dict)
+            inf_test_inputs_dict = test_inputs_dict['sum']
+            inf_test_targets_dict = test_targets_dict_leak['sum']
+            inf_test_norm_dict = test_norm_dict['sum']
+            inf_test_targets = test_targets_dict['sum'][1]
+            inf_norm = test_norm_dict['sum'][1]
+            inf_test_feats_in_dict = test_feats_in_dict['sum']
+            inf_test_feats_tgt_dict = test_feats_tgt_dict['sum']
+            inf_test_inputs_gaps_dict = test_inputs_gaps_dict['sum']
 
-    elif inf_model_name in ['NLL']:
-        base_models_dict = base_models['seq2seqnll']['sum']
-        inf_net = inf_models.NLL(base_models_dict)
-        inf_test_inputs_dict = test_inputs_dict['sum']
-        inf_test_targets_dict = test_targets_dict_leak['sum']
-        inf_test_norm_dict = test_norm_dict['sum']
-        inf_test_targets = test_targets_dict['sum'][1]
-        inf_norm = test_norm_dict['sum'][1]
-        inf_test_feats_in_dict = test_feats_in_dict['sum']
-        inf_test_feats_tgt_dict = test_feats_tgt_dict['sum']
+        elif inf_model_name in ['seq2seqmse_optst']:
+            index_models_dict = index_models['seq2seqmse']
+            inf_net = inf_index_models.OPT_st(
+                args.K_list, index_models_dict, args.device, intercept_type='sum'
+            )
+            inf_test_inputs_dict = test_inputs_dict
+            inf_test_targets_dict = test_targets_dict_leak
+            inf_test_norm_dict = test_norm_dict
+            inf_test_targets = test_targets_dict['sum'][1]
+            inf_norm = test_norm_dict['sum'][1]
+            inf_test_feats_in_dict = test_feats_in_dict
+            inf_test_feats_tgt_dict = test_feats_tgt_dict
+            inf_test_inputs_gaps_dict = test_inputs_gaps_dict
 
-    elif inf_model_name in ['seq2seqmse_dualtpp']:
-        base_models_dict = base_models['seq2seqmse']['sum']
-        inf_net = inf_models.DualTPP(args.K_list, base_models_dict)
-        inf_test_inputs_dict = test_inputs_dict['sum']
-        inf_test_targets_dict = test_targets_dict_leak['sum']
-        inf_test_norm_dict = test_norm_dict['sum']
-        inf_test_targets = test_targets_dict['sum'][1]
-        inf_norm = test_norm_dict['sum'][1]
-        inf_test_feats_in_dict = test_feats_in_dict['sum']
-        inf_test_feats_tgt_dict = test_feats_tgt_dict['sum']
+        elif inf_model_name in ['seq2seqnll_optst']:
+            index_models_dict = index_models['seq2seqnll']
+            inf_net = inf_index_models.OPT_st(
+                args.K_list, index_models_dict, args.device, intercept_type='sum'
+            )
+            inf_test_inputs_dict = test_inputs_dict
+            inf_test_targets_dict = test_targets_dict_leak
+            inf_test_norm_dict = test_norm_dict
+            inf_test_targets = test_targets_dict['sum'][1]
+            inf_norm = test_norm_dict['sum'][1]
+            inf_test_feats_in_dict = test_feats_in_dict
+            inf_test_feats_tgt_dict = test_feats_tgt_dict
+            inf_test_inputs_gaps_dict = test_inputs_gaps_dict
 
-    elif inf_model_name in ['seq2seqnll_dualtpp']:
-        base_models_dict = base_models['seq2seqnll']['sum']
-        inf_net = inf_models.DualTPP(args.K_list, base_models_dict)
-        inf_test_inputs_dict = test_inputs_dict['sum']
-        inf_test_targets_dict = test_targets_dict_leak['sum']
-        inf_test_norm_dict = test_norm_dict['sum']
-        inf_test_targets = test_targets_dict['sum'][1]
-        inf_norm = test_norm_dict['sum'][1]
-        inf_test_feats_in_dict = test_feats_in_dict['sum']
-        inf_test_feats_tgt_dict = test_feats_tgt_dict['sum']
+        elif inf_model_name in ['seq2seqmse_opttrend']:
+            base_models_dict = index_models['seq2seqmse']
+            inf_net = inf_index_models.OPT_st(
+                args.K_list, base_models_dict, args.device,
+                disable_sum=True, intercept_type='sum'
+            )
+            inf_test_inputs_dict = test_inputs_dict
+            inf_test_targets_dict = test_targets_dict_leak
+            inf_test_norm_dict = test_norm_dict
+            inf_test_targets = test_targets_dict['sum'][1]
+            inf_norm = test_norm_dict['sum'][1]
+            inf_test_feats_in_dict = test_feats_in_dict
+            inf_test_feats_tgt_dict = test_feats_tgt_dict
+            inf_test_inputs_gaps_dict = test_inputs_gaps_dict
+    
+        elif inf_model_name in ['seq2seqnll_opttrend']:
+            base_models_dict = index_models['seq2seqnll']
+            inf_net = inf_index_models.OPT_st(
+                args.K_list, base_models_dict, args.device,
+                disable_sum=True, intercept_type='sum'
+            )
+            inf_test_inputs_dict = test_inputs_dict
+            inf_test_targets_dict = test_targets_dict_leak
+            inf_test_norm_dict = test_norm_dict
+            inf_test_targets = test_targets_dict['sum'][1]
+            inf_norm = test_norm_dict['sum'][1]
+            inf_test_feats_in_dict = test_feats_in_dict
+            inf_test_feats_tgt_dict = test_feats_tgt_dict
+            inf_test_inputs_gaps_dict = test_inputs_gaps_dict
 
-    elif inf_model_name in ['seq2seqmse_optls']:
-        base_models_dict = base_models['seq2seqmse']['leastsquare']
-        inf_net = inf_models.OPT_ls(args.K_list, base_models_dict)
-        inf_test_inputs_dict = test_inputs_dict['leastsquare']
-        inf_test_targets_dict = test_targets_dict_leak['leastsquare']
-        inf_test_norm_dict = test_norm_dict['leastsquare']
-        inf_test_targets = test_targets_dict['sum'][1]
-        inf_norm = test_norm_dict['sum'][1]
-        inf_test_feats_in_dict = test_feats_in_dict['leastsquare']
-        inf_test_feats_tgt_dict = test_feats_tgt_dict['leastsquare']
+        if not args.leak_agg_targets:
+            inf_test_targets_dict = None
 
-    elif inf_model_name in ['seq2seqnll_optls']:
-        base_models_dict = base_models['seq2seqnll']['leastsquare']
-        inf_net = inf_models.OPT_ls(args.K_list, base_models_dict)
-        inf_test_inputs_dict = test_inputs_dict['leastsquare']
-        inf_test_targets_dict = test_targets_dict_leak['leastsquare']
-        inf_test_norm_dict = test_norm_dict['leastsquare']
-        inf_test_targets = test_targets_dict['sum'][1]
-        inf_norm = test_norm_dict['sum'][1]
-        inf_test_feats_in_dict = test_feats_in_dict['leastsquare']
-        inf_test_feats_tgt_dict = test_feats_tgt_dict['leastsquare']
-
-    elif inf_model_name in ['seq2seqmse_optst']:
-        base_models_dict = base_models['seq2seqmse']
-        inf_net = inf_models.OPT_st(args.K_list, base_models_dict, intercept_type='sum')
-        inf_test_inputs_dict = test_inputs_dict
-        inf_test_targets_dict = test_targets_dict_leak
-        inf_test_norm_dict = test_norm_dict
-        inf_test_targets = test_targets_dict['sum'][1]
-        inf_norm = test_norm_dict['sum'][1]
-        inf_test_feats_in_dict = test_feats_in_dict
-        inf_test_feats_tgt_dict = test_feats_tgt_dict
-
-    elif inf_model_name in ['seq2seqnll_optst']:
-        base_models_dict = base_models['seq2seqnll']
-        inf_net = inf_models.OPT_st(args.K_list, base_models_dict, intercept_type='sum')
-        inf_test_inputs_dict = test_inputs_dict
-        inf_test_targets_dict = test_targets_dict_leak
-        inf_test_norm_dict = test_norm_dict
-        inf_test_targets = test_targets_dict['sum'][1]
-        inf_norm = test_norm_dict['sum'][1]
-        inf_test_feats_in_dict = test_feats_in_dict
-        inf_test_feats_tgt_dict = test_feats_tgt_dict
-
-    elif inf_model_name in ['seq2seqmse_opttrend']:
-        base_models_dict = base_models['seq2seqmse']
-        inf_net = inf_models.OPT_st(args.K_list, base_models_dict, disable_sum=True, intercept_type='sum')
-        inf_test_inputs_dict = test_inputs_dict
-        inf_test_targets_dict = test_targets_dict_leak
-        inf_test_norm_dict = test_norm_dict
-        inf_test_targets = test_targets_dict['sum'][1]
-        inf_norm = test_norm_dict['sum'][1]
-        inf_test_feats_in_dict = test_feats_in_dict
-        inf_test_feats_tgt_dict = test_feats_tgt_dict
-
-    elif inf_model_name in ['seq2seqnll_opttrend']:
-        base_models_dict = base_models['seq2seqnll']
-        inf_net = inf_models.OPT_st(args.K_list, base_models_dict, disable_sum=True, intercept_type='sum')
-        inf_test_inputs_dict = test_inputs_dict
-        inf_test_targets_dict = test_targets_dict_leak
-        inf_test_norm_dict = test_norm_dict
-        inf_test_targets = test_targets_dict['sum'][1]
-        inf_norm = test_norm_dict['sum'][1]
-        inf_test_feats_in_dict = test_feats_in_dict
-        inf_test_feats_tgt_dict = test_feats_tgt_dict
-
-    elif inf_model_name in ['seq2seqnll_optklst']:
-        base_models_dict = base_models['seq2seqnll']
-        inf_net = inf_models.OPT_KL_st(
-            args.K_list, base_models_dict,
-            agg_methods=['sum', 'slope'],
-            intercept_type='sum')
-        inf_test_inputs_dict = test_inputs_dict
-        inf_test_targets_dict = test_targets_dict_leak
-        inf_test_norm_dict = test_norm_dict
-        inf_test_targets = test_targets_dict['sum'][1]
-        inf_norm = test_norm_dict['sum'][1]
-        inf_test_feats_in_dict = test_feats_in_dict
-        inf_test_feats_tgt_dict = test_feats_tgt_dict
-
-    elif inf_model_name in ['seq2seqnll_optkls']:
-        base_models_dict = base_models['seq2seqnll']
-        inf_net = inf_models.OPT_KL_st(
-            args.K_list, base_models_dict,
-            agg_methods=['sum'],
-            intercept_type='sum')
-        inf_test_inputs_dict = test_inputs_dict
-        inf_test_targets_dict = test_targets_dict_leak
-        inf_test_norm_dict = test_norm_dict
-        inf_test_targets = test_targets_dict['sum'][1]
-        inf_norm = test_norm_dict['sum'][1]
-        inf_test_feats_in_dict = test_feats_in_dict
-        inf_test_feats_tgt_dict = test_feats_tgt_dict
-
-    elif inf_model_name in ['seq2seqnll_optklt']:
-        base_models_dict = base_models['seq2seqnll']
-        inf_net = inf_models.OPT_KL_st(
-            args.K_list, base_models_dict,
-            agg_methods=['slope'],
-            intercept_type='sum')
-        inf_test_inputs_dict = test_inputs_dict
-        inf_test_targets_dict = test_targets_dict_leak
-        inf_test_norm_dict = test_norm_dict
-        inf_test_targets = test_targets_dict['sum'][1]
-        inf_norm = test_norm_dict['sum'][1]
-        inf_test_feats_in_dict = test_feats_in_dict
-        inf_test_feats_tgt_dict = test_feats_tgt_dict
-
-    elif inf_model_name in ['seq2seqmse_wavelet']:
-        base_models_dict = base_models['seq2seqmse']
-        inf_net = inf_models.WAVELET(args.wavelet_levels, base_models_dict)
-        inf_test_inputs_dict = test_inputs_dict
-        inf_test_targets_dict = test_targets_dict_leak
-        inf_test_norm_dict = test_norm_dict
-        inf_test_targets = test_targets_dict['sum'][1]
-        inf_norm = test_norm_dict['sum'][1]
-
-    elif inf_model_name in ['seq2seqnll_wavelet']:
-        base_models_dict = base_models['seq2seqnll']
-        inf_net = inf_models.WAVELET(args.wavelet_levels, base_models_dict)
-        inf_test_inputs_dict = test_inputs_dict
-        inf_test_targets_dict = test_targets_dict_leak
-        inf_test_norm_dict = test_norm_dict
-        inf_test_targets = test_targets_dict['sum'][1]
-        inf_norm = test_norm_dict['sum'][1]
-
-    if not args.leak_agg_targets:
-        inf_test_targets_dict = None
-
-    inf_net.eval()
-    pred_mu, pred_std, metric_mse, metric_dtw, metric_tdi, metric_crps, metric_mae = eval_inf_model(
-        args, inf_net, inf_test_inputs_dict, inf_test_norm_dict,
-        inf_test_targets, inf_norm,
-        inf_test_feats_in_dict, inf_test_feats_tgt_dict,
-        args.gamma, inf_test_targets_dict=inf_test_targets_dict, verbose=1
-    )
-    inference_models[inf_model_name] = inf_net
-    metric_mse = metric_mse.item()
-
-    print('Metrics for Inference model {}: MAE:{:f}, CRPS:{:f}, MSE:{:f}, DTW:{:f}, TDI:{:f}'.format(
-        inf_model_name, metric_mae, metric_crps, metric_mse, metric_dtw, metric_tdi)
-    )
-
-    model2metrics = utils.add_metrics_to_dict(
-        model2metrics, inf_model_name,
-        metric_mse, metric_dtw, metric_tdi, metric_crps, metric_mae
-    )
-    infmodel2preds[inf_model_name] = pred_mu
-    output_dir = os.path.join(args.output_dir, args.dataset_name)
-    os.makedirs(output_dir, exist_ok=True)
-    utils.write_arr_to_file(
-        output_dir, inf_model_name,
-        utils.unnormalize(test_inputs_dict['sum'][1].detach().numpy(), inf_norm.detach().numpy()),
-        test_targets_dict['sum'][1].detach().numpy(),
-        pred_mu.detach().numpy(),
-        pred_std.detach().numpy()
-    )
+        inf_net.eval()
+        (
+            pred_mu, pred_std, metric_mse, metric_dtw, metric_tdi,
+            metric_crps, metric_mae
+        ) = eval_inf_index_model(
+            args, inf_net, inf_test_inputs_dict, inf_test_norm_dict,
+            inf_test_targets, inf_norm,
+            inf_test_feats_in_dict, inf_test_feats_tgt_dict,
+            inf_test_inputs_gaps_dict,
+            args.gamma, N_input, N_output,
+            inf_test_targets_dict=inf_test_targets_dict, verbose=1
+        )
+        inference_models[inf_model_name] = inf_net
+        metric_mse = metric_mse.item()
+    
+        print('Metrics for Inference model {}: MAE:{:f}, CRPS:{:f}, MSE:{:f}, DTW:{:f}, TDI:{:f}'.format(
+            inf_model_name, metric_mae, metric_crps, metric_mse, metric_dtw, metric_tdi)
+        )
+    
+        model2metrics = utils.add_metrics_to_dict(
+            model2metrics, inf_model_name,
+            metric_mse, metric_dtw, metric_tdi, metric_crps, metric_mae
+        )
+        infmodel2preds[inf_model_name] = pred_mu
+        output_dir = os.path.join(args.output_dir, args.dataset_name)
+        os.makedirs(output_dir, exist_ok=True)
+        utils.write_arr_to_file(
+            output_dir, inf_model_name,
+            utils.unnormalize(test_inputs_dict['sum'][1].detach().numpy(), inf_norm.detach().numpy()),
+            test_targets_dict['sum'][1].detach().numpy(),
+            pred_mu.detach().numpy(),
+            pred_std.detach().numpy()
+        )
+else:
+    for inf_model_name in args.inference_model_names:
+    
+        if inf_model_name in ['DILATE']:
+            base_models_dict = base_models['seq2seqdilate']['sum']
+            inf_net = inf_models.DILATE(base_models_dict)
+            inf_test_inputs_dict = test_inputs_dict['sum']
+            inf_test_targets_dict = test_targets_dict_leak['sum']
+            inf_test_norm_dict = test_norm_dict['sum']
+            inf_test_targets = test_targets_dict['sum'][1]
+            inf_norm = test_norm_dict['sum'][1]
+            inf_test_feats_in_dict = test_feats_in_dict['sum']
+            inf_test_feats_tgt_dict = test_feats_tgt_dict['sum']
+    
+        elif inf_model_name in ['MSE']:
+            base_models_dict = base_models['seq2seqmse']['sum']
+            inf_net = inf_models.MSE(base_models_dict)
+            inf_test_inputs_dict = test_inputs_dict['sum']
+            inf_test_targets_dict = test_targets_dict_leak['sum']
+            inf_test_norm_dict = test_norm_dict['sum']
+            inf_test_targets = test_targets_dict['sum'][1]
+            inf_norm = test_norm_dict['sum'][1]
+            inf_test_feats_in_dict = test_feats_in_dict['sum']
+            inf_test_feats_tgt_dict = test_feats_tgt_dict['sum']
+    
+        elif inf_model_name in ['NLL']:
+            base_models_dict = base_models['seq2seqnll']['sum']
+            inf_net = inf_models.NLL(base_models_dict)
+            inf_test_inputs_dict = test_inputs_dict['sum']
+            inf_test_targets_dict = test_targets_dict_leak['sum']
+            inf_test_norm_dict = test_norm_dict['sum']
+            inf_test_targets = test_targets_dict['sum'][1]
+            inf_norm = test_norm_dict['sum'][1]
+            inf_test_feats_in_dict = test_feats_in_dict['sum']
+            inf_test_feats_tgt_dict = test_feats_tgt_dict['sum']
+    
+        elif inf_model_name in ['seq2seqmse_dualtpp']:
+            base_models_dict = base_models['seq2seqmse']['sum']
+            inf_net = inf_models.DualTPP(args.K_list, base_models_dict)
+            inf_test_inputs_dict = test_inputs_dict['sum']
+            inf_test_targets_dict = test_targets_dict_leak['sum']
+            inf_test_norm_dict = test_norm_dict['sum']
+            inf_test_targets = test_targets_dict['sum'][1]
+            inf_norm = test_norm_dict['sum'][1]
+            inf_test_feats_in_dict = test_feats_in_dict['sum']
+            inf_test_feats_tgt_dict = test_feats_tgt_dict['sum']
+    
+        elif inf_model_name in ['seq2seqnll_dualtpp']:
+            base_models_dict = base_models['seq2seqnll']['sum']
+            inf_net = inf_models.DualTPP(args.K_list, base_models_dict)
+            inf_test_inputs_dict = test_inputs_dict['sum']
+            inf_test_targets_dict = test_targets_dict_leak['sum']
+            inf_test_norm_dict = test_norm_dict['sum']
+            inf_test_targets = test_targets_dict['sum'][1]
+            inf_norm = test_norm_dict['sum'][1]
+            inf_test_feats_in_dict = test_feats_in_dict['sum']
+            inf_test_feats_tgt_dict = test_feats_tgt_dict['sum']
+    
+        elif inf_model_name in ['seq2seqmse_optls']:
+            base_models_dict = base_models['seq2seqmse']['leastsquare']
+            inf_net = inf_models.OPT_ls(args.K_list, base_models_dict)
+            inf_test_inputs_dict = test_inputs_dict['leastsquare']
+            inf_test_targets_dict = test_targets_dict_leak['leastsquare']
+            inf_test_norm_dict = test_norm_dict['leastsquare']
+            inf_test_targets = test_targets_dict['sum'][1]
+            inf_norm = test_norm_dict['sum'][1]
+            inf_test_feats_in_dict = test_feats_in_dict['leastsquare']
+            inf_test_feats_tgt_dict = test_feats_tgt_dict['leastsquare']
+    
+        elif inf_model_name in ['seq2seqnll_optls']:
+            base_models_dict = base_models['seq2seqnll']['leastsquare']
+            inf_net = inf_models.OPT_ls(args.K_list, base_models_dict)
+            inf_test_inputs_dict = test_inputs_dict['leastsquare']
+            inf_test_targets_dict = test_targets_dict_leak['leastsquare']
+            inf_test_norm_dict = test_norm_dict['leastsquare']
+            inf_test_targets = test_targets_dict['sum'][1]
+            inf_norm = test_norm_dict['sum'][1]
+            inf_test_feats_in_dict = test_feats_in_dict['leastsquare']
+            inf_test_feats_tgt_dict = test_feats_tgt_dict['leastsquare']
+    
+        elif inf_model_name in ['seq2seqmse_optst']:
+            base_models_dict = base_models['seq2seqmse']
+            inf_net = inf_models.OPT_st(args.K_list, base_models_dict, intercept_type='sum')
+            inf_test_inputs_dict = test_inputs_dict
+            inf_test_targets_dict = test_targets_dict_leak
+            inf_test_norm_dict = test_norm_dict
+            inf_test_targets = test_targets_dict['sum'][1]
+            inf_norm = test_norm_dict['sum'][1]
+            inf_test_feats_in_dict = test_feats_in_dict
+            inf_test_feats_tgt_dict = test_feats_tgt_dict
+    
+        elif inf_model_name in ['seq2seqnll_optst']:
+            base_models_dict = base_models['seq2seqnll']
+            inf_net = inf_models.OPT_st(args.K_list, base_models_dict, intercept_type='sum')
+            inf_test_inputs_dict = test_inputs_dict
+            inf_test_targets_dict = test_targets_dict_leak
+            inf_test_norm_dict = test_norm_dict
+            inf_test_targets = test_targets_dict['sum'][1]
+            inf_norm = test_norm_dict['sum'][1]
+            inf_test_feats_in_dict = test_feats_in_dict
+            inf_test_feats_tgt_dict = test_feats_tgt_dict
+    
+        elif inf_model_name in ['seq2seqmse_opttrend']:
+            base_models_dict = base_models['seq2seqmse']
+            inf_net = inf_models.OPT_st(args.K_list, base_models_dict, disable_sum=True, intercept_type='sum')
+            inf_test_inputs_dict = test_inputs_dict
+            inf_test_targets_dict = test_targets_dict_leak
+            inf_test_norm_dict = test_norm_dict
+            inf_test_targets = test_targets_dict['sum'][1]
+            inf_norm = test_norm_dict['sum'][1]
+            inf_test_feats_in_dict = test_feats_in_dict
+            inf_test_feats_tgt_dict = test_feats_tgt_dict
+    
+        elif inf_model_name in ['seq2seqnll_opttrend']:
+            base_models_dict = base_models['seq2seqnll']
+            inf_net = inf_models.OPT_st(args.K_list, base_models_dict, disable_sum=True, intercept_type='sum')
+            inf_test_inputs_dict = test_inputs_dict
+            inf_test_targets_dict = test_targets_dict_leak
+            inf_test_norm_dict = test_norm_dict
+            inf_test_targets = test_targets_dict['sum'][1]
+            inf_norm = test_norm_dict['sum'][1]
+            inf_test_feats_in_dict = test_feats_in_dict
+            inf_test_feats_tgt_dict = test_feats_tgt_dict
+    
+        elif inf_model_name in ['seq2seqnll_optklst']:
+            base_models_dict = base_models['seq2seqnll']
+            inf_net = inf_models.OPT_KL_st(
+                args.K_list, base_models_dict,
+                agg_methods=['sum', 'slope'],
+                intercept_type='sum')
+            inf_test_inputs_dict = test_inputs_dict
+            inf_test_targets_dict = test_targets_dict_leak
+            inf_test_norm_dict = test_norm_dict
+            inf_test_targets = test_targets_dict['sum'][1]
+            inf_norm = test_norm_dict['sum'][1]
+            inf_test_feats_in_dict = test_feats_in_dict
+            inf_test_feats_tgt_dict = test_feats_tgt_dict
+    
+        elif inf_model_name in ['seq2seqnll_optkls']:
+            base_models_dict = base_models['seq2seqnll']
+            inf_net = inf_models.OPT_KL_st(
+                args.K_list, base_models_dict,
+                agg_methods=['sum'],
+                intercept_type='sum')
+            inf_test_inputs_dict = test_inputs_dict
+            inf_test_targets_dict = test_targets_dict_leak
+            inf_test_norm_dict = test_norm_dict
+            inf_test_targets = test_targets_dict['sum'][1]
+            inf_norm = test_norm_dict['sum'][1]
+            inf_test_feats_in_dict = test_feats_in_dict
+            inf_test_feats_tgt_dict = test_feats_tgt_dict
+    
+        elif inf_model_name in ['seq2seqnll_optklt']:
+            base_models_dict = base_models['seq2seqnll']
+            inf_net = inf_models.OPT_KL_st(
+                args.K_list, base_models_dict,
+                agg_methods=['slope'],
+                intercept_type='sum')
+            inf_test_inputs_dict = test_inputs_dict
+            inf_test_targets_dict = test_targets_dict_leak
+            inf_test_norm_dict = test_norm_dict
+            inf_test_targets = test_targets_dict['sum'][1]
+            inf_norm = test_norm_dict['sum'][1]
+            inf_test_feats_in_dict = test_feats_in_dict
+            inf_test_feats_tgt_dict = test_feats_tgt_dict
+    
+        elif inf_model_name in ['seq2seqmse_wavelet']:
+            base_models_dict = base_models['seq2seqmse']
+            inf_net = inf_models.WAVELET(args.wavelet_levels, base_models_dict)
+            inf_test_inputs_dict = test_inputs_dict
+            inf_test_targets_dict = test_targets_dict_leak
+            inf_test_norm_dict = test_norm_dict
+            inf_test_targets = test_targets_dict['sum'][1]
+            inf_norm = test_norm_dict['sum'][1]
+    
+        elif inf_model_name in ['seq2seqnll_wavelet']:
+            base_models_dict = base_models['seq2seqnll']
+            inf_net = inf_models.WAVELET(args.wavelet_levels, base_models_dict)
+            inf_test_inputs_dict = test_inputs_dict
+            inf_test_targets_dict = test_targets_dict_leak
+            inf_test_norm_dict = test_norm_dict
+            inf_test_targets = test_targets_dict['sum'][1]
+            inf_norm = test_norm_dict['sum'][1]
+    
+        if not args.leak_agg_targets:
+            inf_test_targets_dict = None
+    
+        inf_net.eval()
+        pred_mu, pred_std, metric_mse, metric_dtw, metric_tdi, metric_crps, metric_mae = eval_inf_model(
+            args, inf_net, inf_test_inputs_dict, inf_test_norm_dict,
+            inf_test_targets, inf_norm,
+            inf_test_feats_in_dict, inf_test_feats_tgt_dict,
+            args.gamma, inf_test_targets_dict=inf_test_targets_dict, verbose=1
+        )
+        inference_models[inf_model_name] = inf_net
+        metric_mse = metric_mse.item()
+    
+        print('Metrics for Inference model {}: MAE:{:f}, CRPS:{:f}, MSE:{:f}, DTW:{:f}, TDI:{:f}'.format(
+            inf_model_name, metric_mae, metric_crps, metric_mse, metric_dtw, metric_tdi)
+        )
+    
+        model2metrics = utils.add_metrics_to_dict(
+            model2metrics, inf_model_name,
+            metric_mse, metric_dtw, metric_tdi, metric_crps, metric_mae
+        )
+        infmodel2preds[inf_model_name] = pred_mu
+        output_dir = os.path.join(args.output_dir, args.dataset_name)
+        os.makedirs(output_dir, exist_ok=True)
+        utils.write_arr_to_file(
+            output_dir, inf_model_name,
+            utils.unnormalize(test_inputs_dict['sum'][1].detach().numpy(), inf_norm.detach().numpy()),
+            test_targets_dict['sum'][1].detach().numpy(),
+            pred_mu.detach().numpy(),
+            pred_std.detach().numpy()
+        )
 
 
 # ----- End: Inference models ----- #
