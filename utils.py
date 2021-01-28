@@ -410,8 +410,7 @@ def create_hierarchical_data(
 		aggregation_type, K,
 		norm_type=args.normalize,
 		use_time_features=args.use_time_features,
-		learnK=args.learnK,
-		wavelet_levels=wavelet_levels
+		learnK=args.learnK
 	)
 	norm = lazy_dataset_train.input_norm
 	dev_norm, test_norm = [], []
@@ -428,8 +427,7 @@ def create_hierarchical_data(
 		input_norm=dev_norm, target_norm=np.ones_like(dev_norm),
 		use_time_features=args.use_time_features,
 		tsid_map=dev_tsid_map,
-		learnK=args.learnK,
-		wavelet_levels=wavelet_levels
+		learnK=args.learnK
 	)
 	lazy_dataset_test = TimeSeriesDatasetOfflineAggregate(
 		data_test, args.N_input, args.N_output, args.N_output,
@@ -438,7 +436,6 @@ def create_hierarchical_data(
 		use_time_features=args.use_time_features,
 		tsid_map=test_tsid_map,
 		learnK=args.learnK,
-		wavelet_levels=wavelet_levels
 	)
 	trainloader = DataLoader(
 		lazy_dataset_train, batch_size=args.batch_size, shuffle=True,
@@ -820,9 +817,8 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
 	):
 		super(TimeSeriesDatasetOfflineAggregate, self).__init__()
 
-		if aggregation_type not in ['wavelet']:
-			assert enc_len%K == 0
-			assert dec_len%K == 0
+		assert enc_len%K == 0
+		assert dec_len%K == 0
 
 		print('Creating dataset:', aggregation_type, K)
 		self._enc_len = enc_len
@@ -939,7 +935,11 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
 	
 	@property
 	def dec_len(self):
-		return self._dec_len // max(self.K, 1)
+		if self.K > 1:
+			dl = self._dec_len // self.K
+		else:
+			dl = self._dec_len
+		return dl
 
 	@property
 	def input_size(self):
