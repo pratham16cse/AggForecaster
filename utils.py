@@ -8,6 +8,7 @@ import pandas as pd
 import re
 import time
 import shutil
+from tsmoothie.smoother import SpectralSmoother
 
 from data.synthetic_dataset import create_synthetic_dataset, create_sin_dataset, SyntheticDataset
 from data.real_dataset import parse_ECG5000, parse_Traffic, parse_Taxi, parse_Traffic911, parse_gc_datasets
@@ -859,7 +860,7 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
 				elif self.aggregation_type in ['slope']:
 					ex_agg = map(
 						self.aggregate_data_slope,
-						np.split(ex, bp, axis=0),
+						np.split(self.smooth(ex), bp, axis=0),
 					)
 					ex_agg = list(ex_agg)
 			else:
@@ -1084,6 +1085,10 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
 		#print(breakpoints)
 		return breakpoints[:-1]
 
+	def smooth(self, series):
+		smoother = SpectralSmoother(smooth_fraction=0.2, pad_len=10)
+		series_smooth = np.expand_dims(smoother.smooth(series[:, 0]).smooth_data[0], axis=-1)
+		return series_smooth
 
 
 class DataProcessor(object):
