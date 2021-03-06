@@ -269,7 +269,7 @@ class OPT_ls(torch.nn.Module):
 
 class OPT_st(torch.nn.Module):
 	"""docstring for OPT_st"""
-	def __init__(self, K_list, base_models_dict, disable_sum=False, intercept_type='intercept'):
+	def __init__(self, K_list, base_models_dict, disable_sum=False):
 		'''
 		K_list: list
 			list of K-values used for aggregation
@@ -282,7 +282,6 @@ class OPT_st(torch.nn.Module):
 		super(OPT_st, self).__init__()
 		self.K_list = K_list
 		self.base_models_dict = base_models_dict
-		self.intercept_type = intercept_type
 		self.disable_sum = disable_sum
 
 
@@ -293,20 +292,18 @@ class OPT_st(torch.nn.Module):
 
 	def fit_slope_with_indices(self, seq, K):
 		W = []
+		x = np.cumsum(np.ones((tuple([K]) + seq.shape[1:])), axis=0) - 1.
+		m_x = np.mean(x, axis=0)
+		s_xx = np.sum((x-m_x)**2, axis=0)
+		a = (x - m_x) / s_xx
 		for i in range(0, seq.shape[0], K):
-			x = np.cumsum(np.ones(seq[i:i+K].shape)) - 1.
 			y = seq[i:i+K]
-			m_x = cp.sum(x)/x.shape[0]
-			m_y = cp.sum(y)/y.shape[0]
-			s_xy = cp.sum((x-m_x)*(y-m_y))
-			s_xx = cp.sum((x-m_x)**2)
-			w = s_xy/s_xx
-			if self.intercept_type in ['intercept']:
-				b = m_y - w*m_x
-			elif self.intercept_type in ['sum']:
-				b = cp.sum(y)
+			w = cp.sum(cp.multiply(a, y), axis=0, keepdims=True)
 			W.append(w)
-		W = np.expand_dims(np.array(W), axis=1)
+
+		#W = np.expand_dims(np.array(W), axis=1)
+		#W = np.array(W)
+		W = cp.vstack(W)
 		return W
 
 	def log_prob(self, ex_preds, means, std):
@@ -435,7 +432,7 @@ class OPT_st(torch.nn.Module):
 
 class OPT_KL_st(OPT_st):
 	"""docstring for OPT_st"""
-	def __init__(self, K_list, base_models_dict, agg_methods, intercept_type='intercept'):
+	def __init__(self, K_list, base_models_dict, agg_methods):
 		'''
 		K_list: list
 			list of K-values used for aggregation
@@ -447,7 +444,7 @@ class OPT_KL_st(OPT_st):
 		agg_methods: list
 			list of aggregate methods to use
 		'''
-		super(OPT_KL_st, self).__init__(K_list, base_models_dict, intercept_type=intercept_type)
+		super(OPT_KL_st, self).__init__(K_list, base_models_dict)
 		self.agg_methods = agg_methods
 
 
@@ -460,24 +457,21 @@ class OPT_KL_st(OPT_st):
 	def fit_slope_with_indices(self, mu, var, K):
 		W_mu = []
 		W_var = []
+		x = np.cumsum(np.ones((tuple([K])+mu.shape[1:])), axis=0) - 1.
+		m_x = np.mean(x, axis=0)
+		s_xx = np.sum((x-m_x)**2, axis=0)
+		a = (x - m_x) / s_xx
 		for i in range(0, mu.shape[0], K):
-			x = np.cumsum(np.ones(mu[i:i+K].shape)) - 1.
 			y_mu = mu[i:i+K]
 			y_var = var[i:i+K]
-			m_x = cp.sum(x)/x.shape[0]
-			m_y = cp.sum(y_mu)/y_mu.shape[0]
-			s_xx = cp.sum((x-m_x)**2)
-			a = (x-m_x) / s_xx
-			w_mu = cp.sum(a*y_mu)
-			w_var = cp.sum(a**2 * y_var)
-			if self.intercept_type in ['intercept']:
-				b = m_y - w_mu*m_x
-			elif self.intercept_type in ['sum']:
-				b = cp.sum(y_mu)
+			w_mu = cp.sum(cp.multiply(a, y_mu), axis=0, keepdims=True)
+			w_var = cp.sum(cp.multiply(a**2, y_var), axis=0, keepdims=True)
 			W_mu.append(w_mu)
 			W_var.append(w_var)
-		W_mu = np.expand_dims(np.array(W_mu), axis=1)
-		W_var = np.expand_dims(np.array(W_var), axis=1)
+		#W_mu = np.expand_dims(np.array(W_mu), axis=1)
+		#W_var = np.expand_dims(np.array(W_var), axis=1)
+		W_mu = cp.vstack(W_mu)
+		W_var = cp.vstack(W_var)
 		return W_mu, W_var
 
 	def log_prob(self, ex_preds, means, std):

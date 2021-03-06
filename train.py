@@ -85,7 +85,7 @@ def train_model(config):
             means, stds = net(feats_in, inputs, feats_tgt, target)
             loss_mse,loss_shape,loss_temporal = torch.tensor(0),torch.tensor(0),torch.tensor(0)
 
-            if model_name in ['seq2seqmse']:
+            if model_name in ['seq2seqmse', 'convmse']:
                 loss_mse = criterion(target,means)
                 loss = loss_mse
             if model_name in ['seq2seqdilate']:
@@ -119,7 +119,7 @@ def train_model(config):
         # ...log the epoch_loss
         if model_name in ['seq2seqdilate']:
             writer.add_scalar('training_loss/DILATE', epoch_loss, curr_epoch)
-        if model_name in ['seq2seqmse']:
+        if model_name in ['seq2seqmse', 'convmse']:
             writer.add_scalar('training_loss/MSE', epoch_loss, curr_epoch)
         if model_name in ['seq2seqnll']:
             writer.add_scalar('training_loss/NLL', epoch_loss, curr_epoch)

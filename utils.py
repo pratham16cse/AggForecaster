@@ -8,7 +8,8 @@ import pandas as pd
 import re
 import time
 import shutil
-from tsmoothie.smoother import SpectralSmoother
+from tsmoothie.smoother import SpectralSmoother, ExponentialSmoother
+import time
 
 from data.synthetic_dataset import create_synthetic_dataset, create_sin_dataset, SyntheticDataset
 from data.real_dataset import parse_ECG5000, parse_Traffic, parse_Taxi, parse_Traffic911, parse_gc_datasets
@@ -824,6 +825,8 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
 		print('Creating dataset:', aggregation_type, K)
 		self._enc_len = enc_len
 		self._dec_len = dec_len
+		self._base_enc_len = enc_len
+		self._base_dec_len = dec_len
 		#self.num_values = len(data[0]['target'][0])
 		self.stride = stride
 		self.aggregation_type = aggregation_type
@@ -847,33 +850,59 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
 				bp = self.get_piecewise_linear_breakpoints(ex)
 				#print(input_bp, target_bp)
 			else:
-				bp = np.arange(self.K, len(ex), self.K)
+				#bp = np.arange(self.K, len(ex), self.K)
+				bp = [(i, self.K) for i in np.arange(0, len(ex), self.K)]
 
 			if self.K != 1:
 				if self.aggregation_type in ['sum']:
-					ex_agg = map(
-						self.aggregate_data,
-						np.split(ex, bp, axis=0),
-					)
-					ex_agg = list(ex_agg)
+					#st = time.time()
+					#ex_agg = map(
+					#	self.aggregate_data,
+					#	np.split(ex, bp, axis=0),
+					#)
+					#ex_agg = list(ex_agg)
+					ex_agg = []
+					#bp = [0] + bp.tolist() + [len(ex)]
+					fh_begin = -1
+					for b in range(len(bp)):
+						s, e = bp[b][0], bp[b][0]+bp[b][1]
+						ex_agg.append(self.aggregate_data(ex[s:e]))
+						if fh_begin==-1 and (e-1)>=(len(ex)-self.base_dec_len):
+							fh_begin = b
+					#et = time.time()
+					#print('time to aggregate:', et-st)
 
 				elif self.aggregation_type in ['slope']:
-					ex_agg = map(
-						self.aggregate_data_slope,
-						np.split(self.smooth(ex), bp, axis=0),
-					)
-					ex_agg = list(ex_agg)
+					#ex_agg = map(
+					#	self.aggregate_data_slope,
+					#	np.split(self.smooth(ex), bp, axis=0),
+					#)
+					#ex_agg = list(ex_agg)
+					smooth_ex = self.smooth(ex)
+					ex_agg = []
+					#bp = [0] + bp.tolist() + [len(ex)]
+					fh_begin = -1
+					for b in range(len(bp)):
+						s, e = bp[b][0], bp[b][0]+bp[b][1]
+						ex_agg.append(self.aggregate_data_slope(smooth_ex[s:e]))
+						if fh_begin==-1 and (e-1)>=(len(ex)-self.base_dec_len):
+							fh_begin = b
 			else:
 				ex_agg = ex
+				fh_begin = len(ex)-self.dec_len
 
-			bp = np.concatenate((bp, np.array([len(ex)])), axis=-1)
-			gaps = bp - np.concatenate((np.array([0]), bp[:-1]), axis=-1)
+			#import ipdb
+			#ipdb.set_trace()
+			#bp = np.concatenate((bp, np.array([len(ex)])), axis=-1)
+			#gaps = bp - np.concatenate((np.array([0]), bp[:-1]), axis=-1)
+			gaps = [bp_i[1] for bp_i in bp]
 
 			data_agg.append(
 				{
 					'target':np.array(ex_agg),
-					'bp': np.array(bp),
-					'gaps': np.array(gaps)
+					'bp': bp,
+					'gaps': np.array(gaps),
+					'fh_begin': fh_begin
 				}
 			)
 
@@ -917,7 +946,10 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
 					s = (np.random.randint(0, self.dec_len))
 					j += s
 			else:
-				j = len(self.data[i]['target']) - self.enc_len - self.dec_len
+				#if self.K > 1:
+				#	import ipdb
+				#	ipdb.set_trace()
+				j = self.data[i]['fh_begin'] - self.enc_len
 				self.indices.append((i, j))
 				#for j in range(start_idx, len(self.data[i]['target']), stride):
 				#	if j+self.enc_len+self.dec_len <= len(self.data[i]['target']):
@@ -954,7 +986,14 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
 	def output_size(self):
 		output_size = len(self.data[0]['target'][0])
 		return output_size
+
+	@property
+	def base_enc_len(self):
+		return self._base_enc_len
 	
+	@property
+	def base_dec_len(self):
+		return self._base_dec_len
 
 	def __len__(self):
 		return len(self.indices)
@@ -1024,9 +1063,12 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
 		s_xx = np.sum((x-m_x)**2, axis=0)
 
 		y = values
-		m_y = np.mean(y, axis=0)
-		s_xy = np.sum((x-m_x)*(y-m_y), axis=0)
-		w = s_xy/s_xx
+		#m_y = np.mean(y, axis=0)
+		#s_xy = np.sum((x-m_x)*(y-m_y), axis=0)
+		#w = s_xy/s_xx
+
+		a = (x - m_x) / s_xx
+		w = np.sum(a*y, axis=0)
 
 		if compute_b:
 			b = m_y - w*m_x
@@ -1086,7 +1128,9 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
 		return breakpoints[:-1]
 
 	def smooth(self, series):
-		smoother = SpectralSmoother(smooth_fraction=0.2, pad_len=10)
+		#smoother = SpectralSmoother(smooth_fraction=0.4, pad_len=10)
+		smoother = ExponentialSmoother(window_len=10, alpha=0.15)
+		series = np.concatenate((np.zeros((10, 1)), series), axis=0)
 		series_smooth = np.expand_dims(smoother.smooth(series[:, 0]).smooth_data[0], axis=-1)
 		return series_smooth
 

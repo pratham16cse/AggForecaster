@@ -137,7 +137,8 @@ args = parser.parse_args()
 args.base_model_names = [
 #    'seq2seqdilate',
 #    'seq2seqmse',
-    'seq2seqnll'
+    'seq2seqnll',
+#    'convmse'
 ]
 args.inference_model_names = [
 #    'DILATE',
@@ -234,7 +235,7 @@ for base_model_name in args.base_model_names:
             dev_norm = level2data['dev_norm']
             test_norm = level2data['test_norm']
 
-            if base_model_name in ['seq2seqmse', 'seq2seqdilate']:
+            if base_model_name in ['seq2seqmse', 'seq2seqdilate', 'convmse']:
                 point_estimates = True
             elif base_model_name in ['seq2seqnll']:
                 point_estimates = False
@@ -304,7 +305,7 @@ for base_model_name in args.base_model_names:
                 index_models[base_model_name][agg_method][level] = net_index
             else:
                 net_gru = get_base_model(
-                    args, config, level,
+                    args, config, base_model_name, level,
                     N_input, N_output, input_size, output_size,
                     point_estimates
                 )
@@ -543,7 +544,7 @@ if args.learnK:
         elif inf_model_name in ['seq2seqmse_optst']:
             index_models_dict = index_models['seq2seqmse']
             inf_net = inf_index_models.OPT_st(
-                args.K_list, index_models_dict, args.device, intercept_type='sum'
+                args.K_list, index_models_dict, args.device
             )
             inf_test_inputs_dict = test_inputs_dict
             inf_test_targets_dict = test_targets_dict_leak
@@ -557,7 +558,7 @@ if args.learnK:
         elif inf_model_name in ['seq2seqnll_optst']:
             index_models_dict = index_models['seq2seqnll']
             inf_net = inf_index_models.OPT_st(
-                args.K_list, index_models_dict, args.device, intercept_type='sum'
+                args.K_list, index_models_dict, args.device
             )
             inf_test_inputs_dict = test_inputs_dict
             inf_test_targets_dict = test_targets_dict_leak
@@ -572,7 +573,7 @@ if args.learnK:
             base_models_dict = index_models['seq2seqmse']
             inf_net = inf_index_models.OPT_st(
                 args.K_list, base_models_dict, args.device,
-                disable_sum=True, intercept_type='sum'
+                disable_sum=True
             )
             inf_test_inputs_dict = test_inputs_dict
             inf_test_targets_dict = test_targets_dict_leak
@@ -587,7 +588,7 @@ if args.learnK:
             base_models_dict = index_models['seq2seqnll']
             inf_net = inf_index_models.OPT_st(
                 args.K_list, base_models_dict, args.device,
-                disable_sum=True, intercept_type='sum'
+                disable_sum=True
             )
             inf_test_inputs_dict = test_inputs_dict
             inf_test_targets_dict = test_targets_dict_leak
@@ -716,7 +717,7 @@ else:
     
         elif inf_model_name in ['seq2seqmse_optst']:
             base_models_dict = base_models['seq2seqmse']
-            inf_net = inf_models.OPT_st(args.K_list, base_models_dict, intercept_type='sum')
+            inf_net = inf_models.OPT_st(args.K_list, base_models_dict)
             inf_test_inputs_dict = test_inputs_dict
             inf_test_targets_dict = test_targets_dict_leak
             inf_test_norm_dict = test_norm_dict
@@ -727,7 +728,7 @@ else:
     
         elif inf_model_name in ['seq2seqnll_optst']:
             base_models_dict = base_models['seq2seqnll']
-            inf_net = inf_models.OPT_st(args.K_list, base_models_dict, intercept_type='sum')
+            inf_net = inf_models.OPT_st(args.K_list, base_models_dict)
             inf_test_inputs_dict = test_inputs_dict
             inf_test_targets_dict = test_targets_dict_leak
             inf_test_norm_dict = test_norm_dict
@@ -738,7 +739,9 @@ else:
     
         elif inf_model_name in ['seq2seqmse_opttrend']:
             base_models_dict = base_models['seq2seqmse']
-            inf_net = inf_models.OPT_st(args.K_list, base_models_dict, disable_sum=True, intercept_type='sum')
+            inf_net = inf_models.OPT_st(
+                args.K_list, base_models_dict, disable_sum=True
+            )
             inf_test_inputs_dict = test_inputs_dict
             inf_test_targets_dict = test_targets_dict_leak
             inf_test_norm_dict = test_norm_dict
@@ -749,7 +752,9 @@ else:
     
         elif inf_model_name in ['seq2seqnll_opttrend']:
             base_models_dict = base_models['seq2seqnll']
-            inf_net = inf_models.OPT_st(args.K_list, base_models_dict, disable_sum=True, intercept_type='sum')
+            inf_net = inf_models.OPT_st(
+                args.K_list, base_models_dict, disable_sum=True
+            )
             inf_test_inputs_dict = test_inputs_dict
             inf_test_targets_dict = test_targets_dict_leak
             inf_test_norm_dict = test_norm_dict
@@ -763,7 +768,7 @@ else:
             inf_net = inf_models.OPT_KL_st(
                 args.K_list, base_models_dict,
                 agg_methods=['sum', 'slope'],
-                intercept_type='sum')
+            )
             inf_test_inputs_dict = test_inputs_dict
             inf_test_targets_dict = test_targets_dict_leak
             inf_test_norm_dict = test_norm_dict
@@ -777,7 +782,7 @@ else:
             inf_net = inf_models.OPT_KL_st(
                 args.K_list, base_models_dict,
                 agg_methods=['sum'],
-                intercept_type='sum')
+            )
             inf_test_inputs_dict = test_inputs_dict
             inf_test_targets_dict = test_targets_dict_leak
             inf_test_norm_dict = test_norm_dict
@@ -791,7 +796,7 @@ else:
             inf_net = inf_models.OPT_KL_st(
                 args.K_list, base_models_dict,
                 agg_methods=['slope'],
-                intercept_type='sum')
+            )
             inf_test_inputs_dict = test_inputs_dict
             inf_test_targets_dict = test_targets_dict_leak
             inf_test_norm_dict = test_norm_dict

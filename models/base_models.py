@@ -8,6 +8,105 @@ from torch.distributions.normal import Normal
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 
 
+class ConvModel(torch.nn.Module):
+    """docstring for ConvModel"""
+    def __init__(
+        self, input_length, input_size, target_length, output_size,
+        K, hidden_size, num_enc_layers, fc_units, use_time_features,
+        point_estimates, teacher_forcing_ratio, deep_std, second_moment,
+        variance_rnn, device,
+        dropout=0.5
+    ):
+        super(ConvModel, self).__init__()
+        self.K = K
+        self.input_size = input_size
+        self.input_length = input_length
+        self.output_size = output_size
+        self.target_length = target_length
+
+        self.fc_units = fc_units
+        self.use_time_features = use_time_features
+        self.point_estimates = point_estimates
+        self.teacher_forcing_ratio = teacher_forcing_ratio
+        self.device = device
+        self.deep_std = deep_std
+
+        self.aggregate_layer = nn.Conv1d(1, 1, self.K, self.K)
+        self.deaggregate_layer = nn.Conv1d(1, self.K, 1, 1)
+
+        encoder_layers = TransformerEncoderLayer(1, 1, hidden_size, dropout)
+        self.transformer_encoder = TransformerEncoder(encoder_layers, num_enc_layers)
+
+        self.encoder = EncoderRNN(
+            input_size, hidden_size, num_enc_layers, batch_size=None
+        )
+        self.decoder = DecoderRNN(
+            input_size, hidden_size, num_enc_layers,
+            fc_units, output_size, deep_std, second_moment,
+            variance_rnn
+        )
+
+    def forward(self, feats_in, x_in, feats_tgt, x_tgt=None):
+
+        enc_in = x_in
+        aggregates = self.aggregate_layer(enc_in.transpose(1, 2)).transpose(1, 2)
+        if x_tgt is not None:
+            aggregates_tgt = self.aggregate_layer(x_tgt.transpose(1, 2)).transpose(1, 2)
+
+        encoder_hidden = self.encoder.init_hidden(x_in.shape[0], self.device)
+        encoder_output, encoder_hidden = self.encoder(aggregates, encoder_hidden)
+
+
+        means, stds = [], []
+        decoder_hidden = encoder_hidden
+        decoder_hidden_var = encoder_hidden
+        for di in range(self.target_length//self.K):
+            dec_in = aggregates[:,-1,:].unsqueeze(1) # first decoder input= last element of input sequence
+            dec_in_var = enc_in[:,-1,:].unsqueeze(1) # first decoder input= last element of input sequence
+
+            (step_means, step_stds), (decoder_hidden, decoder_hidden_var) \
+                = self.decoder(dec_in, dec_in_var, decoder_hidden, decoder_hidden_var)
+
+            # Training Mode
+            if x_tgt is not None:
+                if random.random() < self.teacher_forcing_ratio:
+                    # Teacher Forcing
+                    dec_in = aggregates_tgt[:, di:di+1]
+                else:
+                    dec_in = step_means
+            else:
+                dec_in = step_means
+            dec_in_var = step_stds
+
+                # Add features
+            if self.use_time_features:
+                dec_in = torch.cat((dec_in, feats_tgt[:, di:di+1]), dim=-1)
+                dec_in_var = torch.cat((dec_in_var, feats_tgt[:, di:di+1]), dim=-1)
+
+            means.append(step_means)
+            stds.append(step_stds)
+
+        means = torch.cat(means, dim=1)
+        stds = torch.cat(stds, dim=1)
+
+        #import ipdb
+        #ipdb.set_trace()
+
+        means = self.deaggregate_layer(means.transpose(1, 2)).transpose(1, 2)
+        stds = self.deaggregate_layer(stds.transpose(1, 2)).transpose(1, 2)
+
+        means = means.reshape(means.shape[0], means.shape[1]*means.shape[2], 1)
+        stds = means.reshape(stds.shape[0], stds.shape[1]*stds.shape[2], 1)
+
+        #import ipdb
+        #ipdb.set_trace()
+
+        if self.point_estimates:
+            stds = None
+
+        return means, stds
+
+
 class PositionalEncoding(torch.nn.Module):
 
     def __init__(self, d_model, dropout=0.1, max_len=5000):
@@ -390,7 +489,7 @@ class Net_GRU(nn.Module):
 
 
 def get_base_model(
-    args, config, level, N_input, N_output,
+    args, config, base_model_name, level, N_input, N_output,
     input_size, output_size, point_estimates
 ):
 
@@ -420,19 +519,33 @@ def get_base_model(
             ninp=args.fc_units, nhead=4, dropout=0.5
         )
     else:
-        encoder = EncoderRNN(
-            input_size=input_size, hidden_size=hidden_size, num_grulstm_layers=args.num_grulstm_layers,
-            batch_size=args.batch_size
-        ).to(args.device)
-        decoder = DecoderRNN(
-            input_size=input_size, hidden_size=hidden_size, num_grulstm_layers=args.num_grulstm_layers,
-            fc_units=args.fc_units, output_size=output_size, deep_std=args.deep_std,
-            second_moment=args.second_moment, variance_rnn=args.variance_rnn
-        ).to(args.device)
-        net_gru = Net_GRU(
-            encoder,decoder, N_output, args.use_time_features,
-            point_estimates, args.teacher_forcing_ratio, args.deep_std,
-            args.device
-        ).to(args.device)
+        if 'seq2seq' in base_model_name:
+            encoder = EncoderRNN(
+                input_size=input_size, hidden_size=hidden_size, num_grulstm_layers=args.num_grulstm_layers,
+                batch_size=args.batch_size
+            ).to(args.device)
+            decoder = DecoderRNN(
+                input_size=input_size, hidden_size=hidden_size, num_grulstm_layers=args.num_grulstm_layers,
+                fc_units=args.fc_units, output_size=output_size, deep_std=args.deep_std,
+                second_moment=args.second_moment, variance_rnn=args.variance_rnn
+            ).to(args.device)
+            net_gru = Net_GRU(
+                encoder,decoder, N_output, args.use_time_features,
+                point_estimates, args.teacher_forcing_ratio, args.deep_std,
+                args.device
+            ).to(args.device)
+        elif 'conv' in base_model_name:
+            net_gru = ConvModel(
+                input_length=N_input, input_size=input_size,
+                target_length=N_output, output_size=output_size,
+                K=10, hidden_size=hidden_size,
+                num_enc_layers=args.num_grulstm_layers, fc_units=args.fc_units,
+                use_time_features=args.use_time_features,
+                point_estimates=point_estimates,
+                teacher_forcing_ratio=args.teacher_forcing_ratio,
+                deep_std=args.deep_std,
+                second_moment=args.second_moment,
+                variance_rnn=args.variance_rnn, device=args.device,
+            )
 
     return net_gru
