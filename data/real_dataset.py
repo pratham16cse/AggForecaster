@@ -6,6 +6,8 @@ import random
 import json
 from torch.utils.data import Dataset, DataLoader
 
+DATA_DIRS = '/mnt/infonas/data/pratham/Forecasting/DILATE'
+
 def generate_train_dev_test_data(data, N_input):
 	train_per = 0.6
 	dev_per = 0.2
@@ -73,47 +75,50 @@ def get_list_of_dict_format(data):
 	return data_new
 
 def parse_Traffic(N_input, N_output):
-	with open('data/traffic/traffic.txt', 'r') as f:
-		data = []
-		# Taking only first series of length 17544
-		# TODO: Add all series to the dataset
-		for line in f:
-			data.append(line.rstrip().split(',')[0])
-		data = np.array(data).astype(np.float32)
-		data = np.expand_dims(data, axis=-1)
-	
-	data_train, data_dev, data_test = generate_train_dev_test_data(data, N_input)
+    with open(os.path.join(DATA_DIRS, 'data/traffic/traffic.txt'), 'r') as f:
+        data = []
+        # Taking only first series of length 17544
+        # TODO: Add all series to the dataset
+        for line in f:
+        	data.append(line.rstrip().split(',')[0])
+        data = np.array(data).astype(np.float32)
+        data = np.expand_dims(np.expand_dims(data, axis=-1), axis=0)
 
-	data_train_in, data_train_out = create_forecast_io_seqs(data_train, N_input, N_output, int(N_output/3))
-	data_dev_in, data_dev_out = create_forecast_io_seqs(data_dev, N_input, N_output, N_output)
-	data_test_in, data_test_out = create_forecast_io_seqs(data_test, N_input, N_output, N_output)
+    #data_train, data_dev, data_test = generate_train_dev_test_data(data, N_input)
+    
+    train_len = int(0.6 * data.shape[1])
+    dev_len = int(0.2 * data.shape[1])
+    test_len = data.shape[1] - train_len - dev_len
+    
+    data_train = data[:, :train_len]
+    
+    data_dev, data_test = [], []
+    dev_tsid_map, test_tsid_map = {}, {}
+    for i in range(data.shape[0]):
+        for j in range(train_len, train_len+dev_len, N_output):
+            data_dev.append(data[i, :j])
+            dev_tsid_map[len(data_dev)-1] = i
+    for i in range(data.shape[0]):
+        for j in range(train_len+dev_len, data.shape[1], N_output):
+            data_test.append(data[i, :j])
+            test_tsid_map[len(data_test)-1] = i
 
-	train_bkp = np.ones(data_train_in.shape[0]) * N_input
-	dev_bkp = np.ones(data_dev_in.shape[0]) * N_input
-	test_bkp = np.ones(data_test_in.shape[0]) * N_input
-
-	data_train = np.expand_dims(data_train.T, axis=-1)
-	data_dev = np.expand_dims(data_dev.T, axis=-1)
-	data_test = np.expand_dims(data_test.T, axis=-1)
-
-	data_train = get_list_of_dict_format(data_train)
-	data_dev = get_list_of_dict_format(data_dev)
-	data_test = get_list_of_dict_format(data_test)
-
-	return (
-		data_train_in, data_train_out, data_dev_in, data_dev_out,
-		data_test_in, data_test_out, train_bkp, dev_bkp, test_bkp,
-		data_train, data_dev, data_test
-	)
+    data_train = get_list_of_dict_format(data_train)
+    data_dev = get_list_of_dict_format(data_dev)
+    data_test = get_list_of_dict_format(data_test)
+    
+    return (
+    	data_train, data_dev, data_test, dev_tsid_map, test_tsid_map
+    )
 
 def parse_ECG5000(N_input, N_output):
-	with open('data/ECG5000/ECG5000_TRAIN.tsv', 'r') as f:
+	with open(os.path.join(DATA_DIRS, 'data/ECG5000/ECG5000_TRAIN.tsv'), 'r') as f:
 		data = []
 		for line in f:
 			data.append(line.rstrip().split())
 		data = np.array(data).astype(np.float32)
 		data = np.expand_dims(data, axis=-1)
-	with open('data/ECG5000/ECG5000_TEST.tsv', 'r') as f:
+	with open(os.path.join(DATA_DIRS, 'data/ECG5000/ECG5000_TEST.tsv'), 'r') as f:
 		data_test = []
 		for line in f:
 			data_test.append(line.rstrip().split())
@@ -312,24 +317,28 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 
 	if dataset_name in ['Exchange']:
 		num_rolling_windows = 5
+		num_val_rolling_windows = 2
 		dataset_dir = 'exchange_rate_nips'
 	elif dataset_name in ['Wiki']:
 		num_rolling_windows = 5
+		num_val_rolling_windows = 2
 		dataset_dir = 'wiki-rolling_nips'
 	elif dataset_name in ['Solar']:
 		num_rolling_windows = 7
+		num_val_rolling_windows = 2
 		dataset_dir = 'solar_nips'
 	elif dataset_name in ['taxi30min']:
-		num_rolling_windows = 1
+		num_rolling_windows = 7
+		num_val_rolling_windows = 2
 		dataset_dir = 'taxi_30min'
 
 	data_ = []
-	with open(os.path.join('data', dataset_dir, 'train', 'train.json')) as f:
+	with open(os.path.join(DATA_DIRS, 'data', dataset_dir, 'train', 'train.json')) as f:
 		for line in f:
 			data_.append(json.loads(line))
 
 	data_test_full_ = []
-	with open(os.path.join('data', dataset_dir, 'test', 'test.json')) as f:
+	with open(os.path.join(DATA_DIRS, 'data', dataset_dir, 'test', 'test.json')) as f:
 		for line in f:
 			data_test_full_.append(json.loads(line))
 
@@ -341,18 +350,18 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 			data_test_full += data_test_full_[ i : i+num_ts ][ -2000 : ]
 	elif dataset_name in ['taxi30min']:
 		data = data_
-		num_ts = len(data)
-		data_test_full = data_test_full_[ : num_ts*num_rolling_windows ]
+		num_ts = 1214 * num_rolling_windows
+		data_test_full = data_test_full_[ -num_ts : ]
 		for i in range(len(data_test_full)):
-			assert data[i % num_ts]['lat'] == data_test_full[i]['lat']
-			assert data[i % num_ts]['lng'] == data_test_full[i]['lng']
-			data_test_full[i]['target'] = data[i % num_ts]['target'] + data_test_full[i]['target']
-			data_test_full[i]['start'] = data[i % num_ts]['start']
+			assert data[i % len(data)]['lat'] == data_test_full[i]['lat']
+			assert data[i % len(data)]['lng'] == data_test_full[i]['lng']
+			data_test_full[i]['target'] = data[i % len(data)]['target'] + data_test_full[i]['target']
+			data_test_full[i]['start'] = data[i % len(data)]['start']
 	else:
 		data = data_
 		data_test_full = data_test_full_
 
-	metadata = json.load(open(os.path.join('data', dataset_dir, 'metadata', 'metadata.json')))
+	metadata = json.load(open(os.path.join(DATA_DIRS, 'data', dataset_dir, 'metadata', 'metadata.json')))
 
 
 	data_train, data_dev, data_test = [], [], []
@@ -363,7 +372,7 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 	for i, entry in enumerate(data, 0):
 		entry_train = dict()
 
-		train_len = len(entry['target']) - N_output*num_rolling_windows
+		train_len = len(entry['target']) - N_output*num_val_rolling_windows
 		seq_train = entry['target'][ : train_len ]
 		seq_train = np.expand_dims(seq_train, axis=-1)
 
@@ -376,20 +385,11 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 
 		data_train.append(entry_train)
 
-		for j in range(1, num_rolling_windows+1):
-			entry_dev = dict()
-
-			dev_len = train_len + N_output*j
-			#if j==-1:
-			#	break
-			#elif j==0:
-			#	seq_dev = entry['target']
-			#else:
-			#	seq_dev = entry['target'][ : -N_output*j ]
-			seq_dev = entry['target'][ : -N_output*j ]
+		for j in range(train_len+N_output, len(entry['target'])+1, N_output):
+			entry_dev = {}
+			seq_dev = entry['target'][:j]
 			seq_dev = np.expand_dims(seq_dev, axis=-1)
 
-			#start_dev = seq_dates[ -N_output*num_rolling_windows - N_input ]
 			start_dev = seq_dates[0]
 
 			entry_dev['target'] = seq_dev
@@ -412,6 +412,343 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
 		data_test.append(entry_test)
 		test_tsid_map[i] = i%len(data) # Multiple test instances per train series.
 
+	if data_dev == []:
+		data_dev = data_test
+		dev_tsid_map = test_tsid_map
 	return (
 		data_train, data_dev, data_test, dev_tsid_map, test_tsid_map
 	)
+
+def parse_weather(dataset_name, N_input, N_output):
+
+        csv_path = os.path.join(DATA_DIRS, 'data', 'jena_climate_2009_2016.csv')
+        df = pd.read_csv(csv_path)
+        df = df[5::6] # Sub-sample the data from 10minute interval to 1h
+        df = df[['T (degC)']] # Select temperature column, 'T (degC)'
+        df = df.values.T # Retain only values in np format
+        df = np.expand_dims(df, axis=-1)
+        n = df.shape[1]
+
+        # Split the data - train, dev, and test
+        train_len = int(n*0.8)
+        dev_len = int(n*0.1)
+        test_len = n - (train_len + dev_len)
+        data_train = df[:, 0:train_len]
+
+        data_dev, data_test = [], []
+        dev_tsid_map, test_tsid_map = {}, {}
+        for i in range(df.shape[0]):
+            for j in range(train_len, train_len+dev_len, N_output):
+                data_dev.append(df[i, :j])
+                dev_tsid_map[len(data_dev)-1] = i
+        for i in range(df.shape[0]):
+            for j in range(train_len+dev_len, n, N_output):
+                data_test.append(df[i, :j])
+                test_tsid_map[len(data_test)-1] = i
+        data_train = get_list_of_dict_format(data_train)
+        data_dev = get_list_of_dict_format(data_dev)
+        data_test = get_list_of_dict_format(data_test)
+
+        return (
+                data_train, data_dev, data_test, dev_tsid_map, test_tsid_map
+        )
+
+
+def parse_bafu(dataset_name, N_input, N_output):
+    file_path = os.path.join(DATA_DIRS, 'data', 'bafu_normal.txt')
+    data = np.loadtxt(file_path)
+    data = data.T
+    data = np.expand_dims(data, axis=-1)
+
+    n = data.shape[1]
+    test_len = 48*28*7
+    dev_len = 48*28*2
+    train_len = n - dev_len - test_len
+
+    data_train = data[:, :train_len]
+
+    data_dev, data_test = [], []
+    dev_tsid_map, test_tsid_map = {}, {}
+#    for i in range(data.shape[0]):
+#        for j in range(train_len, train_len+dev_len, 1):
+#            data_dev.append(data[i, :j])
+#            dev_tsid_map[len(data_dev)-1] = i
+#    for i in range(data.shape[0]):
+#        for j in range(train_len+dev_len, n, N_output):
+#            data_test.append(data[i, :j])
+#            test_tsid_map[len(data_test)-1] = i
+
+    for i in range(data.shape[0]):
+        for j in range(train_len+N_output, train_len+dev_len+1, N_output):
+            if j <= train_len+dev_len:
+                data_dev.append(data[i, :j])
+                dev_tsid_map[len(data_dev)-1] = i
+    #for i in range(data.shape[0]):
+    for i in range(data.shape[0]):
+        for j in range(train_len+dev_len+N_output, n+1, N_output):
+            if j <= n:
+                data_test.append(data[i, :j])
+                test_tsid_map[len(data_test)-1] = i
+
+    data_train = get_list_of_dict_format(data_train)
+    data_dev = get_list_of_dict_format(data_dev)
+    data_test = get_list_of_dict_format(data_test)
+
+    return (
+            data_train, data_dev, data_test, dev_tsid_map, test_tsid_map
+    )
+
+
+def parse_meteo(dataset_name, N_input, N_output):
+    file_path = os.path.join(DATA_DIRS, 'data', 'meteo_normal.txt')
+    data = np.loadtxt(file_path)
+    data = data.T
+    data = np.expand_dims(data, axis=-1)
+
+    n = data.shape[1]
+    test_len = 2000
+    dev_len = 1000
+    train_len = n - dev_len - test_len
+
+    data_train = data[:, :train_len]
+
+    data_dev, data_test = [], []
+    dev_tsid_map, test_tsid_map = {}, {}
+    for i in range(data.shape[0]):
+        for j in range(train_len, train_len+dev_len, 1):
+            data_dev.append(data[i, :j])
+            dev_tsid_map[len(data_dev)-1] = i
+    for i in range(data.shape[0]):
+        for j in range(train_len+dev_len, n, N_output):
+            data_test.append(data[i, :j])
+            test_tsid_map[len(data_test)-1] = i
+
+    data_train = get_list_of_dict_format(data_train)
+    data_dev = get_list_of_dict_format(data_dev)
+    data_test = get_list_of_dict_format(data_test)
+
+    return (
+            data_train, data_dev, data_test, dev_tsid_map, test_tsid_map
+    )
+
+def parse_azure_bak(dataset_name, N_input, N_output):
+    file_path = os.path.join(DATA_DIRS, 'data', 'azure.npy')
+    data = np.load(file_path)
+    data = np.expand_dims(data, axis=-1)
+
+    n = data.shape[1]
+    test_len = 60*24*2
+    dev_len = 60*24
+    train_len = n - dev_len - test_len
+
+    data_train = data[:, :train_len]
+
+    data_dev, data_test = [], []
+    dev_tsid_map, test_tsid_map = {}, {}
+    #for i in range(data.shape[0]):
+    for i in range(2, 3):
+        for j in range(train_len+N_output, train_len+dev_len+1, N_output):
+            if j <= train_len+dev_len:
+                data_dev.append(data[i, :j])
+                dev_tsid_map[len(data_dev)-1] = i
+    #for i in range(data.shape[0]):
+    for i in range(2, 3):
+        for j in range(train_len+dev_len+N_output, n+1, N_output):
+            if j <= n:
+                data_test.append(data[i, :j])
+                test_tsid_map[len(data_test)-1] = i
+
+    data_train = get_list_of_dict_format(data_train)
+    data_dev = get_list_of_dict_format(data_dev)
+    data_test = get_list_of_dict_format(data_test)
+
+    return (
+            data_train, data_dev, data_test, dev_tsid_map, test_tsid_map
+    )
+
+
+def parse_azure(dataset_name, N_input, N_output):
+    file_path = os.path.join(DATA_DIRS, 'data', 'azure.npy')
+    data = np.load(file_path)
+    data = np.expand_dims(data, axis=-1)
+
+    n = data.shape[1]
+    test_len = 60*24*2
+    dev_len = 60*24*2
+    train_len = n - dev_len - test_len
+
+    feats = np.ones((data.shape[0], 1)) * np.expand_dims(np.arange(n), axis=0) % 60
+    feats = np.expand_dims(feats, axis=-1)
+
+    data_train = data[:, :train_len]
+    feats_train = feats[:, :train_len]
+
+    data_dev, data_test = [], []
+    feats_dev, feats_test = [], []
+    dev_tsid_map, test_tsid_map = {}, {}
+    for i in range(data.shape[0]):
+    #for i in range(2, 3):
+        for j in range(train_len+N_output, train_len+dev_len+1, N_output):
+            if j <= train_len+dev_len:
+                data_dev.append(data[i, :j])
+                dev_tsid_map[len(data_dev)-1] = i
+                feats_dev.append(feats[i, :j])
+    for i in range(data.shape[0]):
+    #for i in range(2, 3):
+        for j in range(train_len+dev_len+N_output, n+1, N_output):
+            if j <= n:
+                data_test.append(data[i, :j])
+                test_tsid_map[len(data_test)-1] = i
+                feats_test.append(feats[i, :j])
+
+    data_train = get_list_of_dict_format(data_train)
+    data_dev = get_list_of_dict_format(data_dev)
+    data_test = get_list_of_dict_format(data_test)
+
+    # Add time-features
+    for i in range(len(data_train)):
+        #seq_dates = get_date_range("2021-01-01 00:00:00", '1min', len(data_train[i]['target']))
+        #data_train[i]['freq_str'] = '1min'
+        #data_train[i]['start'] = seq_dates[0]
+        data_train[i]['feats'] = feats_train[i]
+    for i in range(len(data_dev)):
+        #seq_dates = get_date_range("2021-01-01 00:00:00", '1min', len(data_dev[i]['target']))
+        #data_dev[i]['freq_str'] = '1min'
+        #data_dev[i]['start'] = seq_dates[0]
+        data_dev[i]['feats'] = feats_dev[i]
+    for i in range(len(data_test)):
+        #seq_dates = get_date_range("2021-01-01 00:00:00", '1min', len(data_test[i]['target']))
+        #data_test[i]['freq_str'] = '1min'
+        #data_test[i]['start'] = seq_dates[0]
+        data_test[i]['feats'] = feats_test[i]
+
+
+    feats_info = {0:(60, 32)}
+
+    return (
+        data_train, data_dev, data_test, dev_tsid_map, test_tsid_map,
+        feats_info
+    )
+
+
+def parse_ett_bak(dataset_name, N_input, N_output):
+    dataset_path = os.path.join(DATA_DIRS, 'data', 'ETT')
+    data_train = np.load(os.path.join(dataset_path, 'oilTemp_train2.npy')).T
+    data_dev = np.load(os.path.join(dataset_path, 'oilTemp_dev2.npy')).T
+    data_test = np.load(os.path.join(dataset_path, 'oilTemp_test2.npy')).T
+    data_train = np.expand_dims(data_train, axis=-1)
+    data_dev = np.expand_dims(data_dev, axis=-1)
+    data_test = np.expand_dims(data_test, axis=-1)
+    data_dev = data_dev[:, N_input:]
+    data_test = data_test[:, N_input:]
+
+    #import ipdb
+    #ipdb.set_trace()
+
+    n = data_train.shape[1] + data_dev.shape[1] + data_test.shape[1]
+    test_len = data_test.shape[1]
+    dev_len = data_test.shape[1]
+    train_len = n - test_len - dev_len
+
+    data = np.concatenate([data_train, data_dev, data_test], axis=1)
+
+    data_dev, data_test = [], []
+    dev_tsid_map, test_tsid_map = {}, {}
+    for i in range(data.shape[0]):
+    #for i in range(2, 3):
+        for j in range(train_len+N_output, train_len+dev_len+1, N_output):
+            if j <= train_len+dev_len:
+                data_dev.append(data[i, :j])
+                dev_tsid_map[len(data_dev)-1] = i
+    for i in range(data.shape[0]):
+    #for i in range(2, 3):
+        for j in range(train_len+dev_len+N_output, n+1, N_output):
+            if j <= n:
+                data_test.append(data[i, :j])
+                test_tsid_map[len(data_test)-1] = i
+
+    data_train = get_list_of_dict_format(data_train)
+    data_dev = get_list_of_dict_format(data_dev)
+    data_test = get_list_of_dict_format(data_test)
+
+    # Add time-features
+    for i in range(len(data_train)):
+        seq_dates = get_date_range("2021-01-01 00:00:00", '1min', len(data_train[i]['target']))
+        data_train[i]['freq_str'] = '51min'
+        data_train[i]['start'] = seq_dates[0]
+    for i in range(len(data_dev)):
+        seq_dates = get_date_range("2021-01-01 00:00:00", '1min', len(data_dev[i]['target']))
+        data_dev[i]['freq_str'] = '15min'
+        data_dev[i]['start'] = seq_dates[0]
+    for i in range(len(data_test)):
+        seq_dates = get_date_range("2021-01-01 00:00:00", '1min', len(data_test[i]['target']))
+        data_test[i]['freq_str'] = '15min'
+        data_test[i]['start'] = seq_dates[0]
+
+    return (
+            data_train, data_dev, data_test, dev_tsid_map, test_tsid_map
+    )
+
+
+def parse_ett(dataset_name, N_input, N_output):
+    df = pd.read_csv('/mnt/infonas/data/pbansal/ETTm1.csv')
+    data = df[['OT']].to_numpy().T
+    data = np.expand_dims(data, axis=-1)
+
+    n = data.shape[1]
+    train_len = int(0.7*n)
+    dev_len = int(0.1*n)
+    test_len = n - train_len - dev_len
+
+    feats_cont = np.expand_dims(df[['HUFL','HULL','MUFL','MULL','LUFL','LULL']].to_numpy(), axis=0)
+    #feats = ((feats - np.mean(feats, axis=0, keepdims=True)) / np.std(feats, axis=0, keepdims=True))
+    #feats = np.ones((data.shape[0], 1)) * np.expand_dims(np.arange(n), axis=0) % 60
+    feats_discrete = np.abs((np.ones((data.shape[0], 1)) * np.expand_dims(np.arange(n), axis=0) % 60) // 15)
+    feats_discrete = np.expand_dims(feats_discrete, axis=-1)
+
+    feats = np.concatenate([feats_discrete, feats_cont], axis=-1)
+
+    #data = (data - np.mean(data, axis=0, keepdims=True)).T
+
+    #data = torch.tensor(np.expand_dims(data, axis=-1), dtype=torch.float)
+    #feats = torch.tensor(np.expand_dims(feats, axis=0), dtype=torch.float)
+
+    data_train = data[:, :train_len]
+    feats_train = feats[:, :train_len]
+
+    data_dev, data_test = [], []
+    feats_dev, feats_test = [], []
+    dev_tsid_map, test_tsid_map = {}, {}
+    for i in range(data.shape[0]):
+        for j in range(train_len+N_output, train_len+dev_len+1, N_output):
+            if j <= n:
+                data_dev.append(data[i, :j])
+                feats_dev.append(feats[i, :j])
+                dev_tsid_map[len(data_dev)-1] = i
+    for i in range(data.shape[0]):
+        for j in range(train_len+dev_len+N_output, n+1, N_output):
+            if j <= n:
+                data_test.append(data[i, :j])
+                feats_test.append(feats[i, :j])
+                test_tsid_map[len(data_test)-1] = i
+
+
+    data_train = get_list_of_dict_format(data_train)
+    data_dev = get_list_of_dict_format(data_dev)
+    data_test = get_list_of_dict_format(data_test)
+
+    for i in range(len(data_train)):
+        data_train[i]['feats'] = feats_train[i]
+    for i in range(len(data_dev)):
+        data_dev[i]['feats'] = feats_dev[i]
+    for i in range(len(data_test)):
+        data_test[i]['feats'] = feats_test[i]
+
+
+    feats_info = {0:(4, 64), 1:(0, 1), 2:(0, 1), 3:(0, 1), 4:(0, 1), 5:(0, 1), 6:(0, 1)}
+
+    return (
+        data_train, data_dev, data_test, dev_tsid_map, test_tsid_map,
+        feats_info
+    )
+

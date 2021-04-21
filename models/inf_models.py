@@ -5,40 +5,70 @@ import torch.nn.functional as F
 import numpy as np
 import cvxpy as cp
 import pywt
+from scipy.linalg import block_diag
 
 from utils import normalize, unnormalize, sqz, expand
 
+device = 'cuda'
 
 class DILATE(torch.nn.Module):
 	"""docstring for DILATE"""
-	def __init__(self, base_models_dict):
+	def __init__(self, base_models_dict, device):
 		super(DILATE, self).__init__()
 		self.base_models_dict = base_models_dict
+		self.device = device
 
 	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict, targets_dict=None):
-		return self.base_models_dict[1](feats_in_dict[1], inputs_dict[1], feats_tgt_dict[1])
+		return self.base_models_dict[1].to(self.device)(feats_in_dict[1], inputs_dict[1], feats_tgt_dict[1])
 
 class MSE(torch.nn.Module):
 	"""docstring for MSE"""
-	def __init__(self, base_models_dict):
+	def __init__(self, base_models_dict, device):
 		super(MSE, self).__init__()
 		self.base_models_dict = base_models_dict
+		self.device = device
 
 	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict, targets_dict=None):
-		return self.base_models_dict[1](feats_in_dict[1], inputs_dict[1], feats_tgt_dict[1])
+		return self.base_models_dict[1](feats_in_dict[1].to(self.device), inputs_dict[1].to(self.device), feats_tgt_dict[1].to(self.device))
 
 class NLL(torch.nn.Module):
 	"""docstring for NLL"""
-	def __init__(self, base_models_dict):
+	def __init__(self, base_models_dict, device):
 		super(NLL, self).__init__()
 		self.base_models_dict = base_models_dict
+		self.device = device
 
 	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict, targets_dict=None):
-		return self.base_models_dict[1](feats_in_dict[1], inputs_dict[1], feats_tgt_dict[1])
+		return self.base_models_dict[1](feats_in_dict[1].to(self.device), inputs_dict[1].to(self.device), feats_tgt_dict[1].to(self.device))
+
+class CNNRNN(torch.nn.Module):
+	"""docstring for NLL"""
+	def __init__(self, base_models_dict, device):
+		super(CNNRNN, self).__init__()
+		self.base_models_dict = base_models_dict
+		self.device = device
+
+	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict, targets_dict=None):
+		return self.base_models_dict[1](
+			feats_in_dict[1].to(self.device),
+			inputs_dict[1].to(self.device),
+			feats_tgt_dict[1].to(self.device)
+		)
+
+class RNN_MSE_NAR(torch.nn.Module):
+
+	def __init__(self, base_models_dict, device):
+		super(RNN_MSE_NAR, self).__init__()
+		self.base_models_dict = base_models_dict
+		self.device = device
+
+	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict, targets_dict=None):
+		return self.base_models_dict[1](feats_in_dict[1].to(self.device), inputs_dict[1].to(self.device), feats_tgt_dict[1].to(self.device))
+
 
 class DualTPP(torch.nn.Module):
 	"""docstring for DualTPP"""
-	def __init__(self, K_list, base_models_dict):
+	def __init__(self, K_list, base_models_dict, device):
 		'''
 		K: int
 			number of steps to aggregate at each level
@@ -49,6 +79,7 @@ class DualTPP(torch.nn.Module):
 		super(DualTPP, self).__init__()
 		self.K_list = K_list
 		self.base_models_dict = base_models_dict
+		self.device = device
 
 	def aggregate_seq_(self, seq, K):
 		assert seq.shape[0]%K == 0
@@ -69,7 +100,7 @@ class DualTPP(torch.nn.Module):
 				lvl_ex_preds = ex_preds
 			else:
 				lvl_ex_preds, _ = normalize(
-					self.aggregate_seq_(unnormalize(ex_preds, norm_dict[1]), lvl),
+					self.aggregate_seq_(unnormalize(ex_preds, norm_dict[1], is_var=False), lvl),
 					norm_dict[lvl]
 				)
 			lvl_loss = self.log_prob(lvl_ex_preds, params[0].detach().numpy(), params[1].detach().numpy())
@@ -112,7 +143,10 @@ class DualTPP(torch.nn.Module):
 			model = self.base_models_dict[level]
 			inputs = inputs_dict[level]
 			feats_in, feats_tgt = feats_in_dict[level], feats_tgt_dict[level]
-			means, stds = model(feats_in, inputs, feats_tgt)
+			means, stds = model(feats_in.to(self.device), inputs.to(self.device), feats_tgt.to(self.device))
+			means = means.cpu()
+			if stds is not None:
+				stds = stds.cpu()
 
 			if targets_dict is not None and level != 1:
 				means = targets_dict[level]
@@ -144,9 +178,9 @@ class DualTPP(torch.nn.Module):
 		return all_preds_mu, all_preds_std
 
 
-class OPT_ls(torch.nn.Module):
-	"""docstring for OPT_ls"""
-	def __init__(self, K_list, base_models_dict, intercept_type='intercept'):
+class DualTPP_CF(torch.nn.Module):
+	"""docstring for DualTPP"""
+	def __init__(self, K_list, base_models_dict, device):
 		'''
 		K: int
 			number of steps to aggregate at each level
@@ -154,33 +188,15 @@ class OPT_ls(torch.nn.Module):
 			key: level in the hierarchy
 			value: base model at the level 'key'
 		'''
-		super(OPT_ls, self).__init__()
+		super(DualTPP_CF, self).__init__()
 		self.K_list = K_list
 		self.base_models_dict = base_models_dict
-		self.intercept_type = intercept_type
+		self.device = device
 
-
-	def fit_with_indices(self, seq, K):
-		W, B = [], []
-		for i in range(0, seq.shape[0], K):
-			x = np.cumsum(np.ones(seq[i:i+K].shape)) - 1.
-			x = np.cumsum(x) - 1
-			y = seq[i:i+K]
-			m_x = cp.sum(x)/x.shape[0]
-			m_y = cp.sum(y)/y.shape[0]
-			s_xy = cp.sum((x-m_x)*(y-m_y))
-			s_xx = cp.sum((x-m_x)**2)
-			w = s_xy/s_xx
-			if self.intercept_type in ['intercept']:
-				b = m_y - w*m_x
-			elif self.intercept_type in ['sum']:
-				b = cp.sum(y)
-			W.append(w)
-			B.append(b)
-		W = np.expand_dims(np.array(W), axis=1)
-		B = np.expand_dims(np.array(B), axis=1)
-		fit_params = np.concatenate([W, B], axis=1)
-		return fit_params
+	def aggregate_seq_(self, seq, K):
+		assert seq.shape[0]%K == 0
+		agg_seq = np.array([[1./K * cp.sum(seq[i:i+K])] for i in range(0, seq.shape[0], K)])
+		return agg_seq
 
 	def log_prob(self, ex_preds, means, std):
 		#import ipdb
@@ -196,7 +212,7 @@ class OPT_ls(torch.nn.Module):
 				lvl_ex_preds = ex_preds
 			else:
 				lvl_ex_preds, _ = normalize(
-					self.fit_with_indices(unnormalize(ex_preds, norm_dict[1]), lvl),
+					self.aggregate_seq_(unnormalize(ex_preds, norm_dict[1], is_var=False), lvl),
 					norm_dict[lvl]
 				)
 			lvl_loss = self.log_prob(lvl_ex_preds, params[0].detach().numpy(), params[1].detach().numpy())
@@ -206,6 +222,7 @@ class OPT_ls(torch.nn.Module):
 				opt_loss = lvl_loss
 			else:
 				opt_loss += lvl_loss
+
 
 		objective = cp.Minimize(opt_loss)
 
@@ -225,19 +242,48 @@ class OPT_ls(torch.nn.Module):
 
 		return ex_preds.value
 
+	def revise(self, params_dict, norm_dict):
+		N = len(params_dict[1][0])
+		K = self.K_list[1]
+
+		coeffs_bottom = np.eye(N)
+		coeffs_agg = block_diag(*[np.ones(K)]*(N//K))
+		coeffs = np.concatenate([coeffs_bottom, coeffs_agg], axis=0)
+
+		y = np.concatenate(
+			[
+				unnormalize(params_dict[1][0].detach().numpy(), norm_dict[1], is_var=False),
+				unnormalize(params_dict[K][0].detach().numpy(), norm_dict[K], is_var=False),
+			],
+			axis=0
+                )
+
+		#import ipdb
+		#ipdb.set_trace()
+
+		A = coeffs
+		y_revised = np.matmul(np.linalg.pinv(np.matmul(A.T, A)), np.matmul(A.T, y))
+
+		return normalize(y_revised[:N], norm_dict[1], is_var=False)[0]
+
+
 
 	def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict, targets_dict=None):
+		bottom_level_model = self.base_models_dict[1]
 
 		norm_dict_np = dict()
 		for lvl in norm_dict.keys():
-			norm_dict_np[lvl] = np.expand_dims(norm_dict[lvl].detach().numpy(), axis=0)
+			norm_dict_np[lvl] = norm_dict[lvl].detach().numpy()
 
 		params_dict = dict()
 		for level in self.K_list:
 			model = self.base_models_dict[level]
 			inputs = inputs_dict[level]
 			feats_in, feats_tgt = feats_in_dict[level], feats_tgt_dict[level]
-			means, stds = model(feats_in, inputs, feats_tgt)
+			means, stds = model(feats_in.to(self.device), inputs.to(self.device), feats_tgt.to(self.device))
+			means = means.cpu()
+			if stds is not None:
+				stds = stds.cpu()
 
 			if targets_dict is not None and level != 1:
 				means = targets_dict[level]
@@ -252,10 +298,13 @@ class OPT_ls(torch.nn.Module):
 		for i in range(params_dict[1][0].size()[0]):
 			#print(i)
 			ex_params_dict = dict()
+			ex_norm_dict = dict()
 			for lvl, params in params_dict.items():
 				ex_params_dict[lvl] = [params_dict[lvl][0][i], params_dict[lvl][1][i]]
+				ex_norm_dict[lvl] = norm_dict_np[lvl][i]
 
-			ex_preds_opt = self.optimize(ex_params_dict, norm_dict_np)
+			#ex_preds_opt = self.optimize(ex_params_dict, ex_norm_dict)
+			ex_preds_opt = self.revise(ex_params_dict, ex_norm_dict)
 			all_preds_mu.append(ex_preds_opt)
 			all_preds_std.append(params_dict[1][1][i])
 
@@ -269,7 +318,7 @@ class OPT_ls(torch.nn.Module):
 
 class OPT_st(torch.nn.Module):
 	"""docstring for OPT_st"""
-	def __init__(self, K_list, base_models_dict, disable_sum=False):
+	def __init__(self, K_list, base_models_dict, device, disable_sum=False):
 		'''
 		K_list: list
 			list of K-values used for aggregation
@@ -283,6 +332,7 @@ class OPT_st(torch.nn.Module):
 		self.K_list = K_list
 		self.base_models_dict = base_models_dict
 		self.disable_sum = disable_sum
+		self.device = device
 
 
 	def aggregate_seq_(self, seq, K):
@@ -320,7 +370,7 @@ class OPT_st(torch.nn.Module):
 			else:
 				lvl_ex_preds, _ = normalize(
 					self.fit_slope_with_indices(
-						unnormalize(ex_preds, norm_dict['slope'][1]),
+						unnormalize(ex_preds, norm_dict['slope'][1], is_var=False),
 						lvl
 					),
 					norm_dict['slope'][lvl]
@@ -342,7 +392,7 @@ class OPT_st(torch.nn.Module):
 				else:
 					lvl_ex_preds, _ = normalize(
 						self.aggregate_seq_(
-							unnormalize(ex_preds, norm_dict['sum'][1]),
+							unnormalize(ex_preds, norm_dict['sum'][1], is_var=False),
 							lvl
 						),
 						norm_dict['sum'][lvl]
@@ -394,7 +444,10 @@ class OPT_st(torch.nn.Module):
 					model = self.base_models_dict[agg_method][level]
 					inputs = inputs_dict[agg_method][level]
 					feats_in, feats_tgt = feats_in_dict[agg_method][level], feats_tgt_dict[agg_method][level]
-					means, stds = model(feats_in, inputs, feats_tgt)
+					means, stds = model(feats_in.to(self.device), inputs.to(self.device), feats_tgt.to(self.device))
+					means = means.cpu()
+					if stds is not None:
+						stds = stds.cpu()
 
 					if targets_dict is not None and level != 1:
 						means = targets_dict[agg_method][level]
@@ -432,7 +485,7 @@ class OPT_st(torch.nn.Module):
 
 class OPT_KL_st(OPT_st):
 	"""docstring for OPT_st"""
-	def __init__(self, K_list, base_models_dict, agg_methods):
+	def __init__(self, K_list, base_models_dict, agg_methods, device):
 		'''
 		K_list: list
 			list of K-values used for aggregation
@@ -444,8 +497,9 @@ class OPT_KL_st(OPT_st):
 		agg_methods: list
 			list of aggregate methods to use
 		'''
-		super(OPT_KL_st, self).__init__(K_list, base_models_dict)
+		super(OPT_KL_st, self).__init__(K_list, base_models_dict, device)
 		self.agg_methods = agg_methods
+		self.device = device
 
 
 	def aggregate_seq_(self, mu, var, K):
@@ -506,18 +560,18 @@ class OPT_KL_st(OPT_st):
 				else:
 					if agg_method in ['slope']:
 						lvl_ex_mu, lvl_ex_var = self.fit_slope_with_indices(
-							unnormalize(ex_mu, norm_dict[agg_method][1]),
-							unnormalize(ex_var, norm_dict[agg_method][1]**2),
+							unnormalize(ex_mu, norm_dict[agg_method][1], is_var=False),
+							unnormalize(ex_var, norm_dict[agg_method][1]**2, is_var=True),
 							lvl
 						)
 					if agg_method in ['sum']:
 						lvl_ex_mu, lvl_ex_var = self.aggregate_seq_(
-							unnormalize(ex_mu, norm_dict[agg_method][1]),
-							unnormalize(ex_var, norm_dict[agg_method][1]**2),
+							unnormalize(ex_mu, norm_dict[agg_method][1], is_var=False),
+							unnormalize(ex_var, norm_dict[agg_method][1]**2, is_var=True),
 							lvl
 						)
 					lvl_ex_mu, _ = normalize(lvl_ex_mu, norm_dict[agg_method][lvl])
-					lvl_ex_var, _ = normalize(lvl_ex_var, norm_dict[agg_method][lvl]**2)
+					lvl_ex_var, _ = normalize(lvl_ex_var, norm_dict[agg_method][lvl]**2, is_var=True)
 				lvl_loss = self.KL(
 					params_dict[agg_method][lvl][0].detach().numpy(),
 					params_dict[agg_method][lvl][1].detach().numpy()**2,
@@ -589,7 +643,11 @@ class OPT_KL_st(OPT_st):
 					model = self.base_models_dict[agg_method][level]
 					inputs = inputs_dict[agg_method][level]
 					feats_in, feats_tgt = feats_in_dict[agg_method][level], feats_tgt_dict[agg_method][level]
-					means, stds = model(feats_in, inputs, feats_tgt)
+					means, stds = model(feats_in.to(self.device), inputs.to(self.device), feats_tgt.to(self.device))
+
+					means = means.cpu()
+					if stds is not None:
+						stds = stds.cpu()
 
 					#if level==1:
 					#	tl = stds.shape[1]

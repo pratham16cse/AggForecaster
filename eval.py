@@ -1,9 +1,10 @@
 import numpy as np
 import torch
 from tslearn.metrics import dtw, dtw_path
-from utils import unnormalize
+from utils import unnormalize, normalize
 from loss.dilate_loss import dilate_loss
 import properscoring as ps
+import train
 
 
 def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1):
@@ -18,9 +19,11 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1):
     losses_dtw = []
     losses_tdi = []
     losses_crps = []
+    losses_nll = []
+    losses_ql = []
 
     for i, data in enumerate(loader, 0):
-        loss_mse, loss_dtw, loss_tdi, loss_mae = torch.tensor(0), torch.tensor(0), torch.tensor(0), torch.tensor(0)
+        loss_mse, loss_dtw, loss_tdi, loss_mae, losses_nll, losses_ql = torch.tensor(0), torch.tensor(0), torch.tensor(0), torch.tensor(0), torch.tensor(0), torch.tensor(0)
         # get the inputs
         batch_inputs, batch_target, feats_in, feats_tgt, norm, _, _, _, _, _ = data
         #inputs = torch.tensor(inputs, dtype=torch.float32).to(args.device)
@@ -29,15 +32,24 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1):
         #feats_tgt = torch.tensor(feats_tgt, dtype=torch.float32).to(args.device)
         #norm = torch.tensor(norm, dtype=torch.float32).to(args.device)
         batch_size, N_output = batch_target.shape[0:2]
+        #if N_output == 24:
+        #    import ipdb
+        #    ipdb.set_trace()
         # DO NOT PASS TARGET during forward pass
-        batch_pred_mu, batch_pred_std = net(feats_in, batch_inputs, feats_tgt)
+        batch_pred_mu, batch_pred_std = net(feats_in.to(args.device), batch_inputs.to(args.device), feats_tgt.to(args.device))
+        batch_pred_mu = batch_pred_mu.cpu()
+        if batch_pred_std is not None:
+            batch_pred_std = batch_pred_std.cpu()
+
+        batch_target, _ = normalize(batch_target, norm, is_var=False)
 
         # Unnormalize the data
-        batch_pred_mu = unnormalize(batch_pred_mu, norm)
+        #batch_pred_mu = unnormalize(batch_pred_mu, norm, is_var=False)
         if batch_pred_std is not None:
-            batch_pred_std = unnormalize(batch_pred_std, norm)
+            #batch_pred_std = unnormalize(batch_pred_std, norm, is_var=True)
+            pass
         else:
-            batch_pred_std = torch.ones_like(batch_pred_mu) * 1e-9
+            batch_pred_std = torch.ones_like(batch_pred_mu) #* 1e-9
 
         inputs.append(batch_inputs)
         target.append(batch_target)
@@ -99,6 +111,18 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1):
             )
     loss_crps_part = np.array(loss_crps_part)
 
+    dist = torch.distributions.normal.Normal(pred_mu, pred_std)
+    loss_nll = -torch.mean(dist.log_prob(target)).item()
+
+    quantiles = torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9], dtype=torch.float)
+    #quantiles = torch.tensor([0.1, 0.5, 0.9], dtype=torch.float)
+    #quantiles = torch.tensor([0.45, 0.5, 0.55], dtype=torch.float)
+    quantile_weights = torch.ones_like(quantiles, dtype=torch.float)
+    #quantile_weights = torch.tensor([1., 1., 1.], dtype=torch.float)
+    loss_ql = train.QuantileLoss(
+        quantiles, quantile_weights
+    )(target, pred_mu, pred_std).item()
+
 
     metric_dilate = loss_dilate
     metric_mse = loss_mse
@@ -107,15 +131,18 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1):
     metric_tdi = loss_tdi
     metric_crps = loss_crps
     metric_crps_part = loss_crps_part
+    metric_nll = loss_nll
+    metric_ql = loss_ql
 
     print('Eval dilateloss= ', metric_dilate, \
         'mse= ', metric_mse, ' dtw= ', metric_dtw, ' tdi= ', metric_tdi,
-        'crps=', metric_crps, 'crps_parts=', metric_crps_part)
+        'crps=', metric_crps, 'crps_parts=', metric_crps_part,
+        'nll=', metric_nll, 'ql=', metric_ql)
 
     return (
         inputs, target, pred_mu, pred_std,
         metric_dilate, metric_mse, metric_dtw, metric_tdi,
-        metric_crps, metric_mae, metric_crps_part
+        metric_crps, metric_mae, metric_crps_part, metric_nll, metric_ql
     )
 
 def eval_index_model(args, model_name, net, loader, norm, gamma, N_input, N_output, verbose=1):
@@ -276,11 +303,14 @@ def eval_inf_model(
         inf_test_feats_tgt_dict, inf_test_norm_dict,
         targets_dict=inf_test_targets_dict,
     )
+    pred_mu = pred_mu.cpu()
+    if pred_std is not None:
+        pred_std = pred_std.cpu()
 
     # Unnormalize
-    pred_mu = unnormalize(pred_mu, norm)
+    pred_mu = unnormalize(pred_mu, norm, is_var=False)
     if pred_std is not None:
-        pred_std = unnormalize(pred_std, norm)
+        pred_std = unnormalize(pred_std, norm, is_var=True)
     else:
         pred_std = torch.ones_like(pred_mu) * 1e-9
 
@@ -353,9 +383,9 @@ def eval_inf_index_model(
     )
 
     # Unnormalize
-    pred_mu = unnormalize(pred_mu, norm)
+    pred_mu = unnormalize(pred_mu, norm, is_var=False)
     if pred_std is not None:
-        pred_std = unnormalize(pred_std, norm)
+        pred_std = unnormalize(pred_std, norm, is_var=True)
     else:
         pred_std = torch.ones_like(pred_mu) * 1e-9
 
@@ -404,3 +434,80 @@ def eval_inf_index_model(
         metric_mse, metric_dtw, metric_tdi,
         metric_crps, metric_mae
     )
+
+
+def eval_inf_model(
+    args, net, inf_test_inputs_dict, inf_test_norm_dict, target, norm,
+    inf_test_feats_in_dict, inf_test_feats_tgt_dict,
+    gamma, inf_test_targets_dict=None, verbose=1):
+    criterion = torch.nn.MSELoss()
+    criterion_mae = torch.nn.L1Loss()
+    losses_mse = []
+    losses_mae = []
+    losses_dtw = []
+    losses_tdi = []
+    losses_crps = []
+
+    batch_size, N_output = target.shape[0:2]
+    pred_mu, pred_std = net(
+        inf_test_feats_in_dict, inf_test_inputs_dict,
+        inf_test_feats_tgt_dict, inf_test_norm_dict,
+        targets_dict=inf_test_targets_dict,
+    )
+    pred_mu = pred_mu.cpu()
+    if pred_std is not None:
+        pred_std = pred_std.cpu()
+
+    # Unnormalize
+    pred_mu = unnormalize(pred_mu, norm, is_var=False)
+    if pred_std is not None:
+        pred_std = unnormalize(pred_std, norm, is_var=True)
+    else:
+        pred_std = torch.ones_like(pred_mu) * 1e-9
+
+    # MSE
+    loss_mse = criterion(target, pred_mu)
+    loss_mae = criterion_mae(target, pred_mu)
+    loss_dtw, loss_tdi = 0,0
+    # DTW and TDI
+    for k in range(batch_size):
+        target_k_cpu = target[k,:,0:1].view(-1).detach().cpu().numpy()
+        output_k_cpu = pred_mu[k,:,0:1].view(-1).detach().cpu().numpy()
+
+        loss_dtw += dtw(target_k_cpu,output_k_cpu)
+        path, sim = dtw_path(target_k_cpu, output_k_cpu)
+
+        Dist = 0
+        for i,j in path:
+                Dist += (i-j)*(i-j)
+        loss_tdi += Dist / (N_output*N_output)
+
+    loss_dtw = loss_dtw /batch_size
+    loss_tdi = loss_tdi / batch_size
+
+    # CRPS
+    loss_crps = ps.crps_gaussian(
+        target, mu=pred_mu.detach().numpy(), sig=pred_std.detach().numpy()
+    )
+
+    # print statistics
+    losses_crps.append( loss_crps )
+    losses_mse.append( loss_mse.item() )
+    losses_mae.append( loss_mae.item() )
+    losses_dtw.append( loss_dtw )
+    losses_tdi.append( loss_tdi )
+
+    metric_mse = np.array(losses_mse).mean()
+    metric_mae = np.array(losses_mae).mean()
+    metric_dtw = np.array(losses_dtw).mean()
+    metric_tdi = np.array(losses_tdi).mean()
+    metric_crps = np.array(losses_crps).mean()
+
+    #print('Eval mse= ', metric_mse, ' dtw= ', metric_dtw, ' tdi= ', metric_tdi)
+
+    return (
+        pred_mu, pred_std,
+        metric_mse, metric_dtw, metric_tdi,
+        metric_crps, metric_mae
+    )
+
