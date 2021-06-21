@@ -1,5 +1,6 @@
 from torch.utils.data import DataLoader
 import torch
+from torch.distributions.normal import Normal
 import numpy as np
 import os
 from collections import OrderedDict
@@ -9,10 +10,11 @@ import re
 import time
 import shutil
 from tsmoothie.smoother import SpectralSmoother, ExponentialSmoother
+from statsmodels.tsa.seasonal import seasonal_decompose
 import time
 
 from data.synthetic_dataset import create_synthetic_dataset, create_sin_dataset, SyntheticDataset
-from data.real_dataset import parse_ECG5000, parse_Traffic, parse_Taxi, parse_Traffic911, parse_gc_datasets, parse_weather, parse_bafu, parse_meteo, parse_azure, parse_ett
+from data.real_dataset import parse_ECG5000, parse_Traffic, parse_Taxi, parse_Traffic911, parse_gc_datasets, parse_weather, parse_bafu, parse_meteo, parse_azure, parse_ett, parse_sin_noisy, parse_Solar, parse_etthourly, parse_m4hourly, parse_m4daily, parse_taxi30min
 
 
 to_float_tensor = lambda x: torch.FloatTensor(x.copy())
@@ -30,7 +32,8 @@ def clean_trial_checkpoints(result):
 			shutil.rmtree(path)
 
 def add_metrics_to_dict(
-	metrics_dict, model_name, metric_mse, metric_dtw, metric_tdi, metric_crps, metric_mae
+	metrics_dict, model_name, metric_mse, metric_dtw, metric_tdi, metric_crps, metric_mae,
+        metric_smape
 ):
 	if model_name not in metrics_dict:
 		metrics_dict[model_name] = dict()
@@ -40,14 +43,39 @@ def add_metrics_to_dict(
 	metrics_dict[model_name]['tdi'] = metric_tdi
 	metrics_dict[model_name]['crps'] = metric_crps
 	metrics_dict[model_name]['mae'] = metric_mae
+	metrics_dict[model_name]['smape'] = metric_smape
 
 	return metrics_dict
 
-def write_arr_to_file(output_dir, inf_model_name, inputs, targets, pred_mu, pred_std):
+def add_base_metrics_to_dict(
+	metrics_dict, agg_method, K, model_name, metric_mse, metric_dtw, metric_tdi, metric_crps, metric_mae,
+):
+    if agg_method not in metrics_dict:
+        metrics_dict[agg_method] = {}
+    if K not in metrics_dict[agg_method]:
+        metrics_dict[agg_method][K] = {}
+    if model_name not in metrics_dict[agg_method][K]:
+        metrics_dict[agg_method][K][model_name] = {}
+
+    metrics_dict[agg_method][K][model_name]['mse'] = metric_mse
+    metrics_dict[agg_method][K][model_name]['dtw'] = metric_dtw
+    metrics_dict[agg_method][K][model_name]['tdi'] = metric_tdi
+    metrics_dict[agg_method][K][model_name]['crps'] = metric_crps
+    metrics_dict[agg_method][K][model_name]['mae'] = metric_mae
+    #metrics_dict[model_name]['smape'] = metric_smape
+    
+    return metrics_dict
+
+
+def write_arr_to_file(
+	output_dir, inf_model_name, inputs, targets, pred_mu, pred_std, pred_d, pred_v
+):
 
 	# Files are saved in .npy format
 	np.save(os.path.join(output_dir, inf_model_name + '_' + 'pred_mu'), pred_mu)
 	np.save(os.path.join(output_dir, inf_model_name + '_' + 'pred_std'), pred_std)
+	np.save(os.path.join(output_dir, inf_model_name + '_' + 'pred_d'), pred_d)
+	np.save(os.path.join(output_dir, inf_model_name + '_' + 'pred_v'), pred_v)
 
 	for fname in os.listdir(output_dir):
 	    if fname.endswith('targets.npy'):
@@ -65,16 +93,112 @@ def write_aggregate_preds_to_file(
 	model_str = base_model_name + sep + agg_method + sep  + str(level)
 	agg_str = agg_method + sep  + str(level)
 
-	np.save(os.path.join(output_dir, model_str + sep + 'pred_mu'), pred_mu)
-	np.save(os.path.join(output_dir, model_str + sep + 'pred_std'), pred_std)
+	np.save(os.path.join(output_dir, model_str + sep + 'pred_mu'), pred_mu.detach().numpy())
+	np.save(os.path.join(output_dir, model_str + sep + 'pred_std'), pred_std.detach().numpy())
 
 	suffix = agg_str + sep + 'targets.npy'
 	for fname in os.listdir(output_dir):
 	    if fname.endswith(suffix):
 	        break
 	else:
-		np.save(os.path.join(output_dir, agg_str + sep + 'inputs'), inputs)
-		np.save(os.path.join(output_dir, agg_str + sep + 'targets'), targets)
+		np.save(os.path.join(output_dir, agg_str + sep + 'inputs'), inputs.detach().numpy())
+		np.save(os.path.join(output_dir, agg_str + sep + 'targets'), targets.detach().numpy())
+
+
+class Normalizer(object):
+    def __init__(self, data, norm_type):
+        super(Normalizer, self).__init__()
+        self.norm_type = norm_type
+        self.N = len(data)
+        if norm_type in ['same']:
+            pass
+        elif norm_type in ['zscore_per_series']:
+            self.mean = map(lambda x: x.mean(0, keepdims=True), data) #data.mean(1, keepdims=True)
+            self.std = map(lambda x: x.std(0, keepdims=True), data) #data.std(1, keepdims=True)
+            #import ipdb ; ipdb.set_trace()
+            self.mean = torch.stack(list(self.mean), dim=0)
+            self.std = torch.stack(list(self.std), dim=0)
+            self.std = self.std.clamp(min=1., max=None)
+        elif norm_type in ['log']:
+            pass
+        elif norm_type in ['gaussian_copula']:
+            ns = data.shape[1] * 1.
+            #self.delta = 1. / (4*np.power(ns, 0.25) * np.power(np.pi*np.log(ns), 0.5))
+            self.delta = 1e-5
+            data_sorted, indices = data.sort(1)
+            data_sorted_uq = torch.unique(data_sorted, sorted=True, dim=-1)
+            counts = torch.cat(
+                [(data_sorted == data_sorted_uq[:, i:i+1]).sum(dim=1, keepdims=True) for i in range(data_sorted_uq.shape[1])],
+                dim=1
+            )
+            #import ipdb; ipdb.set_trace()
+            self.x = data_sorted_uq
+            self.x = torch.cat([self.x, 1.1*data_sorted[..., -1:]], dim=1)
+            self.y = torch.cumsum(counts, 1)*1./data.shape[1]
+            self.y = self.y.clamp(self.delta, 1.0-self.delta)
+            self.y = torch.cat([self.y, torch.ones((data.shape[0], 1))*self.delta], dim=1)
+            self.m = (self.y[..., 1:] - self.y[..., :-1]) / (self.x[..., 1:] - self.x[..., :-1])
+            self.m = torch.maximum(self.m, torch.ones_like(self.m)*1e-4)
+            self.c = self.y[..., :-1]
+            #import ipdb; ipdb.set_trace()
+
+            
+    def normalize(self, data, ids=None, is_var=False):
+        if ids is None:
+            ids = torch.arange(self.N)
+
+        if self.norm_type in ['same']:
+            data_norm = data
+        elif self.norm_type in ['zscore_per_series']:
+            if not is_var:
+                data_norm = (data - self.mean[ids]) / self.std[ids]
+            else:
+                data_norm = data / self.std[ids]
+        elif self.norm_type in ['log']:
+            data_norm = torch.log(data)
+        elif self.norm_type in ['gaussian_copula']:
+            # Piecewise linear fit of CDF
+            indices = torch.searchsorted(self.x[ids], data).clamp(0, self.x.shape[-1])
+            m = torch.gather(self.m[ids], -1, indices)
+            c = torch.gather(self.c[ids], -1, indices)
+            x_prev = torch.gather(self.x[ids], -1, indices)
+            data_norm = (data - x_prev) * m + c
+            data_norm = data_norm.clamp(self.delta, 1.0-self.delta)
+            #import ipdb; ipdb.set_trace()
+            
+            # ICDF in standard normal
+            dist = Normal(0., 1.)
+            data_norm = dist.icdf(data_norm)
+            #import ipdb; ipdb.set_trace()
+
+        return data_norm.unsqueeze(-1)
+
+    def unnormalize(self, data, ids=None, is_var=False):
+        #return data # TODO Watch this
+        if ids is None:
+            ids = torch.arange(self.N)
+        if self.norm_type in ['same']:
+            data_unnorm = data
+        elif self.norm_type in ['log']:
+            data_unnorm = torch.exp(data)
+        elif self.norm_type in ['zscore_per_series']:
+            if not is_var:
+                data_unnorm = data * self.std[ids] + self.mean[ids]
+            else:
+                data_unnorm = data * self.std[ids]
+        elif self.norm_type in ['gaussian_copula']:
+            # CDF in standard normal
+            dist = Normal(0., 1.)
+            data = dist.cdf(data)
+
+            # Inverse piecewise linear fit of CDF
+            indices = torch.searchsorted(self.y[ids], data).clamp(0, self.x.shape[-1])
+            m = torch.gather(self.m[ids], -1, indices)
+            c = torch.gather(self.c[ids], -1, indices)
+            x_prev = torch.gather(self.x[ids], -1, indices)
+            data_unnorm = (data - c) / m + x_prev
+
+        return data_unnorm
 
 def normalize(data, norm=None, norm_type=None, is_var=False):
 	if norm is None:
@@ -311,16 +435,19 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
 		# Perform aggregation if level != 1
 		data_agg = []
 		for i in range(0, len(data)):
+			#print(i, len(data))
 			ex = data[i]['target']
 			ex = ex[ len(ex)%self.K: ]
 			ex_f = data[i]['feats']
 			ex_f = ex_f[ len(ex)%self.K: ]
+			ex_c = data[i]['coeffs']
+			ex_c = ex_c[ len(ex)%self.K: ]
 
 			#bp = np.arange(1,len(ex), 1)
 			bp = [(i, self.K) for i in np.arange(0, len(ex), self.K)]
 
 			if self.K != 1:
-				ex_agg, ex_f_agg = [], []
+				ex_agg, ex_f_agg, ex_c_agg = [], [], []
 				if self.aggregation_type in ['sum']:
 					for b in range(len(bp)):
 						s, e = bp[b][0], bp[b][0]+bp[b][1]
@@ -330,47 +457,48 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
 					for b in range(len(bp)):
 						s, e = bp[b][0], bp[b][0]+bp[b][1]
 						ex_agg.append(self.aggregate_data_slope(ex[s:e]))
-				ex_f_agg.append(self.aggregate_data(ex_f[s:e]))
+
+				for b in range(len(bp)):
+					s, e = bp[b][0], bp[b][0]+bp[b][1]
+					ex_f_agg.append(self.aggregate_data(ex_f[s:e]))
+					ex_c_agg.append(self.aggregate_data(ex_c[s:e]))
+
+				gaps = [bp_i[1] for bp_i in bp]
+				data_agg.append(
+					{
+						'target':torch.stack(ex_agg, dim=0),
+						'feats':torch.stack(ex_f_agg, dim=0),
+						'coeffs':torch.stack(ex_c_agg, dim=0),
+						'bp': bp,
+						'gaps': np.array(gaps),
+					}
+				)
+
 			else:
 				ex_agg = ex
 				ex_f_agg = ex_f
+				ex_c_agg = ex_c
 
-			gaps = [bp_i[1] for bp_i in bp]
-
-			data_agg.append(
-				{
-					'target':np.array(ex_agg),
-					'feats':np.array(ex_f_agg),
-					'bp': bp,
-					'gaps': np.array(gaps),
-				}
-			)
-
-			#if self.use_time_features:
-			#	multiple, granularity = get_granularity(data[0]['freq_str'])
-			#	freq_str = str(self.K * multiple) + granularity
-			#	self.time_features_obj = time_features_from_frequency_str(
-			#		granularity
-			#	)
-			#	self.date_range = []
-			#	for i in range(0, len(data)):
-			#		self.date_range.append(
-			#			get_date_range(
-			#				data[i]['start'],
-			#				len(data[i]['target'])
-			#			)
-			#		)
-
+				gaps = [bp_i[1] for bp_i in bp]
+				data_agg.append(
+					{
+						'target':ex_agg,
+						'feats':ex_f_agg,
+						'coeffs':ex_c_agg,
+						'bp': bp,
+						'gaps': np.array(gaps),
+					}
+				)
 
 		if self.input_norm is None:
 			assert norm_type is not None
 			data_for_norm = []
 			for i in range(0, len(data)):
 				ex = data_agg[i]['target']
-				data_for_norm.append(np.array(ex))
-			data_for_norm = np.array(data_for_norm)
+				data_for_norm.append(torch.FloatTensor(ex))
+			#data_for_norm = to_float_tensor(data_for_norm).squeeze(-1)
 
-			_, self.input_norm = normalize(data_for_norm, norm_type=self.norm_type)
+			self.input_norm = Normalizer(data_for_norm, norm_type=self.norm_type)
 			self.target_norm = self.input_norm
 			del data_for_norm
 
@@ -420,7 +548,8 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
 
 	@property
 	def input_size(self):
-		input_size = len(self.data[0]['target'][0])
+		#input_size = len(self.data[0]['target'][0])
+		input_size = 1
 		if self.use_time_features:
 			# Multiplied by 2 because of sin and cos
 			input_size += len(self.data[0]['feats'][0])
@@ -428,7 +557,8 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
 
 	@property
 	def output_size(self):
-		output_size = len(self.data[0]['target'][0])
+		#output_size = len(self.data[0]['target'][0])
+		output_size = 1
 		return output_size
 
 	@property
@@ -447,12 +577,8 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
 		ts_id = self.indices[idx][0]
 		pos_id = self.indices[idx][1]	
 
-		ex_input = np.array(
-			self.data[ts_id]['target'][ pos_id : pos_id+self.enc_len ]
-		)
-		ex_target = np.array(
-			self.data[ts_id]['target'][ pos_id+self.enc_len : pos_id+self.enc_len+self.dec_len ]
-		)
+		ex_input = self.data[ts_id]['target'][ pos_id : pos_id+self.enc_len ]
+		ex_target = self.data[ts_id]['target'][ pos_id+self.enc_len : pos_id+self.enc_len+self.dec_len ]
 
 		input_bp = self.data[ts_id]['bp'][ pos_id : pos_id+self.enc_len ]
 		target_bp = self.data[ts_id]['bp'][ pos_id+self.enc_len : pos_id+self.enc_len+self.dec_len ]
@@ -464,19 +590,25 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
 			mapped_id = ts_id
 		else:
 			mapped_id = self.tsid_map[ts_id]
-		ex_input, _ = normalize(ex_input, self.input_norm[mapped_id])
-		ex_target, _ = normalize(ex_target, self.target_norm[mapped_id])
-		ex_norm = self.input_norm[mapped_id]
+		ex_input = self.input_norm.normalize(ex_input, mapped_id)#.unsqueeze(-1)
+		ex_target = self.target_norm.normalize(ex_target, mapped_id)#.unsqueeze(-1)
+		#ex_norm = self.input_norm[mapped_id]
+		#ex_norm = ex_input
 
 		ex_input_feats = self.data[ts_id]['feats'][ pos_id : pos_id+self.enc_len ]
 		ex_target_feats = self.data[ts_id]['feats'][ pos_id+self.enc_len : pos_id+self.enc_len+self.dec_len ]
 
+		ex_input_coeffs = self.data[ts_id]['coeffs'][ pos_id : pos_id+self.enc_len ]
+		ex_target_coeffs = self.data[ts_id]['coeffs'][ pos_id+self.enc_len : pos_id+self.enc_len+self.dec_len ]
+
 		#print(type(ex_input), type(ex_target), type(ex_input_feats), type(ex_target_feats))
-		ex_input = to_float_tensor(ex_input)
-		ex_target = to_float_tensor(ex_target)
-		ex_input_feats = to_long_tensor(ex_input_feats)
-		ex_target_feats = to_long_tensor(ex_target_feats)
-		ex_norm = to_float_tensor(ex_norm)
+		#ex_input = to_float_tensor(ex_input)
+		#ex_target = to_float_tensor(ex_target)
+		ex_input_feats = ex_input_feats
+		ex_target_feats = ex_target_feats
+		ex_input_coeffs = ex_input_coeffs
+		ex_target_coeffs = ex_target_coeffs
+		#ex_norm = to_float_tensor(ex_norm)
 		input_bp = to_float_tensor(np.expand_dims(input_bp, axis=-1))
 		target_bp = to_float_tensor(np.expand_dims(target_bp, axis=-1))
 		input_gaps = to_float_tensor(np.expand_dims(input_gaps, axis=-1))
@@ -487,30 +619,69 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
 		#	input_gaps.shape, target_gaps.shape
 		#)
 
+		#print(
+		#	ex_input.shape, ex_target.shape,
+		#	ex_input_feats.shape, ex_target_feats.shape,
+		#	ex_input_coeffs.shape, ex_target_coeffs.shape,
+		#	input_gaps.shape, target_gaps.shape,
+		#)
+		i_res = self.enc_len - len(ex_input)
+		ex_input = torch.cat(
+			[torch.zeros([i_res] + list(ex_input.shape[1:])), ex_input],
+			dim=0
+		)
+		ex_input_feats = torch.cat(
+			[torch.zeros([i_res] +list(ex_input_feats.shape[1:])), ex_input_feats],
+			dim=0
+		)
+		ex_input_coeffs = torch.cat(
+			[torch.zeros([i_res] + list(ex_input_coeffs.shape[1:])), ex_input_coeffs],
+			dim=0
+		)
+		input_gaps = torch.cat(
+			[torch.zeros([i_res] + list(input_gaps.shape[1:])), input_gaps],
+			dim=0
+		)
+
 		return (
 			ex_input, ex_target,
 			ex_input_feats, ex_target_feats,
-			ex_norm,
+			mapped_id,
 			torch.FloatTensor([ts_id, pos_id]),
-			input_bp, target_bp,
+			ex_input_coeffs, ex_target_coeffs,
 			input_gaps, target_gaps
 		)
 
+	def collate_fn(self, batch):
+		num_items = len(batch[0])
+		batched = [[] for _ in range(len(batch[0]))]
+		for i in range(len(batch)):
+			for j in range(len(batch[i])):
+				batched[j].append(torch.tensor(batch[i][j]))
+
+		batched_t = []
+		for i, b in enumerate(batched):
+			batched_t.append(torch.stack(b, dim=0))
+			#print(i)
+		#batched = [torch.stack(b, dim=0) for b in batched]
+
+		return batched_t
+
+
 	def aggregate_data(self, values):
-		return np.sum(values, axis=0)
+		return values.mean(dim=0)
 
-	def aggregate_data_slope(self, values, compute_b=False):
-		x = np.expand_dims(np.arange(values.shape[0]), axis=1)
-		m_x = np.mean(x, axis=0)
-		s_xx = np.sum((x-m_x)**2, axis=0)
+	def aggregate_data_slope(self, y, compute_b=False):
+		x = torch.arange(y.shape[0], dtype=torch.float)
+		m_x = x.mean()
+		s_xx = ((x-m_x)**2).sum()
 
-		y = values
 		#m_y = np.mean(y, axis=0)
 		#s_xy = np.sum((x-m_x)*(y-m_y), axis=0)
 		#w = s_xy/s_xx
 
 		a = (x - m_x) / s_xx
-		w = np.sum(a*y, axis=0)
+		w = (a*y).sum()
 
 		if compute_b:
 			b = m_y - w*m_x
@@ -604,13 +775,11 @@ class DataProcessor(object):
 	
 		elif args.dataset_name in ['Traffic911']:
 			(
-				X_train_input, X_train_target,
-				X_dev_input, X_dev_target,
-				X_test_input, X_test_target,
-				train_bkp, dev_bkp, test_bkp,
-				data_train, data_dev, data_test
+				data_train, data_dev, data_test,
+				dev_tsid_map, test_tsid_map,
+                                feats_info, coeffs_info
 			) = parse_Traffic911(args.N_input, args.N_output)
-		elif args.dataset_name in ['Exchange', 'Solar', 'Wiki', 'taxi30min']:
+		elif args.dataset_name in ['Exchange', 'Wiki']:
 			(
 				data_train, data_dev, data_test,
 				dev_tsid_map, test_tsid_map
@@ -635,14 +804,51 @@ class DataProcessor(object):
 			(
 				data_train, data_dev, data_test,
 				dev_tsid_map, test_tsid_map,
-                                feats_info
+                                feats_info, coeffs_info
 			) = parse_azure(args.dataset_name, args.N_input, args.N_output)
 		elif args.dataset_name in ['ett']:
 			(
 				data_train, data_dev, data_test,
 				dev_tsid_map, test_tsid_map,
-                                feats_info
+                                feats_info, coeffs_info
 			) = parse_ett(args.dataset_name, args.N_input, args.N_output)
+		elif args.dataset_name in ['sin_noisy']:
+			(
+				data_train, data_dev, data_test,
+				dev_tsid_map, test_tsid_map,
+                                feats_info, coeffs_info
+			) = parse_sin_noisy(args.dataset_name, args.N_input, args.N_output)
+		elif args.dataset_name in ['Solar']:
+			(
+				data_train, data_dev, data_test,
+				dev_tsid_map, test_tsid_map,
+                                feats_info, coeffs_info
+			) = parse_Solar(args.dataset_name, args.N_input, args.N_output)
+		elif args.dataset_name in ['etthourly']:
+			(
+				data_train, data_dev, data_test,
+				dev_tsid_map, test_tsid_map,
+                                feats_info, coeffs_info
+			) = parse_etthourly(args.dataset_name, args.N_input, args.N_output)
+		elif args.dataset_name in ['m4hourly']:
+			(
+				data_train, data_dev, data_test,
+				dev_tsid_map, test_tsid_map,
+                                feats_info, coeffs_info
+			) = parse_m4hourly(args.dataset_name, args.N_input, args.N_output)
+		elif args.dataset_name in ['m4daily']:
+			(
+				data_train, data_dev, data_test,
+				dev_tsid_map, test_tsid_map,
+                                feats_info, coeffs_info
+			) = parse_m4daily(args.dataset_name, args.N_input, args.N_output)
+		elif args.dataset_name in ['taxi30min']:
+			(
+				data_train, data_dev, data_test,
+				dev_tsid_map, test_tsid_map,
+                                feats_info, coeffs_info
+			) = parse_taxi30min(args.dataset_name, args.N_input, args.N_output)
+
 
 		if args.use_time_features:
 			assert 'feats' in data_train[0].keys()
@@ -653,6 +859,7 @@ class DataProcessor(object):
 		self.dev_tsid_map = dev_tsid_map
 		self.test_tsid_map = test_tsid_map
 		self.feats_info = feats_info
+		self.coeffs_info = coeffs_info
 
 
 	def get_processed_data(self, args, agg_method, K):
@@ -676,25 +883,20 @@ class DataProcessor(object):
  		)
  		print('Number of chunks in train data:', len(lazy_dataset_train))
  		norm = lazy_dataset_train.input_norm
- 		dev_norm, test_norm = [], []
- 		for i in range(len(self.data_dev)):
- 			dev_norm.append(norm[self.dev_tsid_map[i]])
- 		for i in range(len(self.data_test)):
- 			test_norm.append(norm[self.test_tsid_map[i]])
- 		dev_norm, test_norm = np.stack(dev_norm), np.stack(test_norm)
+ 		dev_norm, test_norm = norm, norm
+ 		#for i in range(len(self.data_dev)):
+ 		#	dev_norm.append(norm[self.dev_tsid_map[i]])
+ 		#for i in range(len(self.data_test)):
+ 		#	test_norm.append(norm[self.test_tsid_map[i]])
+ 		#dev_norm, test_norm = np.stack(dev_norm), np.stack(test_norm)
  		#import ipdb
  		#ipdb.set_trace()
  		lazy_dataset_dev = TimeSeriesDatasetOfflineAggregate(
  			self.data_dev, args.N_input, args.N_output, args.N_output,
  			agg_method, K,
  			input_norm=dev_norm, which_split='dev',
- 			target_norm=np.concatenate(
- 				[
- 					np.zeros_like(dev_norm[..., :, 0:1]),
- 					np.ones_like(dev_norm[..., :, 1:2])
- 				],
- 				axis=-1
- 			),
+ 			#target_norm=Normalizer(self.data_dev, 'same'),
+ 			target_norm=dev_norm,
  			use_time_features=args.use_time_features,
  			tsid_map=self.dev_tsid_map,
  		)
@@ -703,32 +905,33 @@ class DataProcessor(object):
  			self.data_test, args.N_input, args.N_output, args.N_output,
  			agg_method, K, which_split='test',
  			input_norm=test_norm,
- 			target_norm=np.concatenate(
- 				[
- 					np.zeros_like(dev_norm[..., :, 0:1]),
- 					np.ones_like(dev_norm[..., :, 1:2])
- 				],
- 				axis=-1
- 			),
+ 			#target_norm=test_norm,
+ 			target_norm=Normalizer(self.data_test, 'same'),
  			use_time_features=args.use_time_features,
  			tsid_map=self.test_tsid_map,
  		)
  		print('Number of chunks in test data:', len(lazy_dataset_test))
- 		if K == 1:
+ 		if len(lazy_dataset_train) <= args.batch_size:
  			batch_size = args.batch_size
  		else:
- 			batch_size = 16
+ 			batch_size = args.batch_size
+ 			while len(lazy_dataset_train) // batch_size < 10:
+ 				batch_size = batch_size // 2
+ 		#import ipdb ; ipdb.set_trace()
  		trainloader = DataLoader(
  			lazy_dataset_train, batch_size=batch_size, shuffle=True,
- 			drop_last=True, num_workers=12, pin_memory=True
+ 			drop_last=True, num_workers=12, pin_memory=True,
+                        #collate_fn=lazy_dataset_train.collate_fn
  		)
  		devloader = DataLoader(
  			lazy_dataset_dev, batch_size=batch_size, shuffle=False,
- 			drop_last=False, num_workers=12, pin_memory=True
+ 			drop_last=False, num_workers=12, pin_memory=True,
+                        #collate_fn=lazy_dataset_dev.collate_fn
  		)
  		testloader = DataLoader(
  			lazy_dataset_test, batch_size=batch_size, shuffle=False,
- 			drop_last=False, num_workers=12, pin_memory=True
+ 			drop_last=False, num_workers=12, pin_memory=True,
+                        #collate_fn=lazy_dataset_test.collate_fn
  		)
  		#import ipdb
  		#ipdb.set_trace()
@@ -744,6 +947,9 @@ class DataProcessor(object):
  			'train_norm': norm,
  			'dev_norm': dev_norm,
  			'test_norm': test_norm,
- 			'feats_info': self.feats_info
+ 			'feats_info': self.feats_info,
+ 			'coeffs_info': self.coeffs_info,
+                        'dev_tsid_map': lazy_dataset_dev.tsid_map,
+                        'test_tsid_map': lazy_dataset_test.tsid_map
  		}
 

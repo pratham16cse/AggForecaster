@@ -7,6 +7,131 @@ import numpy as np
 from torch.distributions.normal import Normal
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 
+class NBEATS_D(nn.Module):
+    def __init__(
+            self, input_width, dec_len, num_blocks, block_width, block_numlayers,
+            point_estimates, feats_info, coeffs_info, use_coeffs
+        ):
+        super(NBEATS_D, self).__init__()
+
+        self.num_blocks = num_blocks
+        self.block_numlayers = block_numlayers
+        self.point_estimates = point_estimates
+        self.feats_info = feats_info
+        self.coeffs_info = coeffs_info
+        assert use_coeffs == True
+        self.use_coeffs = use_coeffs
+
+        input_size = input_width
+        self.num_coeffs = len(self.coeffs_info)
+        self.blocks = []
+        for i in range(self.num_coeffs):
+            coeff_block = []
+            for j in range(num_blocks):
+                block = nn.ModuleList(
+                    [nn.Linear(input_size, block_width)]
+                    + [nn.Linear(block_width, block_width) for _ in range(block_numlayers - 1)]
+                )
+                coeff_block.append(block)
+            coeff_block = nn.ModuleList(coeff_block)
+            self.blocks.append(coeff_block)
+        self.blocks = nn.ModuleList(self.blocks)
+
+        self.backcast_layer = []
+        self.forecast_layer = []
+        for i in range(self.num_coeffs):
+            self.backcast_layer.append(nn.Linear(block_width, input_size))
+            self.forecast_layer.append(nn.Linear(block_width, dec_len))
+        self.backcast_layer = nn.ModuleList(self.backcast_layer)
+        self.forecast_layer = nn.ModuleList(self.forecast_layer)
+        
+    def forward(self, feats_in, X_in, coeffs_in, feats_out, X_out=None, coeffs_out=None):
+        block_input = X_in.squeeze(-1)
+        forecasts = []
+        for i in range(self.num_coeffs):
+            coeff_input = coeffs_in[..., i]
+            coeff_forecasts = []
+            for j in range(self.num_blocks):
+                curr_block = self.blocks[i][j]
+                fc_input = coeff_input
+                for k in range(self.block_numlayers):
+                    fc_output = curr_block[k](fc_input)
+                    fc_input = fc_output
+                block_output = fc_output
+                backcast_output = self.backcast_layer[i](block_output)
+                forecast_output = self.forecast_layer[i](block_output)
+                residual = coeff_input - backcast_output
+                coeff_input = residual
+                coeff_forecasts.append(forecast_output)
+            forecasts.append(coeff_forecasts)
+
+        for i in range(self.num_coeffs):
+            forecasts[i] = torch.stack(forecasts[i], dim=1).sum(1)
+
+        forecasts = torch.stack(forecasts, dim=1).sum(1).unsqueeze(-1)
+
+        if self.point_estimates:
+            stds = None
+            v = None
+
+        return forecasts, stds, v
+
+
+class NBEATS(nn.Module):
+    def __init__(
+            self, input_width, dec_len, num_blocks, block_width, block_numlayers,
+            point_estimates, feats_info, coeffs_info, use_coeffs
+        ):
+        super(NBEATS, self).__init__()
+        
+        self.num_blocks = num_blocks
+        self.block_numlayers = block_numlayers
+        self.point_estimates = point_estimates
+        self.feats_info = feats_info
+        self.coeffs_info = coeffs_info
+        self.use_coeffs = use_coeffs
+
+        input_size = input_width
+        self.num_coeffs = len(self.coeffs_info)
+        if self.use_coeffs:
+            input_size += (self.num_coeffs * input_width)
+        self.blocks = []
+        for i in range(num_blocks):
+            block = nn.ModuleList(
+                [nn.Linear(input_size, block_width)]
+                + [nn.Linear(block_width, block_width) for _ in range(block_numlayers - 1)]
+            )
+            self.blocks.append(block)
+        self.blocks = nn.ModuleList(self.blocks)
+        self.backcast_layer = nn.Linear(block_width, input_size)
+        self.forecast_layer = nn.Linear(block_width, dec_len)
+        
+    def forward(self, feats_in, X_in, coeffs_in, feats_out, X_out=None, coeffs_out=None):
+        block_input = X_in.squeeze(-1)
+        if self.use_coeffs:
+            for i in range(self.num_coeffs):
+                block_input = torch.cat([block_input, coeffs_in[..., i]], dim=1)
+        forecasts = []
+        for i in range(self.num_blocks):
+            curr_block = self.blocks[i]
+            fc_input = block_input
+            for j in range(self.block_numlayers):
+                fc_output = curr_block[j](fc_input)
+                fc_input = fc_output
+            block_output = fc_output
+            backcast_output = self.backcast_layer(block_output)
+            forecast_output = self.forecast_layer(block_output)
+            residual = block_input - backcast_output
+            block_input = residual
+            forecasts.append(forecast_output)
+            
+        forecasts = torch.stack(forecasts, dim=1).sum(1).unsqueeze(-1)
+
+        if self.point_estimates:
+            stds = None
+            v = None
+
+        return forecasts, stds, v
 
 class PositionalEncoding(nn.Module):
 
@@ -25,18 +150,24 @@ class PositionalEncoding(nn.Module):
         return self.dropout(x)
 
     
-class NARTransformerModel(nn.Module):
-    def __init__(self, dec_len, feats_info, deep_std, device):
-        super(NARTransformerModel, self).__init__()
+class ARTransformerModel(nn.Module):
+    def __init__(
+            self, dec_len, feats_info, coeffs_info, estimate_type, use_coeffs, v_dim,
+            kernel_size, nkernel, device
+        ):
+        super(ARTransformerModel, self).__init__()
 
         self.dec_len = dec_len
         self.feats_info = feats_info
-        self.deep_std = deep_std
+        self.coeffs_info = coeffs_info
+        self.estimate_type = estimate_type
+        self.use_coeffs = use_coeffs
+        self.v_dim = v_dim
         self.device = device
         self.use_covariate_var_model = False
 
-        self.kernel_size = 10
-        nkernel = 32
+        self.kernel_size = kernel_size
+        self.nkernel = nkernel
 
         self.warm_start = self.kernel_size * 5
 
@@ -50,68 +181,48 @@ class NARTransformerModel(nn.Module):
 
         in_channels = sum([s for (_, s) in self.feats_info.values()])
         self.conv_feats = nn.Conv1d(
-            kernel_size=self.kernel_size,stride=1, in_channels=in_channels, out_channels=nkernel
+            kernel_size=self.kernel_size, stride=1, in_channels=in_channels, out_channels=nkernel,
+            #padding=self.kernel_size//2
         )
         self.conv_data = nn.Conv1d(
-            kernel_size=self.kernel_size, stride=1,
-            in_channels=1, out_channels=nkernel
+            kernel_size=self.kernel_size, stride=1, in_channels=1, out_channels=nkernel,
+            #padding=self.kernel_size//2
         )
 
-        self.linearMap = nn.Sequential(nn.ReLU(),nn.Linear(2*nkernel,nkernel))
+        self.linearMap = nn.Sequential(nn.ReLU(), nn.Linear(2*nkernel, nkernel))
         self.positional = PositionalEncoding(d_model=nkernel)
 
+        if self.use_coeffs:
+            enc_input_size = nkernel# + 2
+        else:
+            enc_input_size = nkernel
         self.encoder_layer = nn.TransformerEncoderLayer(
-            d_model=nkernel, nhead=1, dropout=0.5, dim_feedforward=256
+            d_model=enc_input_size, nhead=4, dropout=0, dim_feedforward=512
         )
-        self.encoder = nn.TransformerEncoder(self.encoder_layer,num_layers=4)
+        self.encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=2)
 
         self.decoder_layer = nn.TransformerDecoderLayer(
-            d_model=nkernel, nhead=1, dropout=0.5, dim_feedforward=256
+            d_model=nkernel, nhead=4, dropout=0, dim_feedforward=512
         )
-        self.decoder = nn.TransformerDecoder(self.decoder_layer,num_layers=4)
+        self.decoder_mean = nn.TransformerDecoder(self.decoder_layer, num_layers=2)
+        self.decoder_std = nn.TransformerDecoder(self.decoder_layer, num_layers=2)
 
-        self.finalLinearMap = nn.Sequential(nn.ReLU(),nn.Linear(nkernel, 2))
+        self.linear_mean = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, 1))
+        self.linear_std = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, 1))
+        self.linear_v = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, self.v_dim))
 
-        if self.deep_std:
-            self.deepstd_layer = nn.Sequential(
-                nn.Linear(nkernel, nkernel), nn.ReLU(),
-                nn.Linear(nkernel, nkernel), nn.ReLU(),
-                nn.Linear(nkernel, 1)
-            )
+    def forward(self, feats_in, X_in, coeffs_in, feats_out, X_out=None, coeffs_out=None, teacher_force=None):
 
-        self.dec_pos_embed_layer = nn.Sequential(
-            nn.Embedding(self.dec_len, nkernel)
-            #nn.Linear(nkernel, nkernel), nn.ReLU(),
-            #nn.Linear
-        )
+        #X_in = X_in[..., -X_in.shape[1]//5:, :]
+        #feats_in = feats_in[..., -feats_in.shape[1]//5:, :]
+        #coeffs_in = coeffs_in[..., -coeffs_in.shape[1]//5:, :]
 
-        if self.use_covariate_var_model:
+        #if self.use_coeffs:
+        #    X_in = coeffs_in[..., 0:1]
 
-            self.covvar_embed_feat_layers = []
-            for idx, (card, emb_size) in self.feats_info.items():
-                if card is not 0:
-                    self.covvar_embed_feat_layers.append(nn.Embedding(card, emb_size))
-                else:
-                    self.covvar_embed_feat_layers.append(nn.Linear(1, 1, bias=False))
-            self.covvar_embed_feat_layers = nn.ModuleList(self.covvar_embed_feat_layers)
-
-            in_channels = sum([s for (_, s) in self.feats_info.values()])
-            self.covvar_conv_feats = nn.Conv1d(
-                kernel_size=self.kernel_size,stride=1, in_channels=in_channels, out_channels=nkernel
-            )
-            self.covvvar_dec_pos_embed_layer = nn.Sequential(
-                nn.Embedding(self.dec_len, nkernel)
-                #nn.Linear(nkernel, nkernel), nn.ReLU(),
-                #nn.Linear
-            )
-            self.covvar_finalLinearMap = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, 1))
-       
-    def forward(self, feats_in, X_in, feats_out, X_out=None):
-
-
-        mean = X_in.mean(dim=1,keepdim=True)
-        std = X_in.std(dim=1,keepdim=True)
-        X_in = (X_in - mean)/std
+        mean = X_in.mean(dim=1, keepdim=True)
+        #std = X_in.std(dim=1,keepdim=True)
+        X_in = (X_in - mean)
 
         feats_in_merged, feats_out_merged = [], []
         for i in range(feats_in.shape[-1]):
@@ -137,11 +248,16 @@ class NARTransformerModel(nn.Module):
 
         feats_in_embed = self.conv_feats(
             feats_in_merged.transpose(1,2)
-        ).transpose(1,2).clamp(min=0)[:,::self.kernel_size,:]      
-        X_in_embed = self.conv_data(X_in.transpose(1,2)).transpose(1,2).clamp(min=0)[:, ::self.kernel_size,:]
+        ).transpose(1,2).clamp(min=0)[..., :X_in.shape[1],:]      
+        X_in_embed = self.conv_data(
+            X_in.transpose(1,2)
+        ).transpose(1,2).clamp(min=0)[..., :X_in.shape[1], :]
         feats_in_embed = self.linearMap(torch.cat([feats_in_embed,X_in_embed],dim=-1)).transpose(0,1)
-        encoder_output = self.encoder(self.positional(feats_in_embed))
-       
+        enc_input = self.positional(feats_in_embed)
+        #if self.use_coeffs:
+        #    enc_input = torch.cat([enc_input, coeffs_in[..., 1:].transpose(0, 1)], dim=-1)
+        encoder_output = self.encoder(enc_input)
+
         feats_out_merged = torch.cat([feats_in_merged[:,-self.warm_start+1:, :],feats_out_merged],dim=1)
         feats_out_embed = self.conv_feats(
             feats_out_merged.transpose(1,2)
@@ -157,75 +273,257 @@ class NARTransformerModel(nn.Module):
         ).transpose(1, 2).clamp(min=0)
         feats_out_embed = self.linearMap(torch.cat([feats_out_embed,X_out_embed],dim=-1))
 
-        X_out = self.decoder(
+        X_out = self.decoder_mean(
             self.positional(feats_out_embed.transpose(0,1)), encoder_output
         ).clamp(min=0)
         X_out = X_out.transpose(0,1)
+        mean_out = self.linear_mean(X_out)
+        #mean_out = mean_out*std+mean
 
-        mean_out = self.finalLinearMap(X_out)[:,:,0:1]
-        mean_out = mean_out*std+mean
+        X_out = self.decoder_std(
+            self.positional(feats_out_embed.transpose(0,1)), encoder_output
+        ).clamp(min=0)
+        X_out = X_out.transpose(0,1)
+        std_out = F.softplus(self.linear_std(X_out))
 
-        dec_pos = torch.ones((X_in.shape[0], 1)) * torch.unsqueeze(torch.range(0, self.dec_len-1), dim=0)
-        dec_pos = torch.cat([torch.zeros(X_in.shape[0], X_out.shape[1]-self.dec_len), dec_pos], dim=1)
-        dec_pos_embed = self.dec_pos_embed_layer(dec_pos.type(torch.LongTensor).to(self.device))
-        if self.deep_std:
-            std_out = self.finalLinearMap(X_out+dec_pos_embed)[:,:,1:2]
-        elif self.use_covariate_var_model:
-            feats_out_merged = []
-            for i in range(feats_out.shape[-1]):
-                card = self.feats_info[i][0]
-                if card is not 0:
-                    feats_out_ = feats_out[..., i].type(torch.LongTensor).to(self.device)
-                else:
-                    feats_out_ = feats_out[..., i:i+1]
-                feats_out_merged.append(
-                    self.embed_feat_layers[i](feats_out_)
-                )
-            feats_out_merged = torch.cat(feats_out_merged, dim=2)
-            feats_out_embed = self.conv_feats(
-                feats_out_merged.transpose(1,2)
-            ).transpose(1,2).clamp(min=0)
+        std_out = self.linear_std(X_out)
+        #std_out = F.softplus((std_out*std)/2)
+        std_out = F.softplus(std_out)
+        v_out = self.linear_v(X_out)
 
-            covvar_dec_pos_embed = self.dec_pos_embed_layer(dec_pos.type(torch.LongTensor).to(self.device))
+        mean_out = mean_out + mean
 
-            std_out = self.covvar_finalLinearMap(feats_out_embed+covvar_dec_pos_embed)
+        return (
+            mean_out[..., -self.dec_len:, :],
+            std_out[..., -self.dec_len:, :],
+            v_out[..., -self.dec_len:, :]
+        )
 
+
+class ARCNNTransformerModel(nn.Module):
+    def __init__(
+            self, dec_len, feats_info, coeffs_info, estimate_type, use_coeffs, v_dim,
+            kernel_size, nkernel, dim_ff, nhead, device
+        ):
+        super(ARCNNTransformerModel, self).__init__()
+
+        self.dec_len = dec_len
+        self.feats_info = feats_info
+        self.coeffs_info = coeffs_info
+        self.estimate_type = estimate_type
+        self.use_coeffs = use_coeffs
+        self.v_dim = v_dim
+        self.device = device
+        self.use_covariate_var_model = False
+
+        self.kernel_size = kernel_size
+        self.nkernel = nkernel
+        self.dim_ff = dim_ff
+        self.nhead = nhead
+
+        self.warm_start = self.kernel_size * 5
+
+        self.embed_feat_layers = []
+        for idx, (card, emb_size) in self.feats_info.items():
+            if card is not 0:
+                self.embed_feat_layers.append(nn.Embedding(card, emb_size))
+            else:
+                self.embed_feat_layers.append(nn.Linear(1, 1, bias=False))
+        self.embed_feat_layers = nn.ModuleList(self.embed_feat_layers)
+
+        in_channels = sum([s for (_, s) in self.feats_info.values()])
+        self.conv_feats = nn.Conv1d(
+            kernel_size=self.kernel_size, stride=self.kernel_size, in_channels=in_channels, out_channels=nkernel,
+            #padding=self.kernel_size//2
+        )
+        self.conv_data = nn.Conv1d(
+            kernel_size=self.kernel_size, stride=self.kernel_size, in_channels=1, out_channels=nkernel,
+            #padding=self.kernel_size//2
+        )
+
+        self.linearMap = nn.Sequential(nn.ReLU(), nn.Linear(2*nkernel, nkernel))
+        self.positional = PositionalEncoding(d_model=nkernel)
+
+        if self.use_coeffs:
+            enc_input_size = nkernel# + 2
         else:
-            std_out = self.deepstd_layer(X_out)
-        std_out = F.softplus((std_out*std)/2)
+            enc_input_size = nkernel
+        self.encoder_layer = nn.TransformerEncoderLayer(
+            d_model=enc_input_size, nhead=self.nhead, dropout=0, dim_feedforward=self.dim_ff
+        )
+        self.encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=2)
 
+        self.decoder_layer = nn.TransformerDecoderLayer(
+            d_model=nkernel, nhead=self.nhead, dropout=0, dim_feedforward=self.dim_ff
+        )
+        self.decoder_mean = nn.TransformerDecoder(self.decoder_layer, num_layers=2)
+        self.decoder_std = nn.TransformerDecoder(self.decoder_layer, num_layers=2)
 
-        return mean_out[..., -self.dec_len:, :], std_out[..., -self.dec_len:, :]
+        self.deconv_mean = nn.ConvTranspose1d(
+            self.nkernel, self.nkernel,
+            self.dec_len-(self.warm_start//self.kernel_size+self.dec_len//self.kernel_size)+1
+        )
+        self.deconv_std = nn.ConvTranspose1d(
+            self.nkernel, self.nkernel,
+            self.dec_len-(self.warm_start//self.kernel_size+self.dec_len//self.kernel_size)+1
+        )
+
+        self.linear_mean = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, 1))
+        self.linear_std = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, 1))
+        self.linear_v = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, self.v_dim))
+
+    def forward(self, feats_in, X_in, coeffs_in, feats_out, X_out=None, coeffs_out=None, teacher_force=None):
+
+        #X_in = X_in[..., -X_in.shape[1]//5:, :]
+        #feats_in = feats_in[..., -feats_in.shape[1]//5:, :]
+        #coeffs_in = coeffs_in[..., -coeffs_in.shape[1]//5:, :]
+
+        #if self.use_coeffs:
+        #    X_in = coeffs_in[..., 0:1]
+
+        mean = X_in.mean(dim=1, keepdim=True)
+        #std = X_in.std(dim=1,keepdim=True)
+        X_in = (X_in - mean)
+
+        feats_in_merged, feats_out_merged = [], []
+        for i in range(feats_in.shape[-1]):
+            card = self.feats_info[i][0]
+            if card is not 0:
+                feats_in_ = feats_in[..., i].type(torch.LongTensor).to(self.device)
+            else:
+                feats_in_ = feats_in[..., i:i+1]
+            feats_in_merged.append(
+                self.embed_feat_layers[i](feats_in_)
+            )
+        feats_in_merged = torch.cat(feats_in_merged, dim=2)
+        for i in range(feats_out.shape[-1]):
+            card = self.feats_info[i][0]
+            if card is not 0:
+                feats_out_ = feats_out[..., i].type(torch.LongTensor).to(self.device)
+            else:
+                feats_out_ = feats_out[..., i:i+1]
+            feats_out_merged.append(
+                self.embed_feat_layers[i](feats_out_)
+            )
+        feats_out_merged = torch.cat(feats_out_merged, dim=2)
+
+        feats_in_embed = self.conv_feats(
+            feats_in_merged.transpose(1,2)
+        ).transpose(1,2).clamp(min=0)[..., :X_in.shape[1],:]      
+        X_in_embed = self.conv_data(
+            X_in.transpose(1,2)
+        ).transpose(1,2).clamp(min=0)[..., :X_in.shape[1], :]
+        feats_in_embed = self.linearMap(torch.cat([feats_in_embed, X_in_embed],dim=-1)).transpose(0,1)
+        enc_input = self.positional(feats_in_embed)
+        #if self.use_coeffs:
+        #    enc_input = torch.cat([enc_input, coeffs_in[..., 1:].transpose(0, 1)], dim=-1)
+        encoder_output = self.encoder(enc_input)
+
+        feats_out_merged = torch.cat([feats_in_merged[:,-self.warm_start:, :],feats_out_merged],dim=1)
+        feats_out_embed = self.conv_feats(
+            feats_out_merged.transpose(1,2)
+        ).transpose(1,2).clamp(min=0)
+        X_out_embed = self.conv_data(
+            torch.cat(
+                [
+                    X_in[..., -self.warm_start:, :],
+                    torch.zeros([X_in.shape[0], self.dec_len, X_in.shape[-1]], dtype=torch.float, device=self.device)
+                ],
+                dim=1
+            ).transpose(1, 2)
+        ).transpose(1, 2).clamp(min=0)
+        feats_out_embed = self.linearMap(torch.cat([feats_out_embed,X_out_embed],dim=-1))
+
+        X_out = self.decoder_mean(
+            self.positional(feats_out_embed.transpose(0,1)), encoder_output
+        ).clamp(min=0)
+        X_out = X_out.transpose(0,1)
+        #import ipdb ; ipdb.set_trace()
+        X_out = self.deconv_mean(X_out.transpose(1, 2)).transpose(1, 2)
+        mean_out = self.linear_mean(X_out)
+        #mean_out = mean_out*std+mean
+
+        X_out = self.decoder_std(
+            self.positional(feats_out_embed.transpose(0,1)), encoder_output
+        ).clamp(min=0)
+        X_out = X_out.transpose(0,1)
+        X_out = self.deconv_std(X_out.transpose(1, 2)).transpose(1, 2)
+        std_out = F.softplus(self.linear_std(X_out))
+
+        std_out = self.linear_std(X_out)
+        #std_out = F.softplus((std_out*std)/2)
+        std_out = F.softplus(std_out)
+        v_out = self.linear_v(X_out)
+
+        #import ipdb ; ipdb.set_trace()
+
+        mean_out = mean_out + mean
+
+        return (
+            mean_out[..., -self.dec_len:, :],
+            std_out[..., -self.dec_len:, :],
+            v_out[..., -self.dec_len:, :]
+        )
 
 
 class RNNNARModel(nn.Module):
     def __init__(
-            self, dec_len, num_rnn_layers, feat_set_size, embed_size, hidden_size, batch_size,
-            point_estimates, device
+            self, dec_len, num_rnn_layers, feats_info, coeffs_info, hidden_size, batch_size,
+            estimate_type, use_coeffs, use_time_features, v_dim, device
         ):
         super(RNNNARModel, self).__init__()
 
         self.dec_len = dec_len
         self.num_rnn_layers = num_rnn_layers
-        self.feat_set_size = feat_set_size
-        self.embed_size = embed_size
+        self.feats_info = feats_info
+        self.coeffs_info = coeffs_info
         self.hidden_size = hidden_size
         self.batch_size = batch_size
-        self.point_estimates = point_estimates
+        self.estimate_type = estimate_type
         self.device = device
+        self.use_coeffs = use_coeffs
+        self.use_time_features = use_time_features
+        self.v_dim = v_dim
 
-        #self.embed_y_layer = nn.Linear(1, self.embed_size)
-        #self.embed_feats_layer = nn.Linear(1, embed_size, bias=False)
-        self.embed_feats_layer = nn.Embedding(self.feat_set_size, self.embed_size)
+        self.embed_feat_layers = []
+        for idx, (card, emb_size) in self.feats_info.items():
+            if card is not 0:
+                self.embed_feat_layers.append(nn.Embedding(card, emb_size))
+            else:
+                self.embed_feat_layers.append(nn.Linear(1, 1, bias=False))
+        self.embed_feat_layers = nn.ModuleList(self.embed_feat_layers)
 
-        self.encoder = nn.LSTM(1+self.embed_size, self.hidden_size, batch_first=True)
+        feats_embed_dim = sum([s for (_, s) in self.feats_info.values()])
+        num_coeffs = len(self.coeffs_info)
+        enc_input_size = 1 + feats_embed_dim
+        if self.use_coeffs:
+            enc_input_size += num_coeffs
+        self.encoder = nn.LSTM(enc_input_size, self.hidden_size, batch_first=True)
 
-        self.decoder = nn.Sequential(
-            nn.Linear(self.hidden_size+self.embed_size, self.hidden_size),
+        self.decoder_mean = nn.Sequential(
+            nn.Linear(self.hidden_size+feats_embed_dim, self.hidden_size),
             nn.ReLU(),
             nn.Linear(self.hidden_size, self.hidden_size),
             nn.ReLU(),
             nn.Linear(self.hidden_size, 1)
+        )
+
+        self.decoder_std = nn.Sequential(
+            nn.Linear(self.hidden_size+feats_embed_dim, self.hidden_size),
+            nn.ReLU(),
+            nn.Linear(self.hidden_size, self.hidden_size),
+            nn.ReLU(),
+            nn.Linear(self.hidden_size, 1),
+            nn.Softplus()
+        )
+
+        self.decoder_v = nn.Sequential(
+            nn.Linear(self.hidden_size+feats_embed_dim, self.hidden_size),
+            nn.ReLU(),
+            nn.Linear(self.hidden_size, self.hidden_size),
+            nn.ReLU(),
+            nn.Linear(self.hidden_size, self.v_dim),
+            #nn.Softplus()
         )
 
     def init_hidden(self, batch_size):
@@ -235,28 +533,168 @@ class RNNNARModel(nn.Module):
             torch.zeros(self.num_rnn_layers, batch_size, self.hidden_size, device=self.device)
         )
 
-    def forward(self, feats_in, X_in, feats_out, X_out=None):
+    def forward(self, feats_in, X_in, coeffs_in, feats_out, X_out=None, coeffs_out=None):
+        
+        feats_in_merged, feats_out_merged = [], []
+        for i in range(feats_in.shape[-1]):
+            card = self.feats_info[i][0]
+            if card is not 0:
+                feats_in_ = feats_in[..., i].type(torch.LongTensor).to(self.device)
+            else:
+                feats_in_ = feats_in[..., i:i+1]
+            feats_in_merged.append(
+                self.embed_feat_layers[i](feats_in_)
+            )
+        feats_in_merged = torch.cat(feats_in_merged, dim=2)
+        for i in range(feats_out.shape[-1]):
+            card = self.feats_info[i][0]
+            if card is not 0:
+                feats_out_ = feats_out[..., i].type(torch.LongTensor).to(self.device)
+            else:
+                feats_out_ = feats_out[..., i:i+1]
+            feats_out_merged.append(
+                self.embed_feat_layers[i](feats_out_)
+            )
+        feats_out_merged = torch.cat(feats_out_merged, dim=2)
 
-        feats_in = torch.squeeze(feats_in, dim=-1)
-        feats_out = torch.squeeze(feats_out, dim=-1)
-
-        feats_in_embed = self.embed_feats_layer(feats_in)
-        #X_in_embed = self.embed_y_layer(X_in)
-        feats_out_embed = self.embed_feats_layer(feats_out)
+        feats_in_embed = feats_in_merged
+        feats_out_embed = feats_out_merged
 
         enc_input = torch.cat([feats_in_embed, X_in], dim=-1)
+        if self.use_coeffs:
+            enc_input = torch.cat([enc_input, coeffs_in], dim=-1)
 
         enc_hidden = self.init_hidden(X_in.shape[0])
         enc_output, enc_state = self.encoder(enc_input, enc_hidden)
 
         enc_output_tile = enc_output[..., -1:, :].repeat(1, self.dec_len, 1)
         dec_input = torch.cat([feats_out_embed, enc_output_tile], dim=-1)
-        means = self.decoder(dec_input)
-
-        if self.point_estimates:
+        means = self.decoder_mean(dec_input)
+        stds = self.decoder_std(dec_input)
+        v = self.decoder_v(dec_input)
+        
+        if self.estimate_type == 'point':
             stds = None
+            v = None
+        elif self.estimate_type == 'variance':
+            v = None
 
-        return means, stds
+        return means, stds, v
+
+class RNNARModel(nn.Module):
+    def __init__(
+            self, dec_len, num_rnn_layers, feats_info, coeffs_info, hidden_size, batch_size,
+            estimate_type, use_coeffs, use_time_features, v_dim, device
+        ):
+        super(RNNARModel, self).__init__()
+
+        self.dec_len = dec_len
+        self.num_rnn_layers = num_rnn_layers
+        self.feats_info = feats_info
+        self.coeffs_info = coeffs_info
+        self.hidden_size = hidden_size
+        self.batch_size = batch_size
+        self.estimate_type = estimate_type
+        self.device = device
+        self.use_coeffs = use_coeffs
+        self.v_dim = v_dim
+
+        self.embed_feat_layers = []
+        for idx, (card, emb_size) in self.feats_info.items():
+            if card is not 0:
+                self.embed_feat_layers.append(nn.Embedding(card, emb_size))
+            else:
+                self.embed_feat_layers.append(nn.Linear(1, 1, bias=False))
+        self.embed_feat_layers = nn.ModuleList(self.embed_feat_layers)
+
+        feats_embed_dim = sum([s for (_, s) in self.feats_info.values()])
+        num_coeffs = len(self.coeffs_info)
+        enc_input_size = 1 + feats_embed_dim
+        if self.use_coeffs:
+            enc_input_size += num_coeffs
+        self.encoder = nn.LSTM(enc_input_size, self.hidden_size, batch_first=True)
+
+        self.decoder_lstm = nn.LSTM(enc_input_size, self.hidden_size,  batch_first=True)
+        self.decoder_mean = nn.Linear(hidden_size, 1)
+        self.decoder_std = nn.Sequential(nn.Linear(hidden_size, 1), nn.Softplus())
+        self.decoder_v = nn.Linear(hidden_size, self.v_dim)
+
+    def init_hidden(self, batch_size):
+        #[num_layers*num_directions,batch,hidden_size]   
+        return (
+            torch.zeros(self.num_rnn_layers, batch_size, self.hidden_size, device=self.device),
+            torch.zeros(self.num_rnn_layers, batch_size, self.hidden_size, device=self.device)
+        )
+
+    def forward(self, feats_in, X_in, coeffs_in, feats_out, X_out=None, coeffs_out=None, teacher_force=True):
+
+        feats_in_merged, feats_out_merged = [], []
+        for i in range(feats_in.shape[-1]):
+            card = self.feats_info[i][0]
+            if card is not 0:
+                feats_in_ = feats_in[..., i].type(torch.LongTensor).to(self.device)
+            else:
+                feats_in_ = feats_in[..., i:i+1]
+            feats_in_merged.append(
+                self.embed_feat_layers[i](feats_in_)
+            )
+        feats_in_merged = torch.cat(feats_in_merged, dim=2)
+        for i in range(feats_out.shape[-1]):
+            card = self.feats_info[i][0]
+            if card is not 0:
+                feats_out_ = feats_out[..., i].type(torch.LongTensor).to(self.device)
+            else:
+                feats_out_ = feats_out[..., i:i+1]
+            feats_out_merged.append(
+                self.embed_feat_layers[i](feats_out_)
+            )
+        feats_out_merged = torch.cat(feats_out_merged, dim=2)
+
+        feats_in_embed = feats_in_merged
+        feats_out_embed = feats_out_merged
+
+        enc_input = torch.cat([feats_in_embed, X_in], dim=-1)
+        if self.use_coeffs:
+            enc_input = torch.cat([enc_input, coeffs_in], dim=-1)
+
+        enc_hidden = self.init_hidden(X_in.shape[0])
+        enc_output, enc_state = self.encoder(enc_input, enc_hidden)
+
+        dec_state = enc_state
+        if X_out is not None:
+            X_prev = torch.cat([X_in[..., -1:, :], X_out[..., :-1, :]], dim=1)
+            feats_prev = torch.cat([feats_in_embed[..., -1:, :], feats_out_embed[..., :-1, :]], dim=1)
+            dec_input = torch.cat([feats_prev, X_prev], dim=-1)
+            dec_output, dec_state = self.decoder_lstm(dec_input, dec_state)
+            means = self.decoder_mean(dec_output)
+            stds = self.decoder_std(dec_output)
+            v = self.decoder_v(dec_output)
+        else:
+            X_prev = X_in[..., -1:, :]
+            feats_prev = feats_in_embed[..., -1:, :]
+            means, stds, v = [], [], []
+            for i in range(self.dec_len):
+                dec_input = torch.cat([feats_prev, X_prev], dim=-1)
+                dec_output, dec_state = self.decoder_lstm(dec_input, dec_state)
+                step_pred_mu = self.decoder_mean(dec_output)
+                step_pred_std = self.decoder_std(dec_output)
+                step_pred_v = self.decoder_v(dec_output)
+                means.append(step_pred_mu)
+                stds.append(step_pred_std)
+                v.append(step_pred_v)
+                X_prev = step_pred_mu
+                feats_prev = feats_out_embed[..., i:i+1, :]
+
+            means = torch.cat(means, dim=1)
+            stds = torch.cat(stds, dim=1)
+            v = torch.cat(v, dim=1)
+
+        if self.estimate_type is 'point':
+            stds, v = None, None
+        elif self.estimate_type is 'variance':
+            v = None
+
+        return means, stds, v
 
 class ConvModelNonAR(torch.nn.Module):
     """docstring for ConvModel non autoregressive"""
@@ -920,7 +1358,7 @@ class Net_GRU(nn.Module):
 
 def get_base_model(
     args, base_model_name, level, N_input, N_output,
-    input_size, output_size, point_estimates, feats_info
+    input_size, output_size, estimate_type, feats_info, coeffs_info
 ):
 
     #hidden_size = max(int(config['hidden_size']*1.0/int(np.sqrt(level))), args.fc_units)
@@ -997,17 +1435,48 @@ def get_base_model(
                     input_dropout=args.input_dropout
                 ).to(args.device)
         elif 'rnn' in base_model_name:
-            net_gru = RNNNARModel(
-                dec_len=N_output,
-                num_rnn_layers=args.num_grulstm_layers,
-                feat_set_size=60, embed_size=64, hidden_size=hidden_size,
-                batch_size=args.batch_size,
-                point_estimates=point_estimates,
-                device=args.device
-            ).to(args.device)
+            if 'nar' in base_model_name:
+                net_gru = RNNNARModel(
+                    dec_len=N_output,
+                    num_rnn_layers=args.num_grulstm_layers,
+                    feats_info=feats_info, coeffs_info=coeffs_info,
+                    hidden_size=hidden_size,
+                    batch_size=args.batch_size,
+                    estimate_type=estimate_type,
+                    use_coeffs=args.use_coeffs,
+                    use_time_features=args.use_time_features,
+                    v_dim=args.v_dim,
+                    device=args.device
+                ).to(args.device)
+            elif 'ar' in base_model_name:
+                net_gru = RNNARModel(
+                    dec_len=N_output,
+                    num_rnn_layers=args.num_grulstm_layers,
+                    feats_info=feats_info, coeffs_info=coeffs_info,
+                    hidden_size=hidden_size,
+                    batch_size=args.batch_size,
+                    estimate_type=estimate_type,
+                    use_coeffs=args.use_coeffs,
+                    use_time_features=args.use_time_features,
+                    v_dim=args.v_dim,
+                    device=args.device
+                ).to(args.device)
         elif 'trans' in base_model_name:
-            net_gru = NARTransformerModel(
-                N_output, feats_info, deep_std=args.deep_std, device=args.device
+            net_gru = ARTransformerModel(
+                N_output, feats_info, coeffs_info, estimate_type, args.use_coeffs,
+                args.v_dim, kernel_size=10, nkernel=32, device=args.device
+            ).to(args.device)
+        elif 'nbeatsd' in base_model_name:
+            net_gru = NBEATS_D(
+                N_input, N_output, num_blocks=8, block_width=128, block_numlayers=4,
+                point_estimates=point_estimates, feats_info=feats_info, coeffs_info=coeffs_info,
+                use_coeffs=args.use_coeffs
+            ).to(args.device)
+        elif 'nbeats' in base_model_name:
+            net_gru = NBEATS(
+                N_input, N_output, num_blocks=8, block_width=128, block_numlayers=4,
+                point_estimates=point_estimates, feats_info=feats_info, coeffs_info=coeffs_info,
+                use_coeffs=args.use_coeffs
             ).to(args.device)
 
     return net_gru
