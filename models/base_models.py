@@ -175,21 +175,23 @@ class ARTransformerModel(nn.Module):
 
         self.warm_start = self.kernel_size * 5
 
-        self.embed_feat_layers = []
-        for idx, (card, emb_size) in self.feats_info.items():
-            if card is not -1:
-                if card is not 0:
-                    self.embed_feat_layers.append(nn.Embedding(card, emb_size))
-                else:
-                    self.embed_feat_layers.append(nn.Linear(1, 1, bias=False))
-        self.embed_feat_layers = nn.ModuleList(self.embed_feat_layers)
+        if self.use_feats:
+            self.embed_feat_layers = []
+            for idx, (card, emb_size) in self.feats_info.items():
+                if card is not -1:
+                    if card is not 0:
+                        self.embed_feat_layers.append(nn.Embedding(card, emb_size))
+                    else:
+                        self.embed_feat_layers.append(nn.Linear(1, 1, bias=False))
+            self.embed_feat_layers = nn.ModuleList(self.embed_feat_layers)
 
-        in_channels = sum([s for (_, s) in self.feats_info.values() if s is not -1])
-        self.conv_feats = nn.Conv1d(
-            kernel_size=self.kernel_size, stride=1, in_channels=in_channels, out_channels=nkernel,
-            bias=False,
-            #padding=self.kernel_size//2
-        )
+            in_channels = sum([s for (_, s) in self.feats_info.values() if s is not -1])
+            self.conv_feats = nn.Conv1d(
+                kernel_size=self.kernel_size, stride=1, in_channels=in_channels, out_channels=nkernel,
+                bias=False,
+                #padding=self.kernel_size//2
+            )
+
         self.enc_conv_data = nn.Conv1d(
             kernel_size=self.kernel_size, stride=1, in_channels=1, out_channels=nkernel,
             bias=False,
@@ -248,11 +250,14 @@ class ARTransformerModel(nn.Module):
             d_model=nkernel, nhead=4, dropout=0, dim_feedforward=512
         )
         self.decoder_mean = nn.TransformerDecoder(self.decoder_layer, num_layers=2)
-        self.decoder_std = nn.TransformerDecoder(self.decoder_layer, num_layers=2)
+        if self.estimate_type in ['variance', 'covariance']:
+            self.decoder_std = nn.TransformerDecoder(self.decoder_layer, num_layers=2)
 
         self.linear_mean = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, 1))
-        self.linear_std = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, 1))
-        self.linear_v = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, self.v_dim))
+        if self.estimate_type in ['variance']:
+            self.linear_std = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, 1))
+        elif self.estimate_type in ['covariance']:
+            self.linear_v = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, self.v_dim))
 
     def forward(
         self, feats_in, X_in, coeffs_in, feats_out, X_out=None, coeffs_out=None, teacher_force=None
@@ -427,22 +432,31 @@ class ARTransformerModel(nn.Module):
         #import ipdb ; ipdb.set_trace()
         #mean_out = mean_out*std+mean
 
-        X_out = self.decoder_std(dec_input, encoder_output).clamp(min=0)
-        X_out = X_out.transpose(0,1)
-        std_out = F.softplus(self.linear_std(X_out))
+        if self.estimate_type in ['variance', 'covariance']:
+            X_out = self.decoder_std(dec_input, encoder_output).clamp(min=0)
+            X_out = X_out.transpose(0,1)
+            std_out = F.softplus(self.linear_std(X_out))
+        if self.estimate_type in ['covariance']:
+            v_out = self.linear_v(X_out)
 
-        std_out = self.linear_std(X_out)
+        #std_out = self.linear_std(X_out)
         #std_out = F.softplus((std_out*std)/2)
-        std_out = F.softplus(std_out)
-        v_out = self.linear_v(X_out)
+        #std_out = F.softplus(std_out)
+        #v_out = self.linear_v(X_out)
 
         mean_out = mean_out + mean
 
-        return (
-            mean_out[..., -self.dec_len:, :],
-            std_out[..., -self.dec_len:, :],
-            v_out[..., -self.dec_len:, :]
-        )
+        if self.estimate_type in ['point']:
+            return mean_out
+        elif self.estimate_type in ['variance']:
+            return (mean_out, std_out)
+        elif self.estimate_type in ['covariance']:
+            return (mean_out, std_out, v_out)
+        #return (
+        #    mean_out[..., -self.dec_len:, :],
+        #    std_out[..., -self.dec_len:, :],
+        #    v_out[..., -self.dec_len:, :]
+        #)
 
 
 class ARCNNTransformerModel(nn.Module):

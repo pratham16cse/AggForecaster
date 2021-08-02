@@ -92,16 +92,28 @@ def train_model(
             teacher_forcing_ratio = args.teacher_forcing_ratio
             teacher_force = True if random.random() <= teacher_forcing_ratio else False
             if 'nar' in model_name:
-                means, stds, vs = net(
+                out = net(
                     feats_in.to(args.device), inputs.to(args.device), coeffs_in.to(args.device),
                     feats_tgt.to(args.device), target.to(args.device), coeffs_tgt.to(args.device)
                 )
+                if net.estimate_type in ['point']:
+                    means = out
+                elif net.estimate_type in ['variance']:
+                    means, stds = out
+                elif net.estimate_type in ['covariance']:
+                    means, stds, vs = out
             else:
-                means, stds, vs = net(
+                out = net(
                     feats_in.to(args.device), inputs.to(args.device), coeffs_in.to(args.device),
                     feats_tgt.to(args.device), target.to(args.device), coeffs_tgt.to(args.device),
                     teacher_force=teacher_force
                 )
+                if net.estimate_type in ['point']:
+                    means = out
+                elif net.estimate_type in ['variance']:
+                    means, stds = out
+                elif net.estimate_type in ['covariance']:
+                    means, stds, vs = out
 
             loss_mse,loss_shape,loss_temporal = torch.tensor(0),torch.tensor(0),torch.tensor(0)
 

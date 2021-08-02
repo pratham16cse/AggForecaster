@@ -71,7 +71,13 @@ class RNNNLLNAR(torch.nn.Module):
 
         mdl = self.base_models_dict['sum'][1]
         with torch.no_grad():
-            pred_mu, pred_d, pred_v = mdl(feats_in, inputs, coeffs_in, feats_tgt)
+            out = mdl(feats_in, inputs, coeffs_in, feats_tgt)
+            if mdl.estimate_type in ['point']:
+                pred_mu = out
+            elif mdl.estimate_type in ['variance']:
+                pred_mu, pred_d = out
+            elif mdl.estimate_type in ['covariance']:
+                pred_mu, pred_d, pred_v = out
         pred_mu = pred_mu.cpu()
 
         if mdl.estimate_type is 'covariance':

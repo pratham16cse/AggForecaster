@@ -39,10 +39,16 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1, unnor
         #    ipdb.set_trace()
         # DO NOT PASS TARGET during forward pass
         with torch.no_grad():
-            batch_pred_mu, batch_pred_d, batch_pred_v = net(
+            out = net(
                 feats_in.to(args.device), batch_inputs.to(args.device), coeffs_in.to(args.device),
                 feats_tgt.to(args.device)
             )
+            if net.estimate_type in ['point']:
+                batch_pred_mu = out
+            elif net.estimate_type in ['variance']:
+                batch_pred_mu, batch_pred_d = out
+            elif net.estimate_type in ['covariance']:
+                batch_pred_mu, batch_pred_d, batch_pred_v = out
         batch_pred_mu = batch_pred_mu.cpu()
         if net.estimate_type == 'covariance':
             batch_pred_d = batch_pred_d.cpu()
