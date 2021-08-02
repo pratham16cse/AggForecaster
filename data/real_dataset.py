@@ -576,55 +576,31 @@ def parse_meteo(dataset_name, N_input, N_output):
             data_train, data_dev, data_test, dev_tsid_map, test_tsid_map
     )
 
-def parse_azure_bak(dataset_name, N_input, N_output):
-    file_path = os.path.join(DATA_DIRS, 'data', 'azure.npy')
-    data = np.load(file_path)
-    data = np.expand_dims(data, axis=-1)
 
-    n = data.shape[1]
-    test_len = 60*24*2
-    dev_len = 60*24
-    train_len = n - dev_len - test_len
-
-    data_train = data[:, :train_len]
-
-    data_dev, data_test = [], []
-    dev_tsid_map, test_tsid_map = {}, {}
-    #for i in range(data.shape[0]):
-    for i in range(2, 3):
-        for j in range(train_len+N_output, train_len+dev_len+1, N_output):
-            if j <= train_len+dev_len:
-                data_dev.append(data[i, :j])
-                dev_tsid_map[len(data_dev)-1] = i
-    #for i in range(data.shape[0]):
-    for i in range(2, 3):
-        for j in range(train_len+dev_len+N_output, n+1, N_output):
-            if j <= n:
-                data_test.append(data[i, :j])
-                test_tsid_map[len(data_test)-1] = i
-
-    data_train = get_list_of_dict_format(data_train)
-    data_dev = get_list_of_dict_format(data_dev)
-    data_test = get_list_of_dict_format(data_test)
-
-    return (
-            data_train, data_dev, data_test, dev_tsid_map, test_tsid_map
-    )
-
-
-def parse_azure(dataset_name, N_input, N_output):
+def parse_azure(dataset_name, N_input, N_output, t2v_type=None):
     file_path = os.path.join(DATA_DIRS, 'data', 'azure.npy')
     data = np.load(file_path)
     data = torch.tensor(data, dtype=torch.float)
     #data = np.expand_dims(data, axis=-1)
 
     n = data.shape[1]
-    test_len = 60*24*2
-    dev_len = 60*24*2
+    test_len = 60*6*8
+    dev_len = 60*6*8
     train_len = n - dev_len - test_len
+
+    if t2v_type is None:
+        feats_date = np.expand_dims(np.arange(0,n), axis=-1) / n * 10.
+    elif 'mdh' in t2v_type:
+        raise NotImplementedError
+    elif 'idx' in t2v_type or 'local' in t2v_type:
+        feats_date = np.expand_dims(np.arange(0,n), axis=-1) / n * 10.
+
+    feats_date = np.tile(feats_date, (data.shape[0], 1, 1))
 
     feats = np.ones((data.shape[0], 1)) * np.expand_dims(np.arange(n), axis=0) % 60
     feats = np.expand_dims(feats, axis=-1)
+
+    feats = np.concatenate([feats, feats_date], axis=-1)
     feats = torch.tensor(feats, dtype=torch.float)
 
     data_train = data[:, :train_len]
@@ -674,6 +650,9 @@ def parse_azure(dataset_name, N_input, N_output):
 
 
     feats_info = {0:(60, 32)}
+    i = len(feats_info)
+    for j in range(i, i+feats_date[0,0].shape[0]):
+        feats_info[j] = (-1, -1)
     coeffs_info = {0: (0, 1)}
 
     return (
@@ -741,15 +720,21 @@ def parse_ett_bak(dataset_name, N_input, N_output):
     )
 
 
-def parse_ett(dataset_name, N_input, N_output):
+def parse_ett(dataset_name, N_input, N_output, t2v_type=None):
     df = pd.read_csv('/mnt/infonas/data/pbansal/ETTm1.csv')
     data = df[['OT']].to_numpy().T
     #data = np.expand_dims(data, axis=-1)
 
     n = data.shape[1]
-    train_len = int(0.7*n)
-    dev_len = int(0.1*n)
-    test_len = n - train_len - dev_len
+    units = n//N_output
+    dev_len = int(0.2*units) * N_output
+    test_len = int(0.2*units) * N_output
+    train_len = n - dev_len - test_len
+    #train_len = int(0.7*n)
+    #dev_len = (int(0.2*n)//N_output) * N_output
+    #test_len = n - train_len - dev_len
+
+    #import ipdb ; ipdb.set_trace()
 
     feats_cont = np.expand_dims(df[['HUFL','HULL','MUFL','MULL','LUFL','LULL']].to_numpy(), axis=0)
     #feats = ((feats - np.mean(feats, axis=0, keepdims=True)) / np.std(feats, axis=0, keepdims=True))
@@ -758,7 +743,28 @@ def parse_ett(dataset_name, N_input, N_output):
     feats_discrete = np.abs((np.ones((data.shape[0], 1)) * np.expand_dims(np.arange(n), axis=0) % 24*4))
     feats_discrete = np.expand_dims(feats_discrete, axis=-1)
 
-    feats = np.concatenate([feats_discrete, feats_cont], axis=-1)
+    cal_date = pd.to_datetime(df['date'])
+    #import ipdb ; ipdb.set_trace()
+    if t2v_type is None:
+        feats_date = np.expand_dims(np.arange(0,n), axis=-1) / n * 10.
+    elif 'mdh' in t2v_type:
+        feats_date = np.stack(
+            [
+                #cal_date.dt.year,
+                cal_date.dt.month,
+                cal_date.dt.day,
+                cal_date.dt.hour,
+                #cal_date.dt.minute
+            ], axis=1
+        )
+    elif 'idx' in t2v_type or 'local' in t2v_type:
+        feats_date = np.expand_dims(np.arange(0,n), axis=-1) / n * 10.
+    #import ipdb ; ipdb.set_trace()
+    feats_date = np.expand_dims(feats_date, axis=0)
+
+    #feats = np.concatenate([feats_discrete, feats_cont], axis=-1)
+    #feats = feats_cont
+    feats = np.concatenate([feats_cont, feats_date], axis=-1)
 
     #data = (data - np.mean(data, axis=0, keepdims=True)).T
 
@@ -799,23 +805,29 @@ def parse_ett(dataset_name, N_input, N_output):
         seq = data_train[i]['target']
         #data_train[i]['coeffs'] = decompose_seq(seq, decompose_type, period, N_output, True)
         data_train[i]['coeffs'] = torch.zeros((len(seq), 1), dtype=torch.float)
-        print('train:', i, len(data_train))
+        #print('train:', i, len(data_train))
     for i in range(len(data_dev)):
         data_dev[i]['feats'] = feats_dev[i]
         #import ipdb ; ipdb.set_trace()
         seq = data_dev[i]['target']
         #data_dev[i]['coeffs'] = decompose_seq(seq, decompose_type, period, N_output, False)
         data_dev[i]['coeffs'] = torch.zeros((len(seq), 1), dtype=torch.float)
-        print('dev:', i, len(data_dev))
+        #print('dev:', i, len(data_dev))
     for i in range(len(data_test)):
         data_test[i]['feats'] = feats_test[i]
         seq = data_test[i]['target']
         #data_test[i]['coeffs'] = decompose_seq(seq, decompose_type, period, N_output, False)
         data_test[i]['coeffs'] = torch.zeros((len(seq), 1), dtype=torch.float)
-        print('test:', i, len(data_test))
+        #print('test:', i, len(data_test))
 
 
-    feats_info = {0:(24*4, 64), 1:(0, 1), 2:(0, 1), 3:(0, 1), 4:(0, 1), 5:(0, 1), 6:(0, 1)}
+    #feats_info = {0:(24*4, 64), 1:(0, 1), 2:(0, 1), 3:(0, 1), 4:(0, 1), 5:(0, 1), 6:(0, 1)}
+    feats_info = {
+        0:(0, 1), 1:(0, 1), 2:(0, 1), 3:(0, 1), 4:(0, 1), 5:(0, 1),
+    }
+    i = len(feats_info)
+    for j in range(i, i+feats_date[0,0].shape[0]):
+        feats_info[j] = (-1, -1)
     coeffs_info = {0:(0, 1), 1:(0, 1), 2:(0, 1)}
 
     return (
@@ -1013,8 +1025,8 @@ def parse_etthourly(dataset_name, N_input, N_output):
     #data = np.expand_dims(data, axis=-1)
 
     n = data.shape[1]
-    train_len = int(0.7*n)
-    dev_len = int(0.1*n)
+    train_len = int(0.6*n)
+    dev_len = int(0.2*n)
     test_len = n - train_len - dev_len
 
     feats_cont = np.expand_dims(df[['HUFL','HULL','MUFL','MULL','LUFL','LULL']].to_numpy(), axis=0)
@@ -1024,7 +1036,8 @@ def parse_etthourly(dataset_name, N_input, N_output):
     feats_discrete = np.abs((np.ones((data.shape[0], 1)) * np.expand_dims(np.arange(n), axis=0) % 24))
     feats_discrete = np.expand_dims(feats_discrete, axis=-1)
 
-    feats = np.concatenate([feats_discrete, feats_cont], axis=-1)
+    #feats = np.concatenate([feats_discrete, feats_cont], axis=-1)
+    feats = feats_discrete
 
     #data = (data - np.mean(data, axis=0, keepdims=True)).T
 
@@ -1077,7 +1090,9 @@ def parse_etthourly(dataset_name, N_input, N_output):
         data_test[i]['coeffs'] = torch.zeros((len(seq), 1), dtype=torch.float)
         #print('test:', i, len(data_test))
 
-    feats_info = {0:(24, 16), 1:(0, 1), 2:(0, 1), 3:(0, 1), 4:(0, 1), 5:(0, 1), 6:(0, 1)}
+    #feats_info = {0:(24, 16), 1:(0, 1), 2:(0, 1), 3:(0, 1), 4:(0, 1), 5:(0, 1), 6:(0, 1)}
+    #feats_info = {0:(24, 1)}
+    feats_info = {0:(0, 1)}
     coeffs_info = {0:(0, 1), 1:(0, 1), 2:(0, 1)}
 
     return (
@@ -1296,7 +1311,7 @@ def parse_m4daily(dataset_name, N_input, N_output):
     )
 
 
-def parse_taxi30min(dataset_name, N_input, N_output):
+def parse_taxi30min(dataset_name, N_input, N_output, t2v_type=None):
 
     num_rolling_windows = 1
     num_val_rolling_windows = 2
@@ -1308,7 +1323,24 @@ def parse_taxi30min(dataset_name, N_input, N_output):
             line_dict = json.loads(line)
             x = line_dict['target']
             data.append(x)
-            x_f = (np.arange(len(x)) % 48)
+            n =  len(x)
+            x_f = np.expand_dims(np.arange(len(x)) % 48, axis=-1)
+            cal_date = pd.date_range(
+                start=line_dict['start'], periods=len(line_dict['target']), freq='H'
+            ).to_series()
+            if t2v_type is None:
+                feats_date = np.expand_dims(np.arange(0,n), axis=-1) / n * 10.
+            elif 'mdh' in t2v_type:
+                feats_date = np.stack(
+                    [
+                        cal_date.dt.month,
+                        cal_date.dt.day,
+                        cal_date.dt.hour
+                    ], axis=1
+                )
+            elif 'idx' in t2v_type or 'local' in t2v_type:
+                feats_date = np.expand_dims(np.arange(0,n), axis=-1) / n * 10.
+            x_f = np.concatenate([x_f, feats_date], axis=-1)
             feats.append(x_f)
 
     data_test, feats_test = [], []
@@ -1318,14 +1350,47 @@ def parse_taxi30min(dataset_name, N_input, N_output):
             x = line_dict['target']
             x = np.array(x)
             data_test.append(torch.tensor(x, dtype=torch.float))
-            x_f = (np.cumsum(np.ones_like(x)) % 48)
-            x_f = np.expand_dims(x_f, axis=-1)
+            x_f = np.expand_dims((np.cumsum(np.ones_like(x)) % 48), axis=-1)
+            n =  len(x)
+            cal_date = pd.date_range(
+                start=line_dict['start'], periods=len(line_dict['target']), freq='H'
+            ).to_series()
+            if t2v_type is None:
+                feats_date = np.expand_dims(np.arange(0,n), axis=-1) / n * 10.
+            elif 'mdh' in t2v_type:
+                feats_date = np.stack(
+                    [
+                        cal_date.dt.month,
+                        cal_date.dt.day,
+                        cal_date.dt.hour
+                    ], axis=1
+                )
+            elif 'idx' in t2v_type or 'local' in t2v_type:
+                feats_date = np.expand_dims(np.arange(0,n), axis=-1) / n * 10.
+            x_f = np.concatenate([x_f, feats_date], axis=-1)
             feats_test.append(torch.tensor(x_f, dtype=torch.float))
 
-    num_ts = 1214 * num_rolling_windows
+    #num_ts = 1214 * num_rolling_windows
+    num_ts = 1214
     #import ipdb ; ipdb.set_trace()
     data_test = data_test[ -num_ts : ]
     feats_test = feats_test[ -num_ts : ]
+    data_test_rw, feats_test_rw = [], []
+    j = num_rolling_windows - 1
+    exclude = j * N_output
+    while exclude>=0:
+        #print(j, exclude)
+        for i in range(len(data_test)):
+            if exclude>0:
+                data_test_rw.append(data_test[i][:-exclude])
+                feats_test_rw.append(feats_test[i][:-exclude])
+            else:
+                data_test_rw.append(data_test[i])
+                feats_test_rw.append(feats_test[i])
+        j-=1
+        exclude = j * N_output
+    data_test, feats_test = data_test_rw, feats_test_rw
+    
     #for i in range(len(data_test)):
     #    assert data[i % len(data)]['lat'] == data_test[i]['lat']
     #    assert data[i % len(data)]['lng'] == data_test[i]['lng']
@@ -1334,7 +1399,7 @@ def parse_taxi30min(dataset_name, N_input, N_output):
 
     data = np.array(data)
     data = torch.tensor(data, dtype=torch.float)
-    feats = torch.tensor(feats, dtype=torch.float).unsqueeze(dim=-1)
+    feats = torch.tensor(feats, dtype=torch.float)
 
     n = data.shape[1]
     dev_len = N_output*num_val_rolling_windows
@@ -1364,102 +1429,23 @@ def parse_taxi30min(dataset_name, N_input, N_output):
         data_train[i]['feats'] = feats_train[i]
         #data_train[i]['feats'] = torch.tensor(feats_train[i])
         seq = data_train[i]['target']
-        #components = seasonal_decompose(
-        #   seq, model='additive', period=48, extrapolate_trend=True
-        #)
-        #stl_components = STL(seq, period=48).fit()
-        #stl_components_2 = STL(seq, period=336).fit()
-        #coeffs = torch.tensor(
-        #    [
-        #        components.trend, components.seasonal, components.resid,
-        #        #stl_components.trend, stl_components.seasonal, stl_components.resid,
-        #        #stl_components_2.trend, stl_components_2.seasonal, stl_components_2.resid
-        #    ]
-        #).transpose(0,1)
-        #coeffs = torch.log(coeffs)
-        #coeffs = (coeffs - coeffs.mean(dim=-1, keepdims=True)) / coeffs.std(dim=-1, keepdims=True)
-        #data_train[i]['coeffs'] = coeffs
         data_train[i]['coeffs'] = torch.zeros((len(data_train[i]['target']), 1), dtype=torch.float)
         #print(i)
     for i in range(len(data_dev)):
         #data_dev[i]['target'] = torch.tensor(data_dev[i]['target'])
         data_dev[i]['feats'] = feats_dev[i]
-        #data_dev[i]['feats'] = torch.tensor(feats_dev[i])
-        #import ipdb ; ipdb.set_trace()
-        #seq_tr = data_dev[i]['target'][:-N_output]
-        #seq_out = data_dev[i]['target'][-N_output:]
-        #components_tr = seasonal_decompose(
-        #   seq_tr, model='additive', period=48, extrapolate_trend=True
-        #)
-        #components_out = seasonal_decompose(
-        #   seq_out, model='additive', period=3, extrapolate_trend=True
-        #)
-        ##stl_components_tr = STL(seq_tr, period=48).fit()
-        ##stl_components_out = STL(seq_out, period=48).fit()
-        ##stl_components_2_tr = STL(seq_tr, period=336).fit()
-        ##stl_components_2_out = STL(seq_out, period=336).fit()
-        #components_tr = torch.tensor(
-        #    [
-        #        components_tr.trend, components_tr.seasonal, components_tr.resid,
-        #        #stl_components_tr.trend, stl_components_tr.seasonal, stl_components_tr.resid,
-        #        #stl_components_2_tr.trend, stl_components_2_tr.seasonal, stl_components_2_tr.resid
-        #    ]
-        #).transpose(0,1)
-        #components_out = torch.tensor(
-        #    [
-        #        components_out.trend, components_out.seasonal, components_out.resid,
-        #        #stl_components_out.trend, stl_components_out.seasonal, stl_components_out.resid,
-        #        #stl_components_2_out.trend, stl_components_2_out.seasonal, stl_components_2_out.resid
-        #    ]
-        #).transpose(0,1)
-
-        ##coeffs = torch.log(coeffs)
-        #means = components_tr.mean(dim=0, keepdims=True)
-        #stds = components_tr.std(dim=0, keepdims=True)
-        #components = torch.cat([components_tr, components_out], dim=0)
-        #components = (components- means) / stds
-        #data_dev[i]['coeffs'] = components
         data_dev[i]['coeffs'] = torch.zeros((len(data_dev[i]['target']), 1), dtype=torch.float)
     for i in range(len(data_test)):
         #data_test[i]['target'] = torch.tensor(data_test[i]['target'])
         data_test[i]['feats'] = feats_test[i]
-        #data_test[i]['feats'] = torch.tensor(feats_test[i])
-        #seq_tr = data_test[i]['target'][:-N_output]
-        #seq_out = data_test[i]['target'][-N_output:]
-        #components_tr = seasonal_decompose(
-        #   seq_tr, model='additive', period=48, extrapolate_trend=True
-        #)
-        #components_out = seasonal_decompose(
-        #   seq_out, model='additive', period=3, extrapolate_trend=True
-        #) # TODO: this component is irrelevant
-        ##stl_components_tr = STL(seq_tr, period=48).fit()
-        ##stl_components_out = STL(seq_out, period=48).fit()
-        ##stl_components_2_tr = STL(seq_tr, period=336).fit()
-        ##stl_components_2_out = STL(seq_out, period=336).fit()
-        #components_tr = torch.tensor(
-        #    [
-        #        components_tr.trend, components_tr.seasonal, components_tr.resid,
-        #        #stl_components_tr.trend, stl_components_tr.seasonal, stl_components_tr.resid,
-        #        #stl_components_2_tr.trend, stl_components_2_tr.seasonal, stl_components_2_tr.resid
-        #    ]
-        #).transpose(0,1)
-        #components_out = torch.tensor(
-        #    [
-        #        components_out.trend, components_out.seasonal, components_out.resid,
-        #        #stl_components_out.trend, stl_components_out.seasonal, stl_components_out.resid,
-        #        #stl_components_2_out.trend, stl_components_2_out.seasonal, stl_components_2_out.resid
-        #    ]
-        #).transpose(0,1)
-
-        ##coeffs = torch.log(coeffs)
-        #means = components_tr.mean(dim=0, keepdims=True)
-        #stds = components_tr.std(dim=0, keepdims=True)
-        #components = torch.cat([components_tr, components_out], dim=0)
-        #components = (components- means) / stds
-        #data_test[i]['coeffs'] = components
         data_test[i]['coeffs'] = torch.zeros((len(data_test[i]['target']), 1), dtype=torch.float)
 
-    feats_info = {0:(48, 8)}
+    feats_info = {
+        0:(48, 16),
+    }
+    i = len(feats_info)
+    for j in range(i, i+data_train[0]['feats'].shape[-1]):
+        feats_info[j] = (-1, -1)
     #coeffs_info = {0:(0, 1), 1:(0, 1), 2:(0, 1)}
     coeffs_info = {0:(0, 1)}
 

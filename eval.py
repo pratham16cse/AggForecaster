@@ -56,6 +56,8 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1, unnor
             )
             batch_pred_std = torch.diagonal(
                 dist.covariance_matrix, dim1=-2, dim2=-1).unsqueeze(dim=-1)
+            if unnorm:
+                batch_pred_std = norm.unnormalize(batch_pred_std[..., 0], ids=ids, is_var=True).unsqueeze(-1)
         elif net.estimate_type == 'variance':
             batch_pred_std = batch_pred_d.cpu()
             batch_pred_v = torch.ones_like(batch_pred_mu) * 1e-9
@@ -156,10 +158,15 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1, unnor
             )
     loss_crps_part = np.array(loss_crps_part)
 
-    dist = torch.distributions.lowrank_multivariate_normal.LowRankMultivariateNormal(
-        pred_mu.squeeze(dim=-1), pred_v, pred_std.squeeze(dim=-1)
-    )
-    loss_nll = -torch.mean(dist.log_prob(target.squeeze(dim=-1))).item()
+    # NLL
+    if net.estimate_type == 'covariance':
+        dist = torch.distributions.lowrank_multivariate_normal.LowRankMultivariateNormal(
+            pred_mu.squeeze(dim=-1), pred_v, pred_std.squeeze(dim=-1)
+        )
+        loss_nll = -torch.mean(dist.log_prob(target.squeeze(dim=-1))).item()
+    elif net.estimate_type == 'variance':
+        dist = torch.distributions.normal.Normal(pred_mu, pred_std)
+        loss_nll = -torch.mean(dist.log_prob(target)).item()
 
     quantiles = torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9], dtype=torch.float)
     #quantiles = torch.tensor([0.1, 0.5, 0.9], dtype=torch.float)

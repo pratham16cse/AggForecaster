@@ -114,7 +114,12 @@ def train_model(
                 loss = loss_mse
             if model_name in ['seq2seqdilate']:
                 loss, loss_shape, loss_temporal = dilate_loss(target, means, args.alpha, args.gamma, args.device)
-            if model_name in ['seq2seqnll', 'convnll', 'rnn-nll-nar', 'rnn-nll-ar', 'trans-nll-ar']:
+            if model_name in [
+                    'seq2seqnll', 'convnll', 'rnn-nll-nar', 'rnn-nll-ar', 'trans-nll-ar',
+                    'trans-fnll-ar', 'rnn-fnll-nar',
+                    'transm-nll-nar', 'transm-fnll-nar',
+                    'transda-nll-nar', 'transda-fnll-nar',
+                ]:
                 if args.train_twostage:
                     if curr_epoch < epochs/2:
                         stds = torch.ones_like(stds)
@@ -123,14 +128,28 @@ def train_model(
 
                 if net.estimate_type == 'covariance':
                     order = torch.randperm(target.shape[1])
-                    means_shuffled = torch.squeeze(means[..., order, :].view(-1, args.v_dim), dim=-1)
-                    stds_shuffled = torch.squeeze(stds[..., order, :].view(-1, args.v_dim), dim=-1)
-                    vs_shuffled = vs[..., order, :].view(-1, args.v_dim, vs.shape[-1])
-                    target_shuffled = torch.squeeze(target[..., order, :].view(-1, args.v_dim), dim=-1)
+                    #order = torch.arange(target.shape[1])
+                    #means_shuffled = means[..., order, :].view(-1, args.b).squeeze(dim=-1)
+                    #stds_shuffled = stds[..., order, :].view(-1, args.b).squeeze(dim=-1)
+                    #vs_shuffled = vs[..., order, :].view(-1, args.b, vs.shape[-1])
+                    #target_shuffled = target[..., order, :].view(-1, args.b).squeeze(dim=-1)
+                    means_shuffled = torch.cat(
+                        torch.split(means[..., order, :], args.b, dim=1), dim=0
+                    ).squeeze(dim=-1)
+                    stds_shuffled = torch.cat(
+                        torch.split(stds[..., order, :], args.b, dim=1), dim=0
+                    ).squeeze(dim=-1)
+                    vs_shuffled = torch.cat(
+                        torch.split(vs[..., order, :], args.b, dim=1), dim=0
+                    )
+                    target_shuffled = torch.cat(
+                        torch.split(target[..., order, :], args.b, dim=1), dim=0
+                    ).squeeze(dim=-1)
                     dist = torch.distributions.lowrank_multivariate_normal.LowRankMultivariateNormal(
                         means_shuffled, vs_shuffled, stds_shuffled
                     )
                     loss = -torch.mean(dist.log_prob(target_shuffled))
+                    #import ipdb ; ipdb.set_trace()
                 elif net.estimate_type == 'variance':
                     dist = torch.distributions.normal.Normal(means, stds)
                     loss = torch.mean(-dist.log_prob(target))
@@ -139,10 +158,10 @@ def train_model(
                     loss += criterion(target, means)
             if model_name in ['rnn-aggnll-nar']:
                 order = torch.randperm(target.shape[1])
-                means_shuffled = torch.squeeze(means[..., order, :].view(-1, args.v_dim), dim=-1)
-                stds_shuffled = torch.squeeze(stds[..., order, :].view(-1, args.v_dim), dim=-1)
-                vs_shuffled = vs[..., order, :].view(-1, args.v_dim, vs.shape[-1])
-                target_shuffled = torch.squeeze(target[..., order, :].view(-1, args.v_dim), dim=-1)
+                means_shuffled = torch.squeeze(means[..., order, :].view(-1, args.b), dim=-1)
+                stds_shuffled = torch.squeeze(stds[..., order, :].view(-1, args.b), dim=-1)
+                vs_shuffled = vs[..., order, :].view(-1, args.b, vs.shape[-1])
+                target_shuffled = torch.squeeze(target[..., order, :].view(-1, args.b), dim=-1)
                 dist = torch.distributions.lowrank_multivariate_normal.LowRankMultivariateNormal(
                     means_shuffled, vs_shuffled, stds_shuffled
                 )
@@ -196,7 +215,7 @@ def train_model(
             optimizer.step()
             et = time.time()
             epoch_time += (et-st)
-            print('Time required for batch ', i, ':', et-st, 'loss:', loss.item(), teacher_forcing_ratio, teacher_force)
+            print('Time required for batch ', i, ':', et-st, 'loss:', loss.item(), teacher_forcing_ratio, teacher_force, curr_patience)
             #if i>=100:
             #    break
             if (curr_step % args.print_every == 0):

@@ -89,8 +89,10 @@ parser.add_argument('--v_dim', type=int, default=5,
                    help='Dimension of V vector in LowRankGaussian')
 
 
-parser.add_argument('--use_time_features', action='store_true', default=False,
-                    help='Use time features derived from calendar-date')
+parser.add_argument('--use_feats', action='store_true', default=False,
+                    help='Use time features derived from calendar-date and other covariates')
+parser.add_argument('--t2v_type', type=str,
+                    help='time2vec type', default=None)
 parser.add_argument('--use_coeffs', action='store_true', default=False,
                     help='Use coefficients obtained by decomposition, wavelet, etc..')
 
@@ -120,7 +122,7 @@ parser.add_argument('--device', type=str,
 parser.add_argument('--leak_agg_targets', action='store_true', default=False,
                     help='If True, aggregate targets are leaked to inference models')
 
-parser.add_argument('--patience', type=int, default=50,
+parser.add_argument('--patience', type=int, default=20,
                     help='Stop the training if no improvement shown for these many \
                           consecutive steps.')
 #parser.add_argument('--seed', type=int,
@@ -158,9 +160,15 @@ args.base_model_names = [
 #    'nbeatsd-mse-nar'
 #    'rnn-mse-ar',
 #    'rnn-mse-nar',
-#    'rnn-nll-nar',
 #    'rnn-nll-ar',
     'trans-nll-ar',
+#    'trans-fnll-ar',
+#    'rnn-nll-nar',
+#    'rnn-fnll-nar',
+#    'transm-nll-nar',
+#    'transm-fnll-nar',
+#    'transda-nll-nar',
+#    'transda-fnll-nar',
 ]
 args.aggregate_methods = [
     'sum',
@@ -247,12 +255,24 @@ if 'rnn-nll-ar' in args.base_model_names:
     args.inference_model_names.append('rnn-nll-ar_kl-st')
 if 'trans-nll-ar' in args.base_model_names:
     args.inference_model_names.append('TRANS-NLL-AR')
-    args.inference_model_names.append('trans-nll-ar_opt-sum')
-    args.inference_model_names.append('trans-nll-ar_optcf-sum')
-    args.inference_model_names.append('trans-nll-ar_opt-slope')
-    args.inference_model_names.append('trans-nll-ar_opt-st')
-    args.inference_model_names.append('trans-nll-ar_kl-sum')
-    args.inference_model_names.append('trans-nll-ar_kl-st')
+    #args.inference_model_names.append('trans-nll-ar_opt-sum')
+    #args.inference_model_names.append('trans-nll-ar_optcf-sum')
+    #args.inference_model_names.append('trans-nll-ar_opt-slope')
+    #args.inference_model_names.append('trans-nll-ar_opt-st')
+    #args.inference_model_names.append('trans-nll-ar_kl-sum')
+if 'trans-fnll-ar' in args.base_model_names:
+    args.inference_model_names.append('TRANS-FNLL-AR')
+   #args.inference_model_names.append('trans-nll-ar_kl-st')
+if 'rnn-fnll-nar' in args.base_model_names:
+    args.inference_model_names.append('RNN-FNLL-NAR')
+if 'transm-nll-nar' in args.base_model_names:
+    args.inference_model_names.append('TRANSM-NLL-NAR')
+if 'transm-fnll-nar' in args.base_model_names:
+    args.inference_model_names.append('TRANSM-FNLL-NAR')
+if 'transda-nll-nar' in args.base_model_names:
+    args.inference_model_names.append('TRANSDA-NLL-NAR')
+if 'transda-fnll-nar' in args.base_model_names:
+    args.inference_model_names.append('TRANSDA-FNLL-NAR')
 
 
 
@@ -271,59 +291,90 @@ else:
 #import ipdb ; ipdb.set_trace()
 if args.dataset_name == 'ett':
     args.epochs = 20
-    args.N_input = 192
-    args.N_output = 192
-    args.K_list = [6]
-    args.saved_models_dir = 'saved_models_ett_d192'
-    args.output_dir = 'Outputs_ett_d192_klnorm'
-    args.normalize = 'zscore_per_series'
-    args.learning_rate = 0.0001
-    args.batch_size = 64
-    args.hidden_size = 128
-    args.num_grulstm_layers = 1
-    args.device = 'cuda:0'
-    #python main.py ett --epochs 20 --N_input 192 --N_output 192 --K_list 6 --saved_models_dir saved_models_ett_d192 --output_dir Outputs_ett_d192_klnorm --normalize zscore_per_series --learning_rate 0.0001 --batch_size 64 --hidden_size 128 --num_grulstm_layers 1 --device cuda:0
-
-elif args.dataset_name == 'taxi30min':
-    args.epochs = 20
-    args.N_input = 336
-    args.N_output = 168
-    args.K_list = [12]
-    args.saved_models_dir = 'saved_models_taxi30min_d168'
-    args.output_dir = 'Outputs_taxi30min_d168_klnorm'
-    args.normalize = 'zscore_per_series'
-    args.learning_rate = 0.0001
-    args.batch_size = 512
-    args.hidden_size = 128
-    args.num_grulstm_layers = 1
-    args.v_dim = 1
-    args.device = 'cuda:0'
-elif args.dataset_name == 'azure':
-    args.epochs = 20
-    args.N_input = 1440
-    args.N_output = 1440
-    args.K_list = [60]
-    args.saved_models_dir = 'saved_models_azure_d1440'
-    args.output_dir = 'Outputs_azure_d1440'
-    args.normalize = 'zscore_per_series'
-    args.learning_rate = 0.0001
-    args.batch_size = 256
-    args.hidden_size = 128
-    args.num_grulstm_layers = 1
-    args.device = 'cuda:0'
-elif args.dataset_name == 'Solar':
-    args.epochs = 20
-    args.N_input = 336
-    args.N_output = 168
-    args.K_list = [12]
-    args.saved_models_dir = 'saved_models_Solar_d168_normzscore'
-    args.output_dir = 'Outputs_Solar_d168_normzscore_klnorm'
+    #args.N_input = 192
+    #args.N_output = 192
+    #args.K_list = [6]
+    #args.saved_models_dir = 'saved_models_ett_d192_b24_e192_corrshuffle_bs128_seplayers_nodeczeros_nodecconv_t2v_usefeats_t2vglobal_idx_val20'
+    #args.output_dir = 'Outputs_ett_d192_klnorm_b24_e192_corrshuffle_bs128_seplayers_nodeczeros_nodecconv_t2v_usefeats_t2vglobal_idx_val20'
     args.normalize = 'zscore_per_series'
     args.learning_rate = 0.0001
     args.batch_size = 64
     args.hidden_size = 128
     args.num_grulstm_layers = 1
     args.v_dim = 4
+    args.b = 24
+    args.use_feats = True
+    #args.t2v_type = 'idx'
+    #args.device = 'cuda:2'
+    #python main.py ett --epochs 20 --N_input 192 --N_output 192 --K_list 6 --saved_models_dir saved_models_ett_d192 --output_dir Outputs_ett_d192_klnorm --normalize zscore_per_series --learning_rate 0.0001 --batch_size 64 --hidden_size 128 --num_grulstm_layers 1 --device cuda:0
+
+elif args.dataset_name == 'taxi30min':
+    args.epochs = 20
+    #args.N_input = 336
+    #args.N_output = 168
+    #args.K_list = [12]
+    #args.saved_models_dir = 'saved_models_taxi30min_d168_b48_pefix_e336_corrshuffle_bs128_seplayers_nodeczeros_nodecconv_t2vglobal_mdh_parti'
+    #args.output_dir = 'Outputs_taxi30min_d168_klnorm_b48_pefix_e336_corrshuffle_bs128_seplayers_nodeczeros_nodecconv_t2vglobal_mdh_parti'
+    args.normalize = 'zscore_per_series'
+    args.learning_rate = 0.0001
+    args.batch_size = 128
+    args.hidden_size = 128
+    args.num_grulstm_layers = 1
+    args.v_dim = 4
+    args.b = 48
+    #args.t2v_type = 'mdh_parti'
+    #args.device = 'cuda:2'
+
+elif args.dataset_name == 'etthourly':
+    args.epochs = 50
+    args.N_input = 168
+    args.N_output = 168
+    #args.K_list = [12]
+    args.saved_models_dir = 'saved_models_etthourly_noextrafeats_d168_b24_pefix_e168_val20_corrshuffle_seplayers_nodeczeros_nodecconv_t2v'
+    args.output_dir = 'Outputs_etthourly_noextrafeats_d168_klnorm_b24_pefix_e168_val20_corrshuffle_seplayers_nodeczeros_nodecconv_t2v'
+    args.normalize = 'zscore_per_series'
+    args.learning_rate = 0.0001
+    args.batch_size = 64
+    args.hidden_size = 128
+    args.num_grulstm_layers = 1
+    args.v_dim = 4
+    args.b = 24
+    #args.print_every = 5 # TODO: Only for aggregate models
+    args.device = 'cuda:2'
+
+elif args.dataset_name == 'azure':
+    args.epochs = 20
+    #args.N_input = 720
+    #args.N_output = 360
+    #args.K_list = [60]
+    #args.saved_models_dir = 'saved_models_azure_d360_e720_usefeats_bs128_normsame'
+    #args.output_dir = 'Outputs_azure_d360_e720_usefeats_bs128_normsame'
+    #args.normalize = 'zscore_per_series'
+    args.normalize = 'same'
+    args.learning_rate = 0.0001
+    args.batch_size = 128
+    args.hidden_size = 128
+    args.num_grulstm_layers = 1
+    args.v_dim = 4
+    args.b = 10
+    args.use_feats - True
+    #args.t2v_type = None
+    #args.device = 'cuda:0'
+
+elif args.dataset_name == 'Solar':
+    args.epochs = 20
+    args.N_input = 336
+    args.N_output = 168
+    #args.K_list = [12]
+    args.saved_models_dir = 'saved_models_Solar_d168_b4_e336_corrshuffle_seplayers_nodeczeros_nodecconv_t2v'
+    args.output_dir = 'Outputs_Solar_d168_normzscore_klnorm_b4_e336_corrshuffle_seplayers_nodeczeros_nodecconv_t2v'
+    args.normalize = 'zscore_per_series'
+    args.learning_rate = 0.0001
+    args.batch_size = 64
+    args.hidden_size = 128
+    args.num_grulstm_layers = 1
+    args.v_dim = 4
+    args.b = 4
     args.device = 'cuda:1'
 elif args.dataset_name == 'Traffic911':
     args.epochs = 20
@@ -340,24 +391,12 @@ elif args.dataset_name == 'Traffic911':
     args.v_dim = 1
     args.print_every = 5 # TODO: Only for aggregate models
     args.device = 'cuda:0'
-elif args.dataset_name == 'etthourly':
-    args.epochs = 20
-    args.N_input = 336
-    args.N_output = 168
-    args.K_list = [12]
-    args.saved_models_dir = 'saved_models_etthourly_d168'
-    args.output_dir = 'Outputs_etthourly_d168_klnorm'
-    args.normalize = 'zscore_per_series'
-    args.learning_rate = 0.0001
-    args.batch_size = 64
-    args.hidden_size = 128
-    args.num_grulstm_layers = 1
-    args.v_dim = 1
-    args.print_every = 5 # TODO: Only for aggregate models
-    args.device = 'cuda:1'
 
 if 1 not in args.K_list:
     args.K_list = [1] + args.K_list
+
+print('Command Line Arguments:')
+print(args)
 
 #import ipdb ; ipdb.set_trace()
 
@@ -439,9 +478,14 @@ for base_model_name in args.base_model_names:
                 estimate_type = 'point'
             elif base_model_name in [
                 'seq2seqnll', 'convnll', 'trans-q-nar', 'rnn-q-nar', 'rnn-q-ar',
-                'rnn-nll-nar', 'rnn-nll-ar', 'rnn-aggnll-nar', 'trans-nll-ar'
+                'rnn-nll-nar', 'rnn-nll-ar', 'rnn-aggnll-nar', 'trans-nll-ar',
+                'transm-nll-nar', 'transda-nll-nar',
             ]:
                 estimate_type = 'variance'
+            elif base_model_name in [
+                'rnn-fnll-nar', 'trans-fnll-ar', 'transm-nll-nar', 'transda-fnll-nar'
+            ]:
+                estimate_type = 'covariance'
 
             saved_models_dir = os.path.join(
                 args.saved_models_dir,
@@ -893,6 +937,30 @@ for inf_model_name in args.inference_model_names:
         inf_net = inf_models.KLInference(
             args.K_list, base_models_dict, ['sum', 'slope'], device=args.device, opt_normspace=opt_normspace
         )
+
+    elif inf_model_name in ['TRANS-FNLL-AR']:
+        base_models_dict = base_models['trans-fnll-ar']
+        inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device)
+
+    elif inf_model_name in ['RNN-FNLL-NAR']:
+        base_models_dict = base_models['rnn-fnll-nar']
+        inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device)
+
+    elif inf_model_name in ['TRANSM-NLL-NAR']:
+        base_models_dict = base_models['transm-nll-nar']
+        inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device)
+
+    elif inf_model_name in ['TRANSM-FNLL-NAR']:
+        base_models_dict = base_models['transm-fnll-nar']
+        inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device)
+
+    elif inf_model_name in ['TRANSDA-NLL-NAR']:
+        base_models_dict = base_models['transda-nll-nar']
+        inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device)
+
+    elif inf_model_name in ['TRANSDA-FNLL-NAR']:
+        base_models_dict = base_models['transda-fnll-nar']
+        inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device)
 
     elif inf_model_name in ['RNN-AGGNLL-NAR']:
         base_models_dict = base_models['rnn-aggnll-nar']['sum']

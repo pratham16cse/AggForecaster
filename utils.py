@@ -26,29 +26,29 @@ def copy_and_overwrite(from_path, to_path):
     shutil.copytree(from_path, to_path)
 
 def clean_trial_checkpoints(result):
-	for trl in result.trials:
-		trl_paths = result.get_trial_checkpoints_paths(trl,'metric')
-		for path, _ in trl_paths:
-			shutil.rmtree(path)
+    for trl in result.trials:
+        trl_paths = result.get_trial_checkpoints_paths(trl,'metric')
+        for path, _ in trl_paths:
+            shutil.rmtree(path)
 
 def add_metrics_to_dict(
-	metrics_dict, model_name, metric_mse, metric_dtw, metric_tdi, metric_crps, metric_mae,
+    metrics_dict, model_name, metric_mse, metric_dtw, metric_tdi, metric_crps, metric_mae,
         metric_smape
 ):
-	if model_name not in metrics_dict:
-		metrics_dict[model_name] = dict()
+    if model_name not in metrics_dict:
+        metrics_dict[model_name] = dict()
 
-	metrics_dict[model_name]['mse'] = metric_mse
-	metrics_dict[model_name]['dtw'] = metric_dtw
-	metrics_dict[model_name]['tdi'] = metric_tdi
-	metrics_dict[model_name]['crps'] = metric_crps
-	metrics_dict[model_name]['mae'] = metric_mae
-	metrics_dict[model_name]['smape'] = metric_smape
+    metrics_dict[model_name]['mse'] = metric_mse
+    metrics_dict[model_name]['dtw'] = metric_dtw
+    metrics_dict[model_name]['tdi'] = metric_tdi
+    metrics_dict[model_name]['crps'] = metric_crps
+    metrics_dict[model_name]['mae'] = metric_mae
+    metrics_dict[model_name]['smape'] = metric_smape
 
-	return metrics_dict
+    return metrics_dict
 
 def add_base_metrics_to_dict(
-	metrics_dict, agg_method, K, model_name, metric_mse, metric_dtw, metric_tdi, metric_crps, metric_mae,
+    metrics_dict, agg_method, K, model_name, metric_mse, metric_dtw, metric_tdi, metric_crps, metric_mae,
 ):
     if agg_method not in metrics_dict:
         metrics_dict[agg_method] = {}
@@ -68,41 +68,41 @@ def add_base_metrics_to_dict(
 
 
 def write_arr_to_file(
-	output_dir, inf_model_name, inputs, targets, pred_mu, pred_std, pred_d, pred_v
+    output_dir, inf_model_name, inputs, targets, pred_mu, pred_std, pred_d, pred_v
 ):
 
-	# Files are saved in .npy format
-	np.save(os.path.join(output_dir, inf_model_name + '_' + 'pred_mu'), pred_mu)
-	np.save(os.path.join(output_dir, inf_model_name + '_' + 'pred_std'), pred_std)
-	np.save(os.path.join(output_dir, inf_model_name + '_' + 'pred_d'), pred_d)
-	np.save(os.path.join(output_dir, inf_model_name + '_' + 'pred_v'), pred_v)
+    # Files are saved in .npy format
+    np.save(os.path.join(output_dir, inf_model_name + '_' + 'pred_mu'), pred_mu)
+    np.save(os.path.join(output_dir, inf_model_name + '_' + 'pred_std'), pred_std)
+    np.save(os.path.join(output_dir, inf_model_name + '_' + 'pred_d'), pred_d)
+    np.save(os.path.join(output_dir, inf_model_name + '_' + 'pred_v'), pred_v)
 
-	for fname in os.listdir(output_dir):
-	    if fname.endswith('targets.npy'):
-	        break
-	else:
-		np.save(os.path.join(output_dir, 'inputs'), inputs)
-		np.save(os.path.join(output_dir, 'targets'), targets)
+    for fname in os.listdir(output_dir):
+        if fname.endswith('targets.npy'):
+            break
+    else:
+        np.save(os.path.join(output_dir, 'inputs'), inputs)
+        np.save(os.path.join(output_dir, 'targets'), targets)
 
 def write_aggregate_preds_to_file(
-	output_dir, base_model_name, agg_method, level, inputs, targets, pred_mu, pred_std
+    output_dir, base_model_name, agg_method, level, inputs, targets, pred_mu, pred_std
 ):
 
-	# Files are saved in .npy format
-	sep = '__'
-	model_str = base_model_name + sep + agg_method + sep  + str(level)
-	agg_str = agg_method + sep  + str(level)
+    # Files are saved in .npy format
+    sep = '__'
+    model_str = base_model_name + sep + agg_method + sep  + str(level)
+    agg_str = agg_method + sep  + str(level)
 
-	np.save(os.path.join(output_dir, model_str + sep + 'pred_mu'), pred_mu.detach().numpy())
-	np.save(os.path.join(output_dir, model_str + sep + 'pred_std'), pred_std.detach().numpy())
+    np.save(os.path.join(output_dir, model_str + sep + 'pred_mu'), pred_mu.detach().numpy())
+    np.save(os.path.join(output_dir, model_str + sep + 'pred_std'), pred_std.detach().numpy())
 
-	suffix = agg_str + sep + 'targets.npy'
-	for fname in os.listdir(output_dir):
-	    if fname.endswith(suffix):
-	        break
-	else:
-		np.save(os.path.join(output_dir, agg_str + sep + 'inputs'), inputs.detach().numpy())
-		np.save(os.path.join(output_dir, agg_str + sep + 'targets'), targets.detach().numpy())
+    suffix = agg_str + sep + 'targets.npy'
+    for fname in os.listdir(output_dir):
+        if fname.endswith(suffix):
+            break
+    else:
+        np.save(os.path.join(output_dir, agg_str + sep + 'inputs'), inputs.detach().numpy())
+        np.save(os.path.join(output_dir, agg_str + sep + 'targets'), targets.detach().numpy())
 
 
 class Normalizer(object):
@@ -201,43 +201,43 @@ class Normalizer(object):
         return data_unnorm
 
 def normalize(data, norm=None, norm_type=None, is_var=False):
-	if norm is None:
-		assert norm_type is not None
+    if norm is None:
+        assert norm_type is not None
 
-		if norm_type in ['same']: # No normalization 
-			scale = np.ones_like(np.mean(data, axis=(1), keepdims=True))
-			shift = np.zeros_like(scale)
-			norm = np.concatenate([shift, scale], axis=-1)
-		if norm_type in ['avg']: # mean of entire data
-			norm = np.mean(data, axis=(0, 1))
-			scale = np.ones_like(np.mean(data, axis=(1), keepdims=True)) * norm
-			shift = np.zeros_like(scale)
-			norm = np.concatenate([shift, scale], axis=-1)
-		elif norm_type in ['avg_per_series']: # per-series mean
-			scale = np.mean(data, axis=(1), keepdims=True)
-			shift = np.zeros_like(scale)
-			norm = np.concatenate([shift, scale], axis=-1)
-		elif norm_type in ['quantile90']: # 0.9 quantile of entire data
-			scale = np.quantile(data, 0.90, axis=(0, 1))
-			shift = np.zeros_like(scale)
-			norm = np.concatenate([shift, scale], axis=-1)
-		elif norm_type in ['std']: # std of entire data
-			scale = np.std(data, axis=(0,1))
-			shift = np.zeros_like(scale)
-			norm = np.concatenate([shift, scale], axis=-1)
-		elif norm_type in ['zscore_per_series']: # z-score at each series
-			mean = np.mean(data, axis=(1), keepdims=True) # per-series mean
-			std = np.std(data, axis=(1), keepdims=True) # per-series std
-			norm = np.concatenate([mean, std], axis=-1)
+        if norm_type in ['same']: # No normalization 
+            scale = np.ones_like(np.mean(data, axis=(1), keepdims=True))
+            shift = np.zeros_like(scale)
+            norm = np.concatenate([shift, scale], axis=-1)
+        if norm_type in ['avg']: # mean of entire data
+            norm = np.mean(data, axis=(0, 1))
+            scale = np.ones_like(np.mean(data, axis=(1), keepdims=True)) * norm
+            shift = np.zeros_like(scale)
+            norm = np.concatenate([shift, scale], axis=-1)
+        elif norm_type in ['avg_per_series']: # per-series mean
+            scale = np.mean(data, axis=(1), keepdims=True)
+            shift = np.zeros_like(scale)
+            norm = np.concatenate([shift, scale], axis=-1)
+        elif norm_type in ['quantile90']: # 0.9 quantile of entire data
+            scale = np.quantile(data, 0.90, axis=(0, 1))
+            shift = np.zeros_like(scale)
+            norm = np.concatenate([shift, scale], axis=-1)
+        elif norm_type in ['std']: # std of entire data
+            scale = np.std(data, axis=(0,1))
+            shift = np.zeros_like(scale)
+            norm = np.concatenate([shift, scale], axis=-1)
+        elif norm_type in ['zscore_per_series']: # z-score at each series
+            mean = np.mean(data, axis=(1), keepdims=True) # per-series mean
+            std = np.std(data, axis=(1), keepdims=True) # per-series std
+            norm = np.concatenate([mean, std], axis=-1)
 
-	if is_var:
- 		data_norm = data * 1.0 / norm[ ... , :, 1:2 ]
-	else:
- 		data_norm = (data - norm[...,:,0:1])* 1.0/norm[...,:,1:2]
-	#data_norm = data * 10.0/norm
-	#import ipdb
-	#ipdb.set_trace()
-	return data_norm, norm
+    if is_var:
+        data_norm = data * 1.0 / norm[ ... , :, 1:2 ]
+    else:
+        data_norm = (data - norm[...,:,0:1])* 1.0/norm[...,:,1:2]
+    #data_norm = data * 10.0/norm
+    #import ipdb
+    #ipdb.set_trace()
+    return data_norm, norm
 
 def unnormalize(data, norm, is_var):
     if is_var:
@@ -251,13 +251,13 @@ sqz = lambda x: np.squeeze(x, axis=-1)
 expand = lambda x: np.expand_dims(x, axis=-1)
 
 def shift_timestamp(ts, offset):
-	result = ts + offset * ts.freq
-	return pd.Timestamp(result, freq=ts.freq)
+    result = ts + offset * ts.freq
+    return pd.Timestamp(result, freq=ts.freq)
 
 def get_date_range(start, seq_len):
-	end = shift_timestamp(start, seq_len)
-	full_date_range = pd.date_range(start, end, freq=start.freq)
-	return full_date_range
+    end = shift_timestamp(start, seq_len)
+    full_date_range = pd.date_range(start, end, freq=start.freq)
+    return full_date_range
 
 def get_granularity(freq_str: str):
     """
@@ -378,578 +378,578 @@ def aggregate_seqs_slope(seqs, K, is_var=False):
     return np.array(agg_seqs)
 
 def aggregate_data_wavelet(
-	wavelet_levels, train_input, train_target, dev_input, dev_target,
-	test_input, test_target
+    wavelet_levels, train_input, train_target, dev_input, dev_target,
+    test_input, test_target
 ):
 
-	agg_train_input = pywt.wavedec(sqz(train_input), 'haar', level=wavelet_levels, mode='periodic')
-	agg_train_target = pywt.wavedec(sqz(train_target), 'haar', level=wavelet_levels, mode='periodic')
-	agg_dev_input = pywt.wavedec(sqz(dev_input), 'haar', level=wavelet_levels, mode='periodic')
-	agg_dev_target = pywt.wavedec(sqz(dev_target), 'haar', level=wavelet_levels, mode='periodic')
-	agg_test_input = pywt.wavedec(sqz(test_input), 'haar', level=wavelet_levels, mode='periodic')
-	agg_test_target = pywt.wavedec(sqz(test_target), 'haar', level=wavelet_levels, mode='periodic')
+    agg_train_input = pywt.wavedec(sqz(train_input), 'haar', level=wavelet_levels, mode='periodic')
+    agg_train_target = pywt.wavedec(sqz(train_target), 'haar', level=wavelet_levels, mode='periodic')
+    agg_dev_input = pywt.wavedec(sqz(dev_input), 'haar', level=wavelet_levels, mode='periodic')
+    agg_dev_target = pywt.wavedec(sqz(dev_target), 'haar', level=wavelet_levels, mode='periodic')
+    agg_test_input = pywt.wavedec(sqz(test_input), 'haar', level=wavelet_levels, mode='periodic')
+    agg_test_target = pywt.wavedec(sqz(test_target), 'haar', level=wavelet_levels, mode='periodic')
 
-	agg_train_input = [expand(x) for x in agg_train_input]
-	agg_train_target = [expand(x) for x in agg_train_target]
-	agg_dev_input = [expand(x) for x in agg_dev_input]
-	agg_dev_target = [expand(x) for x in agg_dev_target]
-	agg_test_input = [expand(x) for x in agg_test_input]
-	agg_test_target = [expand(x) for x in agg_test_target]
+    agg_train_input = [expand(x) for x in agg_train_input]
+    agg_train_target = [expand(x) for x in agg_train_target]
+    agg_dev_input = [expand(x) for x in agg_dev_input]
+    agg_dev_target = [expand(x) for x in agg_dev_target]
+    agg_test_input = [expand(x) for x in agg_test_input]
+    agg_test_target = [expand(x) for x in agg_test_target]
 
-	#import ipdb
-	#ipdb.set_trace()
+    #import ipdb
+    #ipdb.set_trace()
 
-	return (
-		agg_train_input, agg_train_target, agg_dev_input, agg_dev_target,
-		agg_test_input, agg_test_target
-	)
+    return (
+        agg_train_input, agg_train_target, agg_dev_input, agg_dev_target,
+        agg_test_input, agg_test_target
+    )
 
 
 class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
-	"""docstring for TimeSeriesDatasetOfflineAggregate"""
-	def __init__(
-		self, data, enc_len, dec_len, stride, aggregation_type, K,
-		use_time_features, which_split, tsid_map=None, input_norm=None, target_norm=None,
-		norm_type=None,
-	):
-		super(TimeSeriesDatasetOfflineAggregate, self).__init__()
+    """docstring for TimeSeriesDatasetOfflineAggregate"""
+    def __init__(
+        self, data, enc_len, dec_len, stride, aggregation_type, K,
+        use_feats, which_split, tsid_map=None, input_norm=None, target_norm=None,
+        norm_type=None,
+    ):
+        super(TimeSeriesDatasetOfflineAggregate, self).__init__()
 
-		assert enc_len%K == 0
-		assert dec_len%K == 0
+        assert enc_len%K == 0
+        assert dec_len%K == 0
 
-		print('Creating dataset:', aggregation_type, K)
-		self._enc_len = enc_len
-		self._dec_len = dec_len
-		self._base_enc_len = enc_len
-		self._base_dec_len = dec_len
-		#self.num_values = len(data[0]['target'][0])
-		self.stride = stride
-		self.aggregation_type = aggregation_type
-		self.K = K
-		self.input_norm = input_norm
-		self.target_norm = target_norm
-		self.norm_type = norm_type
-		self.use_time_features = use_time_features
-		self.tsid_map = tsid_map
+        print('Creating dataset:', aggregation_type, K)
+        self._enc_len = enc_len
+        self._dec_len = dec_len
+        self._base_enc_len = enc_len
+        self._base_dec_len = dec_len
+        #self.num_values = len(data[0]['target'][0])
+        self.stride = stride
+        self.aggregation_type = aggregation_type
+        self.K = K
+        self.input_norm = input_norm
+        self.target_norm = target_norm
+        self.norm_type = norm_type
+        self.use_feats = use_feats
+        self.tsid_map = tsid_map
 
-		# Perform aggregation if level != 1
-		data_agg = []
-		for i in range(0, len(data)):
-			#print(i, len(data))
-			ex = data[i]['target']
-			ex = ex[ len(ex)%self.K: ]
-			ex_f = data[i]['feats']
-			ex_f = ex_f[ len(ex)%self.K: ]
-			ex_c = data[i]['coeffs']
-			ex_c = ex_c[ len(ex)%self.K: ]
+        # Perform aggregation if level != 1
+        data_agg = []
+        for i in range(0, len(data)):
+            #print(i, len(data))
+            ex = data[i]['target']
+            ex = ex[ len(ex)%self.K: ]
+            ex_f = data[i]['feats']
+            ex_f = ex_f[ len(ex)%self.K: ]
+            ex_c = data[i]['coeffs']
+            ex_c = ex_c[ len(ex)%self.K: ]
 
-			#bp = np.arange(1,len(ex), 1)
-			bp = [(i, self.K) for i in np.arange(0, len(ex), self.K)]
+            #bp = np.arange(1,len(ex), 1)
+            bp = [(i, self.K) for i in np.arange(0, len(ex), self.K)]
 
-			if self.K != 1:
-				ex_agg, ex_f_agg, ex_c_agg = [], [], []
-				if self.aggregation_type in ['sum']:
-					for b in range(len(bp)):
-						s, e = bp[b][0], bp[b][0]+bp[b][1]
-						ex_agg.append(self.aggregate_data(ex[s:e]))
+            if self.K != 1:
+                ex_agg, ex_f_agg, ex_c_agg = [], [], []
+                if self.aggregation_type in ['sum']:
+                    for b in range(len(bp)):
+                        s, e = bp[b][0], bp[b][0]+bp[b][1]
+                        ex_agg.append(self.aggregate_data(ex[s:e]))
 
-				elif self.aggregation_type in ['slope']:
-					for b in range(len(bp)):
-						s, e = bp[b][0], bp[b][0]+bp[b][1]
-						ex_agg.append(self.aggregate_data_slope(ex[s:e]))
+                elif self.aggregation_type in ['slope']:
+                    for b in range(len(bp)):
+                        s, e = bp[b][0], bp[b][0]+bp[b][1]
+                        ex_agg.append(self.aggregate_data_slope(ex[s:e]))
 
-				for b in range(len(bp)):
-					s, e = bp[b][0], bp[b][0]+bp[b][1]
-					ex_f_agg.append(self.aggregate_data(ex_f[s:e]))
-					ex_c_agg.append(self.aggregate_data(ex_c[s:e]))
+                for b in range(len(bp)):
+                    s, e = bp[b][0], bp[b][0]+bp[b][1]
+                    ex_f_agg.append(self.aggregate_data(ex_f[s:e]))
+                    ex_c_agg.append(self.aggregate_data(ex_c[s:e]))
 
-				gaps = [bp_i[1] for bp_i in bp]
-				data_agg.append(
-					{
-						'target':torch.stack(ex_agg, dim=0),
-						'feats':torch.stack(ex_f_agg, dim=0),
-						'coeffs':torch.stack(ex_c_agg, dim=0),
-						'bp': bp,
-						'gaps': np.array(gaps),
-					}
-				)
+                gaps = [bp_i[1] for bp_i in bp]
+                data_agg.append(
+                    {
+                        'target':torch.stack(ex_agg, dim=0),
+                        'feats':torch.stack(ex_f_agg, dim=0),
+                        'coeffs':torch.stack(ex_c_agg, dim=0),
+                        'bp': bp,
+                        'gaps': np.array(gaps),
+                    }
+                )
 
-			else:
-				ex_agg = ex
-				ex_f_agg = ex_f
-				ex_c_agg = ex_c
+            else:
+                ex_agg = ex
+                ex_f_agg = ex_f
+                ex_c_agg = ex_c
 
-				gaps = [bp_i[1] for bp_i in bp]
-				data_agg.append(
-					{
-						'target':ex_agg,
-						'feats':ex_f_agg,
-						'coeffs':ex_c_agg,
-						'bp': bp,
-						'gaps': np.array(gaps),
-					}
-				)
+                gaps = [bp_i[1] for bp_i in bp]
+                data_agg.append(
+                    {
+                        'target':ex_agg,
+                        'feats':ex_f_agg,
+                        'coeffs':ex_c_agg,
+                        'bp': bp,
+                        'gaps': np.array(gaps),
+                    }
+                )
 
-		if self.input_norm is None:
-			assert norm_type is not None
-			data_for_norm = []
-			for i in range(0, len(data)):
-				ex = data_agg[i]['target']
-				data_for_norm.append(torch.FloatTensor(ex))
-			#data_for_norm = to_float_tensor(data_for_norm).squeeze(-1)
+        if self.input_norm is None:
+            assert norm_type is not None
+            data_for_norm = []
+            for i in range(0, len(data)):
+                ex = data_agg[i]['target']
+                data_for_norm.append(torch.FloatTensor(ex))
+            #data_for_norm = to_float_tensor(data_for_norm).squeeze(-1)
 
-			self.input_norm = Normalizer(data_for_norm, norm_type=self.norm_type)
-			self.target_norm = self.input_norm
-			del data_for_norm
-
-
-		self.data = data_agg
-		self.indices = []
-		for i in range(0, len(self.data)):
-			if stride == -1:
-				j = 0
-				while j < len(self.data[i]['target']):
-					if j+self.enc_len+self.dec_len <= len(self.data[i]['target']):
-						self.indices.append((i, j))
-					#s = (np.random.randint(0, min(self.dec_len, 50)))
-					s = 1
-					j += s
-			else:
-				#if self.K > 1:
-				#import ipdb
-				#ipdb.set_trace()
-				if which_split == 'dev':
-					start_idx = len(self.data[i]['target']) - self.enc_len - self.dec_len
-					for j in range(start_idx, len(self.data[i]['target']), 1):
-						if j+self.enc_len+self.dec_len <= len(self.data[i]['target']):
-							self.indices.append((i, j))
-				if which_split == 'test':
-					j = len(self.data[i]['target']) - self.enc_len - self.dec_len
-					self.indices.append((i, j))
-
-		#import ipdb
-		#ipdb.set_trace()
-
-	@property
-	def enc_len(self):
-		if self.K > 1:
-			el = (self._enc_len // self.K) * 2
-		else:
-			el = self._enc_len
-		return el
-	
-	@property
-	def dec_len(self):
-		if self.K > 1:
-			dl = self._dec_len // self.K
-		else:
-			dl = self._dec_len
-		return dl
-
-	@property
-	def input_size(self):
-		#input_size = len(self.data[0]['target'][0])
-		input_size = 1
-		if self.use_time_features:
-			# Multiplied by 2 because of sin and cos
-			input_size += len(self.data[0]['feats'][0])
-		return input_size
-
-	@property
-	def output_size(self):
-		#output_size = len(self.data[0]['target'][0])
-		output_size = 1
-		return output_size
-
-	@property
-	def base_enc_len(self):
-		return self._base_enc_len
-	
-	@property
-	def base_dec_len(self):
-		return self._base_dec_len
-
-	def __len__(self):
-		return len(self.indices)
-
-	def __getitem__(self, idx):
-		#print(self.indices)
-		ts_id = self.indices[idx][0]
-		pos_id = self.indices[idx][1]	
-
-		ex_input = self.data[ts_id]['target'][ pos_id : pos_id+self.enc_len ]
-		ex_target = self.data[ts_id]['target'][ pos_id+self.enc_len : pos_id+self.enc_len+self.dec_len ]
-
-		input_bp = self.data[ts_id]['bp'][ pos_id : pos_id+self.enc_len ]
-		target_bp = self.data[ts_id]['bp'][ pos_id+self.enc_len : pos_id+self.enc_len+self.dec_len ]
-		input_gaps = self.data[ts_id]['gaps'][ pos_id : pos_id+self.enc_len ]
-		target_gaps = self.data[ts_id]['gaps'][ pos_id+self.enc_len : pos_id+self.enc_len+self.dec_len ]
-
-		#print('after', ex_input.shape, ex_target.shape, ts_id, pos_id)
-		if self.tsid_map is None:
-			mapped_id = ts_id
-		else:
-			mapped_id = self.tsid_map[ts_id]
-		ex_input = self.input_norm.normalize(ex_input, mapped_id)#.unsqueeze(-1)
-		ex_target = self.target_norm.normalize(ex_target, mapped_id)#.unsqueeze(-1)
-		#ex_norm = self.input_norm[mapped_id]
-		#ex_norm = ex_input
-
-		ex_input_feats = self.data[ts_id]['feats'][ pos_id : pos_id+self.enc_len ]
-		ex_target_feats = self.data[ts_id]['feats'][ pos_id+self.enc_len : pos_id+self.enc_len+self.dec_len ]
-
-		ex_input_coeffs = self.data[ts_id]['coeffs'][ pos_id : pos_id+self.enc_len ]
-		ex_target_coeffs = self.data[ts_id]['coeffs'][ pos_id+self.enc_len : pos_id+self.enc_len+self.dec_len ]
-
-		#print(type(ex_input), type(ex_target), type(ex_input_feats), type(ex_target_feats))
-		#ex_input = to_float_tensor(ex_input)
-		#ex_target = to_float_tensor(ex_target)
-		ex_input_feats = ex_input_feats
-		ex_target_feats = ex_target_feats
-		ex_input_coeffs = ex_input_coeffs
-		ex_target_coeffs = ex_target_coeffs
-		#ex_norm = to_float_tensor(ex_norm)
-		input_bp = to_float_tensor(np.expand_dims(input_bp, axis=-1))
-		target_bp = to_float_tensor(np.expand_dims(target_bp, axis=-1))
-		input_gaps = to_float_tensor(np.expand_dims(input_gaps, axis=-1))
-		target_gaps = to_float_tensor(np.expand_dims(target_gaps, axis=-1))
-		#print(
-		#	ex_input.shape, ex_target.shape,
-		#	input_bp.shape, target_bp.shape,
-		#	input_gaps.shape, target_gaps.shape
-		#)
-
-		#print(
-		#	ex_input.shape, ex_target.shape,
-		#	ex_input_feats.shape, ex_target_feats.shape,
-		#	ex_input_coeffs.shape, ex_target_coeffs.shape,
-		#	input_gaps.shape, target_gaps.shape,
-		#)
-		i_res = self.enc_len - len(ex_input)
-		ex_input = torch.cat(
-			[torch.zeros([i_res] + list(ex_input.shape[1:])), ex_input],
-			dim=0
-		)
-		ex_input_feats = torch.cat(
-			[torch.zeros([i_res] +list(ex_input_feats.shape[1:])), ex_input_feats],
-			dim=0
-		)
-		ex_input_coeffs = torch.cat(
-			[torch.zeros([i_res] + list(ex_input_coeffs.shape[1:])), ex_input_coeffs],
-			dim=0
-		)
-		input_gaps = torch.cat(
-			[torch.zeros([i_res] + list(input_gaps.shape[1:])), input_gaps],
-			dim=0
-		)
-
-		return (
-			ex_input, ex_target,
-			ex_input_feats, ex_target_feats,
-			mapped_id,
-			torch.FloatTensor([ts_id, pos_id]),
-			ex_input_coeffs, ex_target_coeffs,
-			input_gaps, target_gaps
-		)
-
-	def collate_fn(self, batch):
-		num_items = len(batch[0])
-		batched = [[] for _ in range(len(batch[0]))]
-		for i in range(len(batch)):
-			for j in range(len(batch[i])):
-				batched[j].append(torch.tensor(batch[i][j]))
-
-		batched_t = []
-		for i, b in enumerate(batched):
-			batched_t.append(torch.stack(b, dim=0))
-			#print(i)
-		#batched = [torch.stack(b, dim=0) for b in batched]
-
-		return batched_t
+            self.input_norm = Normalizer(data_for_norm, norm_type=self.norm_type)
+            self.target_norm = self.input_norm
+            del data_for_norm
 
 
-	def aggregate_data(self, values):
-		return values.mean(dim=0)
+        self.data = data_agg
+        self.indices = []
+        for i in range(0, len(self.data)):
+            if stride == -1:
+                j = 0
+                while j < len(self.data[i]['target']):
+                    if j+self.enc_len+self.dec_len <= len(self.data[i]['target']):
+                        self.indices.append((i, j))
+                    #s = (np.random.randint(0, min(self.dec_len, 50)))
+                    s = 1
+                    j += s
+            else:
+                #if self.K > 1:
+                #import ipdb
+                #ipdb.set_trace()
+                if which_split == 'dev':
+                    start_idx = len(self.data[i]['target']) - self.enc_len - self.dec_len
+                    for j in range(start_idx, len(self.data[i]['target']), 1):
+                        if j+self.enc_len+self.dec_len <= len(self.data[i]['target']):
+                            self.indices.append((i, j))
+                if which_split == 'test':
+                    j = len(self.data[i]['target']) - self.enc_len - self.dec_len
+                    self.indices.append((i, j))
 
-	def aggregate_data_slope(self, y, compute_b=False):
-		x = torch.arange(y.shape[0], dtype=torch.float)
-		m_x = x.mean()
-		s_xx = ((x-m_x)**2).sum()
+        #import ipdb
+        #ipdb.set_trace()
 
-		#m_y = np.mean(y, axis=0)
-		#s_xy = np.sum((x-m_x)*(y-m_y), axis=0)
-		#w = s_xy/s_xx
+    @property
+    def enc_len(self):
+        if self.K > 1:
+            el = (self._enc_len // self.K) * 2
+        else:
+            el = self._enc_len
+        return el
+    
+    @property
+    def dec_len(self):
+        if self.K > 1:
+            dl = self._dec_len // self.K
+        else:
+            dl = self._dec_len
+        return dl
 
-		a = (x - m_x) / s_xx
-		w = (a*y).sum()
+    @property
+    def input_size(self):
+        #input_size = len(self.data[0]['target'][0])
+        input_size = 1
+        if self.use_feats:
+            # Multiplied by 2 because of sin and cos
+            input_size += len(self.data[0]['feats'][0])
+        return input_size
 
-		if compute_b:
-			b = m_y - w*m_x
-			return w, b
-		else:
-			return w
+    @property
+    def output_size(self):
+        #output_size = len(self.data[0]['target'][0])
+        output_size = 1
+        return output_size
 
-	def aggregate_data_wavelet(self, values, K):
-		coeffs = pywt.wavedec(sqz(values), 'haar', level=self.wavelet_levels, mode='periodic')
-		coeffs = [expand(x) for x in coeffs]
-		coeffs = coeffs[-(K-1)]
-		return coeffs
+    @property
+    def base_enc_len(self):
+        return self._base_enc_len
+    
+    @property
+    def base_dec_len(self):
+        return self._base_dec_len
 
-	def get_time_features(self, start, seqlen):
-		end = shift_timestamp(start, seqlen)
-		full_date_range = pd.date_range(start, end, freq=start.freq)
-		chunk_range = full_date_range[ pos_id : pos_id+self._enc_len ]
+    def __len__(self):
+        return len(self.indices)
 
-	def get_avg_date(self, date_range):
-		return date_range.mean(axis=0)
+    def __getitem__(self, idx):
+        #print(self.indices)
+        ts_id = self.indices[idx][0]
+        pos_id = self.indices[idx][1]   
 
-	def get_avg_feats(self, time_feats):
-		return np.mean(time_feats, axis=0)
+        ex_input = self.data[ts_id]['target'][ pos_id : pos_id+self.enc_len ]
+        ex_target = self.data[ts_id]['target'][ pos_id+self.enc_len : pos_id+self.enc_len+self.dec_len ]
 
-	def calculate_error(self, segment):
-		w, b = self.aggregate_data_slope(segment, compute_b=True)
-		x = np.expand_dims(np.arange(len(segment)), axis=1)
-		segment_pred = w*x+b
+        input_bp = self.data[ts_id]['bp'][ pos_id : pos_id+self.enc_len ]
+        target_bp = self.data[ts_id]['bp'][ pos_id+self.enc_len : pos_id+self.enc_len+self.dec_len ]
+        input_gaps = self.data[ts_id]['gaps'][ pos_id : pos_id+self.enc_len ]
+        target_gaps = self.data[ts_id]['gaps'][ pos_id+self.enc_len : pos_id+self.enc_len+self.dec_len ]
 
-		return np.max(np.abs(segment - segment_pred)) # Using max error
+        #print('after', ex_input.shape, ex_target.shape, ts_id, pos_id)
+        if self.tsid_map is None:
+            mapped_id = ts_id
+        else:
+            mapped_id = self.tsid_map[ts_id]
+        ex_input = self.input_norm.normalize(ex_input, mapped_id)#.unsqueeze(-1)
+        ex_target = self.target_norm.normalize(ex_target, mapped_id)#.unsqueeze(-1)
+        #ex_norm = self.input_norm[mapped_id]
+        #ex_norm = ex_input
 
-	def smooth(self, series):
-		#smoother = SpectralSmoother(smooth_fraction=0.4, pad_len=10)
-		smoother = ExponentialSmoother(window_len=10, alpha=0.15)
-		series = np.concatenate((np.zeros((10, 1)), series), axis=0)
-		series_smooth = np.expand_dims(smoother.smooth(series[:, 0]).smooth_data[0], axis=-1)
-		return series_smooth
+        ex_input_feats = self.data[ts_id]['feats'][ pos_id : pos_id+self.enc_len ]
+        ex_target_feats = self.data[ts_id]['feats'][ pos_id+self.enc_len : pos_id+self.enc_len+self.dec_len ]
+
+        ex_input_coeffs = self.data[ts_id]['coeffs'][ pos_id : pos_id+self.enc_len ]
+        ex_target_coeffs = self.data[ts_id]['coeffs'][ pos_id+self.enc_len : pos_id+self.enc_len+self.dec_len ]
+
+        #print(type(ex_input), type(ex_target), type(ex_input_feats), type(ex_target_feats))
+        #ex_input = to_float_tensor(ex_input)
+        #ex_target = to_float_tensor(ex_target)
+        ex_input_feats = ex_input_feats
+        ex_target_feats = ex_target_feats
+        ex_input_coeffs = ex_input_coeffs
+        ex_target_coeffs = ex_target_coeffs
+        #ex_norm = to_float_tensor(ex_norm)
+        input_bp = to_float_tensor(np.expand_dims(input_bp, axis=-1))
+        target_bp = to_float_tensor(np.expand_dims(target_bp, axis=-1))
+        input_gaps = to_float_tensor(np.expand_dims(input_gaps, axis=-1))
+        target_gaps = to_float_tensor(np.expand_dims(target_gaps, axis=-1))
+        #print(
+        #   ex_input.shape, ex_target.shape,
+        #   input_bp.shape, target_bp.shape,
+        #   input_gaps.shape, target_gaps.shape
+        #)
+
+        #print(
+        #   ex_input.shape, ex_target.shape,
+        #   ex_input_feats.shape, ex_target_feats.shape,
+        #   ex_input_coeffs.shape, ex_target_coeffs.shape,
+        #   input_gaps.shape, target_gaps.shape,
+        #)
+        i_res = self.enc_len - len(ex_input)
+        ex_input = torch.cat(
+            [torch.zeros([i_res] + list(ex_input.shape[1:])), ex_input],
+            dim=0
+        )
+        ex_input_feats = torch.cat(
+            [torch.zeros([i_res] +list(ex_input_feats.shape[1:])), ex_input_feats],
+            dim=0
+        )
+        ex_input_coeffs = torch.cat(
+            [torch.zeros([i_res] + list(ex_input_coeffs.shape[1:])), ex_input_coeffs],
+            dim=0
+        )
+        input_gaps = torch.cat(
+            [torch.zeros([i_res] + list(input_gaps.shape[1:])), input_gaps],
+            dim=0
+        )
+
+        return (
+            ex_input, ex_target,
+            ex_input_feats, ex_target_feats,
+            mapped_id,
+            torch.FloatTensor([ts_id, pos_id]),
+            ex_input_coeffs, ex_target_coeffs,
+            input_gaps, target_gaps
+        )
+
+    def collate_fn(self, batch):
+        num_items = len(batch[0])
+        batched = [[] for _ in range(len(batch[0]))]
+        for i in range(len(batch)):
+            for j in range(len(batch[i])):
+                batched[j].append(torch.tensor(batch[i][j]))
+
+        batched_t = []
+        for i, b in enumerate(batched):
+            batched_t.append(torch.stack(b, dim=0))
+            #print(i)
+        #batched = [torch.stack(b, dim=0) for b in batched]
+
+        return batched_t
+
+
+    def aggregate_data(self, values):
+        return values.mean(dim=0)
+
+    def aggregate_data_slope(self, y, compute_b=False):
+        x = torch.arange(y.shape[0], dtype=torch.float)
+        m_x = x.mean()
+        s_xx = ((x-m_x)**2).sum()
+
+        #m_y = np.mean(y, axis=0)
+        #s_xy = np.sum((x-m_x)*(y-m_y), axis=0)
+        #w = s_xy/s_xx
+
+        a = (x - m_x) / s_xx
+        w = (a*y).sum()
+
+        if compute_b:
+            b = m_y - w*m_x
+            return w, b
+        else:
+            return w
+
+    def aggregate_data_wavelet(self, values, K):
+        coeffs = pywt.wavedec(sqz(values), 'haar', level=self.wavelet_levels, mode='periodic')
+        coeffs = [expand(x) for x in coeffs]
+        coeffs = coeffs[-(K-1)]
+        return coeffs
+
+    def get_time_features(self, start, seqlen):
+        end = shift_timestamp(start, seqlen)
+        full_date_range = pd.date_range(start, end, freq=start.freq)
+        chunk_range = full_date_range[ pos_id : pos_id+self._enc_len ]
+
+    def get_avg_date(self, date_range):
+        return date_range.mean(axis=0)
+
+    def get_avg_feats(self, time_feats):
+        return np.mean(time_feats, axis=0)
+
+    def calculate_error(self, segment):
+        w, b = self.aggregate_data_slope(segment, compute_b=True)
+        x = np.expand_dims(np.arange(len(segment)), axis=1)
+        segment_pred = w*x+b
+
+        return np.max(np.abs(segment - segment_pred)) # Using max error
+
+    def smooth(self, series):
+        #smoother = SpectralSmoother(smooth_fraction=0.4, pad_len=10)
+        smoother = ExponentialSmoother(window_len=10, alpha=0.15)
+        series = np.concatenate((np.zeros((10, 1)), series), axis=0)
+        series_smooth = np.expand_dims(smoother.smooth(series[:, 0]).smooth_data[0], axis=-1)
+        return series_smooth
 
 
 class DataProcessor(object):
-	"""docstring for DataProcessor"""
-	def __init__(self, args):
-		super(DataProcessor, self).__init__()
-		self.args = args
+    """docstring for DataProcessor"""
+    def __init__(self, args):
+        super(DataProcessor, self).__init__()
+        self.args = args
 
-		if args.dataset_name in ['synth']:
-			# parameters
-			N = 500
-			sigma = 0.01
-	
-			# Load synthetic dataset
-			(
-				X_train_input, X_train_target,
-				X_dev_input, X_dev_target,
-				X_test_input, X_test_target,
-				train_bkp, dev_bkp, test_bkp,
-			) = create_synthetic_dataset(N, args.N_input, args.N_output, sigma)
-	
-		elif args.dataset_name in ['sin']:
-			N = 100
-			sigma = 0.01
-	
-			(
-				data_train, data_dev, data_test,
-				dev_tsid_map, test_tsid_map
-			) = create_sin_dataset(N, args.N_input, args.N_output, sigma)
-	
-		elif args.dataset_name in ['ECG5000']:
-			(
-				X_train_input, X_train_target,
-				X_dev_input, X_dev_target,
-				X_test_input, X_test_target,
-				train_bkp, dev_bkp, test_bkp,
-				data_train, data_dev, data_test
-			) = parse_ECG5000(args.N_input, args.N_output)
-	
-		elif args.dataset_name in ['Traffic']:
-			(
-				data_train, data_dev, data_test,
-				dev_tsid_map, test_tsid_map
-			) = parse_Traffic(args.N_input, args.N_output)
-	
-		elif args.dataset_name in ['Taxi']:
-			(
-				X_train_input, X_train_target,
-				X_dev_input, X_dev_target,
-				X_test_input, X_test_target,
-				train_bkp, dev_bkp, test_bkp,
-				data_train, data_dev, data_test
-			) = parse_Taxi(args.N_input, args.N_output)
-	
-		elif args.dataset_name in ['Traffic911']:
-			(
-				data_train, data_dev, data_test,
-				dev_tsid_map, test_tsid_map,
+        if args.dataset_name in ['synth']:
+            # parameters
+            N = 500
+            sigma = 0.01
+    
+            # Load synthetic dataset
+            (
+                X_train_input, X_train_target,
+                X_dev_input, X_dev_target,
+                X_test_input, X_test_target,
+                train_bkp, dev_bkp, test_bkp,
+            ) = create_synthetic_dataset(N, args.N_input, args.N_output, sigma)
+    
+        elif args.dataset_name in ['sin']:
+            N = 100
+            sigma = 0.01
+    
+            (
+                data_train, data_dev, data_test,
+                dev_tsid_map, test_tsid_map
+            ) = create_sin_dataset(N, args.N_input, args.N_output, sigma)
+    
+        elif args.dataset_name in ['ECG5000']:
+            (
+                X_train_input, X_train_target,
+                X_dev_input, X_dev_target,
+                X_test_input, X_test_target,
+                train_bkp, dev_bkp, test_bkp,
+                data_train, data_dev, data_test
+            ) = parse_ECG5000(args.N_input, args.N_output)
+    
+        elif args.dataset_name in ['Traffic']:
+            (
+                data_train, data_dev, data_test,
+                dev_tsid_map, test_tsid_map
+            ) = parse_Traffic(args.N_input, args.N_output)
+    
+        elif args.dataset_name in ['Taxi']:
+            (
+                X_train_input, X_train_target,
+                X_dev_input, X_dev_target,
+                X_test_input, X_test_target,
+                train_bkp, dev_bkp, test_bkp,
+                data_train, data_dev, data_test
+            ) = parse_Taxi(args.N_input, args.N_output)
+    
+        elif args.dataset_name in ['Traffic911']:
+            (
+                data_train, data_dev, data_test,
+                dev_tsid_map, test_tsid_map,
                                 feats_info, coeffs_info
-			) = parse_Traffic911(args.N_input, args.N_output)
-		elif args.dataset_name in ['Exchange', 'Wiki']:
-			(
-				data_train, data_dev, data_test,
-				dev_tsid_map, test_tsid_map
-			) = parse_gc_datasets(args.dataset_name, args.N_input, args.N_output)
+            ) = parse_Traffic911(args.N_input, args.N_output)
+        elif args.dataset_name in ['Exchange', 'Wiki']:
+            (
+                data_train, data_dev, data_test,
+                dev_tsid_map, test_tsid_map
+            ) = parse_gc_datasets(args.dataset_name, args.N_input, args.N_output)
 
-		elif args.dataset_name in ['weather']:
-			(
-				data_train, data_dev, data_test,
-				dev_tsid_map, test_tsid_map
-			) = parse_weather(args.dataset_name, args.N_input, args.N_output)
-		elif args.dataset_name in ['bafu']:
-			(
-				data_train, data_dev, data_test,
-				dev_tsid_map, test_tsid_map
-			) = parse_bafu(args.dataset_name, args.N_input, args.N_output)
-		elif args.dataset_name in ['meteo']:
-			(
-				data_train, data_dev, data_test,
-				dev_tsid_map, test_tsid_map
-			) = parse_meteo(args.dataset_name, args.N_input, args.N_output)
-		elif args.dataset_name in ['azure']:
-			(
-				data_train, data_dev, data_test,
-				dev_tsid_map, test_tsid_map,
+        elif args.dataset_name in ['weather']:
+            (
+                data_train, data_dev, data_test,
+                dev_tsid_map, test_tsid_map
+            ) = parse_weather(args.dataset_name, args.N_input, args.N_output)
+        elif args.dataset_name in ['bafu']:
+            (
+                data_train, data_dev, data_test,
+                dev_tsid_map, test_tsid_map
+            ) = parse_bafu(args.dataset_name, args.N_input, args.N_output)
+        elif args.dataset_name in ['meteo']:
+            (
+                data_train, data_dev, data_test,
+                dev_tsid_map, test_tsid_map
+            ) = parse_meteo(args.dataset_name, args.N_input, args.N_output)
+        elif args.dataset_name in ['azure']:
+            (
+                data_train, data_dev, data_test,
+                dev_tsid_map, test_tsid_map,
                                 feats_info, coeffs_info
-			) = parse_azure(args.dataset_name, args.N_input, args.N_output)
-		elif args.dataset_name in ['ett']:
-			(
-				data_train, data_dev, data_test,
-				dev_tsid_map, test_tsid_map,
+            ) = parse_azure(args.dataset_name, args.N_input, args.N_output, t2v_type=args.t2v_type)
+        elif args.dataset_name in ['ett']:
+            (
+                data_train, data_dev, data_test,
+                dev_tsid_map, test_tsid_map,
                                 feats_info, coeffs_info
-			) = parse_ett(args.dataset_name, args.N_input, args.N_output)
-		elif args.dataset_name in ['sin_noisy']:
-			(
-				data_train, data_dev, data_test,
-				dev_tsid_map, test_tsid_map,
+            ) = parse_ett(args.dataset_name, args.N_input, args.N_output, t2v_type=args.t2v_type)
+        elif args.dataset_name in ['sin_noisy']:
+            (
+                data_train, data_dev, data_test,
+                dev_tsid_map, test_tsid_map,
                                 feats_info, coeffs_info
-			) = parse_sin_noisy(args.dataset_name, args.N_input, args.N_output)
-		elif args.dataset_name in ['Solar']:
-			(
-				data_train, data_dev, data_test,
-				dev_tsid_map, test_tsid_map,
+            ) = parse_sin_noisy(args.dataset_name, args.N_input, args.N_output)
+        elif args.dataset_name in ['Solar']:
+            (
+                data_train, data_dev, data_test,
+                dev_tsid_map, test_tsid_map,
                                 feats_info, coeffs_info
-			) = parse_Solar(args.dataset_name, args.N_input, args.N_output)
-		elif args.dataset_name in ['etthourly']:
-			(
-				data_train, data_dev, data_test,
-				dev_tsid_map, test_tsid_map,
+            ) = parse_Solar(args.dataset_name, args.N_input, args.N_output)
+        elif args.dataset_name in ['etthourly']:
+            (
+                data_train, data_dev, data_test,
+                dev_tsid_map, test_tsid_map,
                                 feats_info, coeffs_info
-			) = parse_etthourly(args.dataset_name, args.N_input, args.N_output)
-		elif args.dataset_name in ['m4hourly']:
-			(
-				data_train, data_dev, data_test,
-				dev_tsid_map, test_tsid_map,
+            ) = parse_etthourly(args.dataset_name, args.N_input, args.N_output)
+        elif args.dataset_name in ['m4hourly']:
+            (
+                data_train, data_dev, data_test,
+                dev_tsid_map, test_tsid_map,
                                 feats_info, coeffs_info
-			) = parse_m4hourly(args.dataset_name, args.N_input, args.N_output)
-		elif args.dataset_name in ['m4daily']:
-			(
-				data_train, data_dev, data_test,
-				dev_tsid_map, test_tsid_map,
+            ) = parse_m4hourly(args.dataset_name, args.N_input, args.N_output)
+        elif args.dataset_name in ['m4daily']:
+            (
+                data_train, data_dev, data_test,
+                dev_tsid_map, test_tsid_map,
                                 feats_info, coeffs_info
-			) = parse_m4daily(args.dataset_name, args.N_input, args.N_output)
-		elif args.dataset_name in ['taxi30min']:
-			(
-				data_train, data_dev, data_test,
-				dev_tsid_map, test_tsid_map,
+            ) = parse_m4daily(args.dataset_name, args.N_input, args.N_output)
+        elif args.dataset_name in ['taxi30min']:
+            (
+                data_train, data_dev, data_test,
+                dev_tsid_map, test_tsid_map,
                                 feats_info, coeffs_info
-			) = parse_taxi30min(args.dataset_name, args.N_input, args.N_output)
-
-
-		if args.use_time_features:
-			assert 'feats' in data_train[0].keys()
-
-		self.data_train = data_train
-		self.data_dev = data_dev
-		self.data_test = data_test
-		self.dev_tsid_map = dev_tsid_map
-		self.test_tsid_map = test_tsid_map
-		self.feats_info = feats_info
-		self.coeffs_info = coeffs_info
+            ) = parse_taxi30min(args.dataset_name, args.N_input, args.N_output, t2v_type=args.t2v_type)
 
 
-	def get_processed_data(self, args, agg_method, K):
+        if args.use_feats:
+            assert 'feats' in data_train[0].keys()
 
- 		if agg_method in ['wavelet']:
- 			wavelet_levels = args.wavelet_levels
- 			K_list = range(1, args.wavelet_levels+1+1+1)
- 			# +1 : wavedec returns args.wavelet_levels+1 coefficients
- 			# +1 : Extra slot for base values
- 			# +1 : Because starting index is 1.
- 		else:
- 			wavelet_levels = None
- 			K_list = args.K_list
+        self.data_train = data_train
+        self.data_dev = data_dev
+        self.data_test = data_test
+        self.dev_tsid_map = dev_tsid_map
+        self.test_tsid_map = test_tsid_map
+        self.feats_info = feats_info
+        self.coeffs_info = coeffs_info
+
+
+    def get_processed_data(self, args, agg_method, K):
+
+        if agg_method in ['wavelet']:
+            wavelet_levels = args.wavelet_levels
+            K_list = range(1, args.wavelet_levels+1+1+1)
+            # +1 : wavedec returns args.wavelet_levels+1 coefficients
+            # +1 : Extra slot for base values
+            # +1 : Because starting index is 1.
+        else:
+            wavelet_levels = None
+            K_list = args.K_list
  
  
- 		lazy_dataset_train = TimeSeriesDatasetOfflineAggregate(
- 			self.data_train, args.N_input, args.N_output, -1,
- 			agg_method, K, which_split='train',
- 			norm_type=args.normalize,
- 			use_time_features=args.use_time_features,
- 		)
- 		print('Number of chunks in train data:', len(lazy_dataset_train))
- 		norm = lazy_dataset_train.input_norm
- 		dev_norm, test_norm = norm, norm
- 		#for i in range(len(self.data_dev)):
- 		#	dev_norm.append(norm[self.dev_tsid_map[i]])
- 		#for i in range(len(self.data_test)):
- 		#	test_norm.append(norm[self.test_tsid_map[i]])
- 		#dev_norm, test_norm = np.stack(dev_norm), np.stack(test_norm)
- 		#import ipdb
- 		#ipdb.set_trace()
- 		lazy_dataset_dev = TimeSeriesDatasetOfflineAggregate(
- 			self.data_dev, args.N_input, args.N_output, args.N_output,
- 			agg_method, K,
- 			input_norm=dev_norm, which_split='dev',
- 			#target_norm=Normalizer(self.data_dev, 'same'),
- 			target_norm=dev_norm,
- 			use_time_features=args.use_time_features,
- 			tsid_map=self.dev_tsid_map,
- 		)
- 		print('Number of chunks in dev data:', len(lazy_dataset_dev))
- 		lazy_dataset_test = TimeSeriesDatasetOfflineAggregate(
- 			self.data_test, args.N_input, args.N_output, args.N_output,
- 			agg_method, K, which_split='test',
- 			input_norm=test_norm,
- 			#target_norm=test_norm,
- 			target_norm=Normalizer(self.data_test, 'same'),
- 			use_time_features=args.use_time_features,
- 			tsid_map=self.test_tsid_map,
- 		)
- 		print('Number of chunks in test data:', len(lazy_dataset_test))
- 		if len(lazy_dataset_train) <= args.batch_size:
- 			batch_size = args.batch_size
- 		else:
- 			batch_size = args.batch_size
- 			while len(lazy_dataset_train) // batch_size < 10:
- 				batch_size = batch_size // 2
- 		#import ipdb ; ipdb.set_trace()
- 		trainloader = DataLoader(
- 			lazy_dataset_train, batch_size=batch_size, shuffle=True,
- 			drop_last=True, num_workers=12, pin_memory=True,
+        lazy_dataset_train = TimeSeriesDatasetOfflineAggregate(
+            self.data_train, args.N_input, args.N_output, -1,
+            agg_method, K, which_split='train',
+            norm_type=args.normalize,
+            use_feats=args.use_feats,
+        )
+        print('Number of chunks in train data:', len(lazy_dataset_train))
+        norm = lazy_dataset_train.input_norm
+        dev_norm, test_norm = norm, norm
+        #for i in range(len(self.data_dev)):
+        #   dev_norm.append(norm[self.dev_tsid_map[i]])
+        #for i in range(len(self.data_test)):
+        #   test_norm.append(norm[self.test_tsid_map[i]])
+        #dev_norm, test_norm = np.stack(dev_norm), np.stack(test_norm)
+        #import ipdb
+        #ipdb.set_trace()
+        lazy_dataset_dev = TimeSeriesDatasetOfflineAggregate(
+            self.data_dev, args.N_input, args.N_output, args.N_output,
+            agg_method, K,
+            input_norm=dev_norm, which_split='dev',
+            #target_norm=Normalizer(self.data_dev, 'same'),
+            target_norm=dev_norm,
+            use_feats=args.use_feats,
+            tsid_map=self.dev_tsid_map,
+        )
+        print('Number of chunks in dev data:', len(lazy_dataset_dev))
+        lazy_dataset_test = TimeSeriesDatasetOfflineAggregate(
+            self.data_test, args.N_input, args.N_output, args.N_output,
+            agg_method, K, which_split='test',
+            input_norm=test_norm,
+            #target_norm=test_norm,
+            target_norm=Normalizer(self.data_test, 'same'),
+            use_feats=args.use_feats,
+            tsid_map=self.test_tsid_map,
+        )
+        print('Number of chunks in test data:', len(lazy_dataset_test))
+        if len(lazy_dataset_train) <= args.batch_size:
+            batch_size = args.batch_size
+        else:
+            batch_size = args.batch_size
+            while len(lazy_dataset_train) // batch_size < 10:
+                batch_size = batch_size // 2
+        #import ipdb ; ipdb.set_trace()
+        trainloader = DataLoader(
+            lazy_dataset_train, batch_size=batch_size, shuffle=True,
+            drop_last=True, num_workers=12, pin_memory=True,
                         #collate_fn=lazy_dataset_train.collate_fn
- 		)
- 		devloader = DataLoader(
- 			lazy_dataset_dev, batch_size=batch_size, shuffle=False,
- 			drop_last=False, num_workers=12, pin_memory=True,
+        )
+        devloader = DataLoader(
+            lazy_dataset_dev, batch_size=batch_size, shuffle=False,
+            drop_last=False, num_workers=12, pin_memory=True,
                         #collate_fn=lazy_dataset_dev.collate_fn
- 		)
- 		testloader = DataLoader(
- 			lazy_dataset_test, batch_size=batch_size, shuffle=False,
- 			drop_last=False, num_workers=12, pin_memory=True,
+        )
+        testloader = DataLoader(
+            lazy_dataset_test, batch_size=batch_size, shuffle=False,
+            drop_last=False, num_workers=12, pin_memory=True,
                         #collate_fn=lazy_dataset_test.collate_fn
- 		)
- 		#import ipdb
- 		#ipdb.set_trace()
+        )
+        #import ipdb
+        #ipdb.set_trace()
  
- 		return {
- 			'trainloader': trainloader,
- 			'devloader': devloader,
- 			'testloader': testloader,
- 			'N_input': lazy_dataset_test.enc_len,
- 			'N_output': lazy_dataset_test.dec_len,
- 			'input_size': lazy_dataset_test.input_size,
- 			'output_size': lazy_dataset_test.output_size,
- 			'train_norm': norm,
- 			'dev_norm': dev_norm,
- 			'test_norm': test_norm,
- 			'feats_info': self.feats_info,
- 			'coeffs_info': self.coeffs_info,
+        return {
+            'trainloader': trainloader,
+            'devloader': devloader,
+            'testloader': testloader,
+            'N_input': lazy_dataset_test.enc_len,
+            'N_output': lazy_dataset_test.dec_len,
+            'input_size': lazy_dataset_test.input_size,
+            'output_size': lazy_dataset_test.output_size,
+            'train_norm': norm,
+            'dev_norm': dev_norm,
+            'test_norm': test_norm,
+            'feats_info': self.feats_info,
+            'coeffs_info': self.coeffs_info,
                         'dev_tsid_map': lazy_dataset_dev.tsid_map,
                         'test_tsid_map': lazy_dataset_test.tsid_map
- 		}
+        }
 

@@ -82,6 +82,7 @@ class RNNNLLNAR(torch.nn.Module):
                 torch.squeeze(pred_mu, dim=-1), pred_v, torch.squeeze(pred_d, dim=-1)
             )
             pred_std = torch.diagonal(dist.covariance_matrix, dim1=-2, dim2=-1).unsqueeze(dim=-1)
+            pred_std = norms['sum'][1].unnormalize(pred_std[..., 0], ids=ids, is_var=True).unsqueeze(-1)
         elif mdl.estimate_type is 'variance':
             pred_d = pred_d.cpu()
             pred_std = pred_d
