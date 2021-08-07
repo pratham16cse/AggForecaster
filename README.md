@@ -1,10 +1,11 @@
 ## How to work with Command Line Arguments?
-- If an argument is not passed, it's value will be extracted from configuration specified in the file `main.py` (based on `dataset_name`, `model_name`).
+- If an optional argument is not passed, it's value will be extracted from configuration specified in the file `main.py` (based on `dataset_name`, `model_name`).
 - If a valid argument value is passed through command line arguments, the code will use it further. That is, it will ignore the value assigned in the configuration.
 
 ## Command Line Arguments Information
 | Argument name | Type | Valid Assignments | Default |
 | --------------| ---- | ----------------- | ------- |
+| dataset_name  | str  | azure, ett, etthourly, Solar, taxi30min, Traffic911 | positional argument|
 | N_input       | int  | >0                | -1      |
 | N_output      | int  | >0                | -1      |
 | epochs        | int  | >0                | -1      |
