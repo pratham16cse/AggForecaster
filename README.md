@@ -6,6 +6,8 @@
 | Argument name | Type | Valid Assignments | Default |
 | --------------| ---- | ----------------- | ------- |
 | dataset_name  | str  | azure, ett, etthourly, Solar, taxi30min, Traffic911 | positional argument|
+| saved_models_dir       | str  | -                | None      |
+| output_dir       | str  | -                | None      |
 | N_input       | int  | >0                | -1      |
 | N_output      | int  | >0                | -1      |
 | epochs        | int  | >0                | -1      |
