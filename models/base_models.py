@@ -107,7 +107,7 @@ class NBEATS(nn.Module):
         self.blocks = nn.ModuleList(self.blocks)
         self.backcast_layer = nn.Linear(block_width, input_size)
         self.forecast_layer = nn.Linear(block_width, dec_len)
-        
+
     def forward(self, feats_in, X_in, coeffs_in, feats_out, X_out=None, coeffs_out=None):
         block_input = X_in.squeeze(-1)
         if self.use_coeffs:
@@ -192,23 +192,31 @@ class ARTransformerModel(nn.Module):
                 #padding=self.kernel_size//2
             )
 
-        self.enc_conv_data = nn.Conv1d(
+        #self.enc_conv_data = nn.Conv1d(
+        #    kernel_size=self.kernel_size, stride=1, in_channels=1, out_channels=nkernel,
+        #    bias=False,
+        #    #padding=self.kernel_size//2
+        #)
+        #self.dec_conv_data = nn.Conv1d(
+        #    kernel_size=self.kernel_size, stride=1, in_channels=1, out_channels=nkernel,
+        #    bias=False,
+        #    #padding=self.kernel_size//2
+        #)
+        self.conv_data = nn.Conv1d(
             kernel_size=self.kernel_size, stride=1, in_channels=1, out_channels=nkernel,
-            bias=False,
+            #bias=False,
             #padding=self.kernel_size//2
         )
-        self.dec_conv_data = nn.Conv1d(
-            kernel_size=self.kernel_size, stride=1, in_channels=1, out_channels=nkernel,
-            bias=False,
-            #padding=self.kernel_size//2
-        )
+        self.data_dropout = nn.Dropout(p=0.2)
 
         if self.use_feats:
-            self.enc_linearMap = nn.Sequential(nn.ReLU(), nn.Linear(2*nkernel, nkernel, bias=False))
-            self.dec_linearMap = nn.Sequential(nn.ReLU(), nn.Linear(2*nkernel, nkernel, bias=False))
+            #self.enc_linearMap = nn.Sequential(nn.ReLU(), nn.Linear(2*nkernel, nkernel, bias=False))
+            #self.dec_linearMap = nn.Sequential(nn.ReLU(), nn.Linear(2*nkernel, nkernel, bias=False))
+            self.linearMap = nn.Sequential(nn.ReLU(), nn.Linear(2*nkernel, nkernel, bias=False))
         else:
-            self.enc_linearMap = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, nkernel, bias=False))
-            self.dec_linearMap = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, nkernel, bias=False))
+            #self.enc_linearMap = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, nkernel, bias=False))
+            #self.dec_linearMap = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, nkernel, bias=False))
+            self.linearMap = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, nkernel, bias=False))
         self.positional = PositionalEncoding(d_model=nkernel)
 
         if self.use_coeffs:
@@ -238,6 +246,7 @@ class ARTransformerModel(nn.Module):
                 for i in range(len(self.part_sizes)):
                     self.t2v_layer_list.append(nn.Linear(1, self.part_sizes[i]))
                 self.t2v_layer_list = nn.ModuleList(self.t2v_layer_list)
+                self.t2v_dropout = nn.Dropout(p=0.2)
                 self.t2v_linear = None
             #import ipdb ; ipdb.set_trace()
 
@@ -254,9 +263,9 @@ class ARTransformerModel(nn.Module):
             self.decoder_std = nn.TransformerDecoder(self.decoder_layer, num_layers=2)
 
         self.linear_mean = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, 1))
-        if self.estimate_type in ['variance']:
+        if self.estimate_type in ['variance', 'covariance']:
             self.linear_std = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, 1))
-        elif self.estimate_type in ['covariance']:
+        if self.estimate_type in ['covariance']:
             self.linear_v = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, self.v_dim))
 
     def forward(
@@ -312,7 +321,7 @@ class ARTransformerModel(nn.Module):
                 ).transpose(1,2)
             ).transpose(1,2).clamp(min=0)#[..., :X_in.shape[1],:].clamp(min=0)
 
-        X_in_embed = self.enc_conv_data(
+        X_in_embed = self.conv_data(
             torch.cat(
                 [
                     torch.zeros(
@@ -325,9 +334,9 @@ class ARTransformerModel(nn.Module):
         ).transpose(1,2).clamp(min=0)#[..., :X_in.shape[1], :]
 
         if self.use_feats:
-            enc_input = self.enc_linearMap(torch.cat([feats_in_embed,X_in_embed],dim=-1)).transpose(0,1)
+            enc_input = self.linearMap(torch.cat([feats_in_embed,X_in_embed],dim=-1)).transpose(0,1)
         else:
-            enc_input = self.enc_linearMap(X_in_embed).transpose(0,1)
+            enc_input = self.linearMap(X_in_embed).transpose(0,1)
 
         if self.t2v_type:
             if self.t2v_type in ['local']:
@@ -349,7 +358,8 @@ class ARTransformerModel(nn.Module):
                     t2v = self.t2v_linear(t2v)
             #import ipdb ; ipdb.set_trace()
             #t2v = torch.cat([t2v[0:1], torch.sin(t2v[1:])], dim=0)
-            enc_input = enc_input + t2v
+            #enc_input = self.data_dropout(enc_input) + self.t2v_dropout(t2v)
+            enc_input = enc_input + self.t2v_dropout(t2v)
         else:
             enc_input = self.positional(enc_input)
         #if self.use_coeffs:
@@ -357,10 +367,10 @@ class ARTransformerModel(nn.Module):
         encoder_output = self.encoder(enc_input)
 
         if self.use_feats:
-            #feats_out_merged = torch.cat(
-            #    [feats_in_merged[:,-self.warm_start+1:, :],feats_out_merged],
-            #    dim=1
-            #)
+            feats_out_merged = torch.cat(
+                [feats_in_merged[:,-self.warm_start+1:, :],feats_out_merged],
+                dim=1
+            )
             feats_out_embed = self.conv_feats(
                 torch.cat(
                     [
@@ -373,32 +383,39 @@ class ARTransformerModel(nn.Module):
                 ).transpose(1,2)
             ).transpose(1,2).clamp(min=0)
 
-        #X_out_embed = self.dec_conv_data(
-        #    torch.cat(
-        #        [
-        #            X_in[..., -self.warm_start+1:, :],
-        #            torch.zeros(
-        #                [X_in.shape[0], self.dec_len, X_in.shape[-1]],
-        #                dtype=torch.float, device=self.device
-        #            )
-        #        ],
-        #        dim=1
-        #    ).transpose(1, 2)
-        #).transpose(1, 2)
+        #import ipdb ; ipdb.set_trace()
+        X_out_embed = self.conv_data(
+            torch.cat(
+                [
+                    torch.zeros(
+                        [X_in.shape[0], self.kernel_size-1, X_in.shape[-1]],
+                        dtype=torch.float, device=self.device
+                    ),
+                    X_in[..., -self.warm_start+1:, :],
+                    torch.zeros(
+                        [X_in.shape[0], self.dec_len, X_in.shape[-1]],
+                        dtype=torch.float, device=self.device
+                    )
+                ],
+                dim=1
+            ).transpose(1, 2)
+        ).transpose(1, 2)
+        #import ipdb ; ipdb.set_trace()
         #X_out_embed = self.dec_conv_data(
         #    torch.zeros(
         #        (X_in.shape[0], self.dec_len+self.kernel_size-1, X_in.shape[2]),
         #        dtype=torch.float, device=self.device
         #    ).transpose(1, 2)
         #).transpose(1, 2)
-        X_out_embed = torch.zeros(
-            (X_in.shape[0], self.dec_len, X_in.shape[2]),
-            dtype=torch.float, device=self.device
-        )
+        #X_out_embed = torch.zeros(
+        #    (X_in.shape[0], self.dec_len, X_in.shape[2]),
+        #    dtype=torch.float, device=self.device
+        #)
 
         if self.use_feats:
             #dec_input = self.dec_linearMap(torch.cat([feats_out_embed,X_out_embed],dim=-1)).transpose(0,1)
-            dec_input = feats_out_embed.transpose(0,1)
+            #dec_input = feats_out_embed.transpose(0,1)
+            dec_input = self.linearMap(torch.cat([feats_out_embed,X_out_embed],dim=-1)).transpose(0,1)
         else:
             #dec_input = self.dec_linearMap(X_out_embed).transpose(0,1)
             dec_input = X_out_embed.transpose(0,1)
@@ -421,7 +438,8 @@ class ARTransformerModel(nn.Module):
                 t2v = torch.cat(t2v, dim=-1)
                 if self.t2v_linear is not None:
                     t2v = self.t2v_linear(t2v)
-            dec_input = dec_input + t2v
+            #dec_input = self.data_dropout(dec_input) + self.t2v_dropout(t2v)
+            dec_input = dec_input + self.t2v_dropout(t2v)
         else:
             dec_input = self.positional(dec_input, start_idx=X_in.shape[1])
         #import ipdb ; ipdb.set_trace()
@@ -447,11 +465,11 @@ class ARTransformerModel(nn.Module):
         mean_out = mean_out + mean
 
         if self.estimate_type in ['point']:
-            return mean_out
+            return mean_out[..., -self.dec_len:, :]
         elif self.estimate_type in ['variance']:
-            return (mean_out, std_out)
+            return (mean_out[..., -self.dec_len:, :], std_out[..., -self.dec_len:, :])
         elif self.estimate_type in ['covariance']:
-            return (mean_out, std_out, v_out)
+            return (mean_out[..., -self.dec_len:, :], std_out[..., -self.dec_len:, :], v_out[..., -self.dec_len:, :])
         #return (
         #    mean_out[..., -self.dec_len:, :],
         #    std_out[..., -self.dec_len:, :],
@@ -628,7 +646,7 @@ class ARCNNTransformerModel(nn.Module):
 class RNNNARModel(nn.Module):
     def __init__(
             self, dec_len, num_rnn_layers, feats_info, coeffs_info, hidden_size, batch_size,
-            estimate_type, use_coeffs, use_time_features, v_dim, device
+            estimate_type, use_feats, use_coeffs, v_dim, device
         ):
         super(RNNNARModel, self).__init__()
 
@@ -640,50 +658,61 @@ class RNNNARModel(nn.Module):
         self.batch_size = batch_size
         self.estimate_type = estimate_type
         self.device = device
+        self.use_feats = use_feats
         self.use_coeffs = use_coeffs
-        self.use_time_features = use_time_features
         self.v_dim = v_dim
 
-        self.embed_feat_layers = []
-        for idx, (card, emb_size) in self.feats_info.items():
-            if card is not 0:
-                self.embed_feat_layers.append(nn.Embedding(card, emb_size))
-            else:
-                self.embed_feat_layers.append(nn.Linear(1, 1, bias=False))
-        self.embed_feat_layers = nn.ModuleList(self.embed_feat_layers)
+        if self.use_feats:
+            self.embed_feat_layers = []
+            for idx, (card, emb_size) in self.feats_info.items():
+                if card is not -1:
+                    if card is not 0:
+                        self.embed_feat_layers.append(nn.Embedding(card, emb_size))
+                    else:
+                        self.embed_feat_layers.append(nn.Linear(1, 1, bias=False))
+            self.embed_feat_layers = nn.ModuleList(self.embed_feat_layers)
 
-        feats_embed_dim = sum([s for (_, s) in self.feats_info.values()])
+            feats_embed_dim = sum([s for (_, s) in self.feats_info.values() if s is not -1])
+        else:
+            feats_embed_dim = 0
         num_coeffs = len(self.coeffs_info)
         enc_input_size = 1 + feats_embed_dim
         if self.use_coeffs:
             enc_input_size += num_coeffs
         self.encoder = nn.LSTM(enc_input_size, self.hidden_size, batch_first=True)
 
+        if self.use_feats:
+            dec_input_size = self.hidden_size + feats_embed_dim
+        else:
+            dec_input_size = self.hidden_size
+
         self.decoder_mean = nn.Sequential(
-            nn.Linear(self.hidden_size+feats_embed_dim, self.hidden_size),
+            nn.Linear(dec_input_size, self.hidden_size),
             nn.ReLU(),
             nn.Linear(self.hidden_size, self.hidden_size),
             nn.ReLU(),
             nn.Linear(self.hidden_size, 1)
         )
 
-        self.decoder_std = nn.Sequential(
-            nn.Linear(self.hidden_size+feats_embed_dim, self.hidden_size),
-            nn.ReLU(),
-            nn.Linear(self.hidden_size, self.hidden_size),
-            nn.ReLU(),
-            nn.Linear(self.hidden_size, 1),
-            nn.Softplus()
-        )
+        if self.estimate_type in ['variance', 'covariance']:
+            self.decoder_std = nn.Sequential(
+                nn.Linear(dec_input_size, self.hidden_size),
+                nn.ReLU(),
+                nn.Linear(self.hidden_size, self.hidden_size),
+                nn.ReLU(),
+                nn.Linear(self.hidden_size, 1),
+                nn.Softplus()
+            )
 
-        self.decoder_v = nn.Sequential(
-            nn.Linear(self.hidden_size+feats_embed_dim, self.hidden_size),
-            nn.ReLU(),
-            nn.Linear(self.hidden_size, self.hidden_size),
-            nn.ReLU(),
-            nn.Linear(self.hidden_size, self.v_dim),
-            #nn.Softplus()
-        )
+        if self.estimate_type in ['covariance']:
+            self.decoder_v = nn.Sequential(
+                nn.Linear(dec_input_size, self.hidden_size),
+                nn.ReLU(),
+                nn.Linear(self.hidden_size, self.hidden_size),
+                nn.ReLU(),
+                nn.Linear(self.hidden_size, self.v_dim),
+                #nn.Softplus()
+            )
 
     def init_hidden(self, batch_size):
         #[num_layers*num_directions,batch,hidden_size]   
@@ -693,33 +722,36 @@ class RNNNARModel(nn.Module):
         )
 
     def forward(self, feats_in, X_in, coeffs_in, feats_out, X_out=None, coeffs_out=None):
-        
-        feats_in_merged, feats_out_merged = [], []
-        for i in range(feats_in.shape[-1]):
-            card = self.feats_info[i][0]
-            if card is not 0:
-                feats_in_ = feats_in[..., i].type(torch.LongTensor).to(self.device)
-            else:
-                feats_in_ = feats_in[..., i:i+1]
-            feats_in_merged.append(
-                self.embed_feat_layers[i](feats_in_)
-            )
-        feats_in_merged = torch.cat(feats_in_merged, dim=2)
-        for i in range(feats_out.shape[-1]):
-            card = self.feats_info[i][0]
-            if card is not 0:
-                feats_out_ = feats_out[..., i].type(torch.LongTensor).to(self.device)
-            else:
-                feats_out_ = feats_out[..., i:i+1]
-            feats_out_merged.append(
-                self.embed_feat_layers[i](feats_out_)
-            )
-        feats_out_merged = torch.cat(feats_out_merged, dim=2)
 
-        feats_in_embed = feats_in_merged
-        feats_out_embed = feats_out_merged
-
-        enc_input = torch.cat([feats_in_embed, X_in], dim=-1)
+        if self.use_feats:
+            feats_in_merged, feats_out_merged = [], []
+            for i in range(feats_in.shape[-1]):
+                card = self.feats_info[i][0]
+                if card != -1:
+                    if card != 0:
+                        feats_in_ = feats_in[..., i].type(torch.LongTensor).to(self.device)
+                    else:
+                        feats_in_ = feats_in[..., i:i+1]
+                    feats_in_merged.append(
+                        self.embed_feat_layers[i](feats_in_)
+                    )
+            feats_in_merged = torch.cat(feats_in_merged, dim=2)
+            for i in range(feats_out.shape[-1]):
+                card = self.feats_info[i][0]
+                if card != -1:
+                    if card != 0:
+                        feats_out_ = feats_out[..., i].type(torch.LongTensor).to(self.device)
+                    else:
+                        feats_out_ = feats_out[..., i:i+1]
+                    feats_out_merged.append(
+                        self.embed_feat_layers[i](feats_out_)
+                    )
+            feats_out_merged = torch.cat(feats_out_merged, dim=2)
+            feats_in_embed = feats_in_merged
+            feats_out_embed = feats_out_merged
+            enc_input = torch.cat([feats_in_embed, X_in], dim=-1)
+        else:
+            enc_input = X_in
         if self.use_coeffs:
             enc_input = torch.cat([enc_input, coeffs_in], dim=-1)
 
@@ -727,18 +759,23 @@ class RNNNARModel(nn.Module):
         enc_output, enc_state = self.encoder(enc_input, enc_hidden)
 
         enc_output_tile = enc_output[..., -1:, :].repeat(1, self.dec_len, 1)
-        dec_input = torch.cat([feats_out_embed, enc_output_tile], dim=-1)
+        if self.use_feats:
+            dec_input = torch.cat([feats_out_embed, enc_output_tile], dim=-1)
+        else:
+            dec_input = enc_output_tile
         means = self.decoder_mean(dec_input)
-        stds = self.decoder_std(dec_input)
-        v = self.decoder_v(dec_input)
-        
-        if self.estimate_type == 'point':
-            stds = None
-            v = None
-        elif self.estimate_type == 'variance':
-            v = None
+        if self.estimate_type in ['variance', 'covariance']:
+            stds = self.decoder_std(dec_input)
+        if self.estimate_type in ['covariance']:
+            v = self.decoder_v(dec_input)
 
-        return means, stds, v
+        if self.estimate_type in ['point']:
+            return means
+        elif self.estimate_type in ['variance']:
+            return (means, stds)
+        elif self.estimate_type in ['covariance']:
+            return (means, stds, v)
+        
 
 class RNNARModel(nn.Module):
     def __init__(
@@ -1602,8 +1639,8 @@ def get_base_model(
                     hidden_size=hidden_size,
                     batch_size=args.batch_size,
                     estimate_type=estimate_type,
+                    use_feats=args.use_feats,
                     use_coeffs=args.use_coeffs,
-                    use_time_features=args.use_time_features,
                     v_dim=args.v_dim,
                     device=args.device
                 ).to(args.device)

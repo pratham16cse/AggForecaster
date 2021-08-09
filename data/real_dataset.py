@@ -762,9 +762,14 @@ def parse_ett(dataset_name, N_input, N_output, t2v_type=None):
     #import ipdb ; ipdb.set_trace()
     feats_date = np.expand_dims(feats_date, axis=0)
 
+    #import ipdb ; ipdb.set_trace()
+    feats_month = np.expand_dims(np.expand_dims(cal_date.dt.month-1, axis=-1), axis=0)
+
     #feats = np.concatenate([feats_discrete, feats_cont], axis=-1)
     #feats = feats_cont
-    feats = np.concatenate([feats_cont, feats_date], axis=-1)
+    #feats = np.concatenate([feats_cont, feats_date], axis=-1)
+    feats = np.concatenate([feats_discrete, feats_cont, feats_date], axis=-1)
+    #feats = np.concatenate([feats_discrete, feats_month, feats_cont, feats_date], axis=-1)
 
     #data = (data - np.mean(data, axis=0, keepdims=True)).T
 
@@ -821,10 +826,11 @@ def parse_ett(dataset_name, N_input, N_output, t2v_type=None):
         #print('test:', i, len(data_test))
 
 
-    #feats_info = {0:(24*4, 64), 1:(0, 1), 2:(0, 1), 3:(0, 1), 4:(0, 1), 5:(0, 1), 6:(0, 1)}
-    feats_info = {
-        0:(0, 1), 1:(0, 1), 2:(0, 1), 3:(0, 1), 4:(0, 1), 5:(0, 1),
-    }
+    feats_info = {0:(24*4, 64), 1:(0, 1), 2:(0, 1), 3:(0, 1), 4:(0, 1), 5:(0, 1), 6:(0, 1)}
+    #feats_info = {
+    #    0:(0, 1), 1:(0, 1), 2:(0, 1), 3:(0, 1), 4:(0, 1), 5:(0, 1),
+    #}
+    #feats_info = {0:(24*4, 32), 1:(12, 8), 2:(0, 1), 3:(0, 1), 4:(0, 1), 5:(0, 1), 6:(0, 1), 7:(0, 1)}
     i = len(feats_info)
     for j in range(i, i+feats_date[0,0].shape[0]):
         feats_info[j] = (-1, -1)

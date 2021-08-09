@@ -78,13 +78,16 @@ def train_model(
         best_metric = np.inf
     net.train()
 
+    if net.estimate_type in ['point']:
+        mse_loss = torch.nn.MSELoss()
+
     curr_patience = args.patience
     curr_step = 0
     for curr_epoch in range(best_epoch+1, best_epoch+1+epochs):
         epoch_loss, epoch_time = 0., 0.
         for i, data in enumerate(trainloader, 0):
             st = time.time()
-            inputs, target, feats_in, feats_tgt, _, _, coeffs_in, coeffs_tgt, _, _ = data
+            inputs, target, feats_in, feats_tgt, _, _, coeffs_in, coeffs_tgt = data
             target = target.to(args.device)
             batch_size, N_output = target.shape[0:2]
 
@@ -127,7 +130,8 @@ def train_model(
             if model_name in ['seq2seqdilate']:
                 loss, loss_shape, loss_temporal = dilate_loss(target, means, args.alpha, args.gamma, args.device)
             if model_name in [
-                    'seq2seqnll', 'convnll', 'rnn-nll-nar', 'rnn-nll-ar', 'trans-nll-ar',
+                    'seq2seqnll', 'convnll', 'rnn-nll-nar', 'rnn-nll-ar',
+                    'trans-mse-ar', 'trans-nll-ar',
                     'trans-fnll-ar', 'rnn-fnll-nar',
                     'transm-nll-nar', 'transm-fnll-nar',
                     'transda-nll-nar', 'transda-fnll-nar',
@@ -165,6 +169,8 @@ def train_model(
                 elif net.estimate_type == 'variance':
                     dist = torch.distributions.normal.Normal(means, stds)
                     loss = torch.mean(-dist.log_prob(target))
+                elif net.estimate_type in ['point']:
+                    loss = mse_loss(target, means)
 
                 if args.mse_loss_with_nll:
                     loss += criterion(target, means)

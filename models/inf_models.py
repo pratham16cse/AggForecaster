@@ -80,7 +80,7 @@ class RNNNLLNAR(torch.nn.Module):
                 pred_mu, pred_d, pred_v = out
         pred_mu = pred_mu.cpu()
 
-        if mdl.estimate_type is 'covariance':
+        if mdl.estimate_type in ['covariance']:
             pred_d = pred_d.cpu()
             pred_v = pred_v.cpu()
 
@@ -89,7 +89,7 @@ class RNNNLLNAR(torch.nn.Module):
             )
             pred_std = torch.diagonal(dist.covariance_matrix, dim1=-2, dim2=-1).unsqueeze(dim=-1)
             pred_std = norms['sum'][1].unnormalize(pred_std[..., 0], ids=ids, is_var=True).unsqueeze(-1)
-        elif mdl.estimate_type is 'variance':
+        elif mdl.estimate_type in ['variance']:
             pred_d = pred_d.cpu()
             pred_std = pred_d
             pred_v = torch.ones_like(pred_mu) * 1e-9
@@ -467,12 +467,23 @@ class KLInference(torch.nn.Module):
                 ids = dataset[agg][level][4].cpu()
 
                 with torch.no_grad():
-                    means, d, v = model(
-                        feats_in.to(self.device), inputs.to(self.device), coeffs_in.to(self.device),
-                        feats_tgt.to(self.device)
-                    )
-                means = means.cpu()
+                    if model.estimate_type in ['point']:
+                        means, d, v = model(
+                            feats_in.to(self.device), inputs.to(self.device), coeffs_in.to(self.device),
+                            feats_tgt.to(self.device)
+                        )
+                    elif model.estimate_type in ['variance']:
+                        means, d = model(
+                            feats_in.to(self.device), inputs.to(self.device), coeffs_in.to(self.device),
+                            feats_tgt.to(self.device)
+                        )
+                    elif model.estimate_type in ['covariance']:
+                        means, d, v = model(
+                            feats_in.to(self.device), inputs.to(self.device), coeffs_in.to(self.device),
+                            feats_tgt.to(self.device)
+                        )
 
+                means = means.cpu()
                 if model.estimate_type is 'covariance':
                     d = d.cpu()
                     v = v.cpu()

@@ -409,8 +409,8 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
     """docstring for TimeSeriesDatasetOfflineAggregate"""
     def __init__(
         self, data, enc_len, dec_len, stride, aggregation_type, K,
-        use_feats, which_split, tsid_map=None, input_norm=None, target_norm=None,
-        norm_type=None,
+        feats_info, which_split, tsid_map=None, input_norm=None, target_norm=None,
+        norm_type=None, feats_norms=None, train_obj=None
     ):
         super(TimeSeriesDatasetOfflineAggregate, self).__init__()
 
@@ -423,16 +423,20 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
         self._base_enc_len = enc_len
         self._base_dec_len = dec_len
         #self.num_values = len(data[0]['target'][0])
+        self.which_split = which_split
         self.stride = stride
         self.aggregation_type = aggregation_type
         self.K = K
         self.input_norm = input_norm
         self.target_norm = target_norm
         self.norm_type = norm_type
-        self.use_feats = use_feats
+        self.feats_info = feats_info
         self.tsid_map = tsid_map
+        self.feats_norms = feats_norms
+        self.train_obj = train_obj
 
         # Perform aggregation if level != 1
+        st = time.time()
         data_agg = []
         for i in range(0, len(data)):
             #print(i, len(data))
@@ -444,33 +448,65 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
             ex_c = ex_c[ len(ex)%self.K: ]
 
             #bp = np.arange(1,len(ex), 1)
-            bp = [(i, self.K) for i in np.arange(0, len(ex), self.K)]
+            if which_split in ['train']:
+                bp = [(i, self.K) for i in np.arange(0, len(ex)-self.K+1, 1)]
+            elif which_split in ['dev', 'test']:
+                bp = [(i, self.K) for i in np.arange(0, len(ex), self.K)]
 
             if self.K != 1:
                 ex_agg, ex_f_agg, ex_c_agg = [], [], []
                 if self.aggregation_type in ['sum']:
                     for b in range(len(bp)):
                         s, e = bp[b][0], bp[b][0]+bp[b][1]
-                        ex_agg.append(self.aggregate_data(ex[s:e]))
+                        if self.which_split in ['train']:
+                            ex_agg.append(self.aggregate_data(ex[s:e]))
+                        elif self.which_split in ['dev', 'test']:
+                            #import ipdb ; ipdb.set_trace()
+                            lookup_series = self.train_obj.data[self.tsid_map[i]]['target']
+                            if len(lookup_series) <= self.K*b:
+                                ex_agg.append(self.aggregate_data(ex[s:e]))
+                            else:
+                                ex_agg.append(lookup_series[self.K*b])
+                                #print(i, self.aggregate_data(ex[s:e]), lookup_series[self.K*b])
+                                #assert self.aggregate_data(ex[s:e]) == lookup_series[self.K*b]
 
                 elif self.aggregation_type in ['slope']:
                     for b in range(len(bp)):
                         s, e = bp[b][0], bp[b][0]+bp[b][1]
-                        ex_agg.append(self.aggregate_data_slope(ex[s:e]))
+                        if self.which_split in ['train']:
+                            ex_agg.append(self.aggregate_data_slope(ex[s:e]))
+                        elif self.which_split in ['dev', 'test']:
+                            #import ipdb ; ipdb.set_trace()
+                            lookup_series = self.train_obj.data[self.tsid_map[i]]['target']
+                            if len(lookup_series) <= self.K*b:
+                                ex_agg.append(self.aggregate_data_slope(ex[s:e]))
+                            else:
+                                ex_agg.append(lookup_series[self.K*b])
+                                #print(i, self.aggregate_data(ex[s:e]), lookup_series[self.K*b])
+                                #assert self.aggregate_data_slope(ex[s:e]) == lookup_series[self.K*b]
 
                 for b in range(len(bp)):
                     s, e = bp[b][0], bp[b][0]+bp[b][1]
-                    ex_f_agg.append(self.aggregate_data(ex_f[s:e]))
-                    ex_c_agg.append(self.aggregate_data(ex_c[s:e]))
+                    if self.which_split in ['train']:
+                        ex_f_agg.append(self.aggregate_data(ex_f[s:e]))
+                        ex_c_agg.append(self.aggregate_data(ex_c[s:e]))
+                    elif self.which_split in ['dev', 'test']:
+                        lookup_series_f = self.train_obj.data[self.tsid_map[i]]['feats']
+                        lookup_series_c = self.train_obj.data[self.tsid_map[i]]['coeffs']
+                        if len(lookup_series) < self.K*b:
+                            ex_f_agg.append(self.aggregate_data(ex_f[s:e]))
+                            ex_c_agg.append(self.aggregate_data(ex_c[s:e]))
+                        else:
+                            ex_f_agg.append(lookup_series_f[self.K*b])
+                            ex_c_agg.append(lookup_series_c[self.K*b])
 
-                gaps = [bp_i[1] for bp_i in bp]
+                #import ipdb ; ipdb.set_trace()
+
                 data_agg.append(
                     {
                         'target':torch.stack(ex_agg, dim=0),
                         'feats':torch.stack(ex_f_agg, dim=0),
                         'coeffs':torch.stack(ex_c_agg, dim=0),
-                        'bp': bp,
-                        'gaps': np.array(gaps),
                     }
                 )
 
@@ -479,16 +515,15 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
                 ex_f_agg = ex_f
                 ex_c_agg = ex_c
 
-                gaps = [bp_i[1] for bp_i in bp]
                 data_agg.append(
                     {
                         'target':ex_agg,
                         'feats':ex_f_agg,
                         'coeffs':ex_c_agg,
-                        'bp': bp,
-                        'gaps': np.array(gaps),
                     }
                 )
+        et = time.time()
+        print(which_split, self.aggregation_type, self.K, 'total time:', et-st)
 
         if self.input_norm is None:
             assert norm_type is not None
@@ -502,6 +537,16 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
             self.target_norm = self.input_norm
             del data_for_norm
 
+            self.feats_norms = {}
+            for j in range(len(self.feats_info)):
+                card = self.feats_info[j][0]
+                if card == 0:
+                    feat_for_norm = []
+                    for i in range(0, len(data)):
+                        ex = data_agg[i]['feats'][:, j]
+                        feat_for_norm.append(torch.FloatTensor(ex))
+                    f_norm = Normalizer(feat_for_norm, norm_type='zscore_per_series')
+                    self.feats_norms[j] = f_norm
 
         self.data = data_agg
         self.indices = []
@@ -509,7 +554,7 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
             if stride == -1:
                 j = 0
                 while j < len(self.data[i]['target']):
-                    if j+self.enc_len+self.dec_len <= len(self.data[i]['target']):
+                    if j+self.mult*self.base_enc_len+self.base_dec_len <= len(self.data[i]['target']):
                         self.indices.append((i, j))
                     #s = (np.random.randint(0, min(self.dec_len, 50)))
                     s = 1
@@ -523,9 +568,12 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
                     for j in range(start_idx, len(self.data[i]['target']), 1):
                         if j+self.enc_len+self.dec_len <= len(self.data[i]['target']):
                             self.indices.append((i, j))
+                    #import ipdb ; ipdb.set_trace()
                 if which_split == 'test':
                     j = len(self.data[i]['target']) - self.enc_len - self.dec_len
                     self.indices.append((i, j))
+                #if self.K>1:
+                #    import ipdb ; ipdb.set_trace()
 
         #import ipdb
         #ipdb.set_trace()
@@ -533,9 +581,10 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
     @property
     def enc_len(self):
         if self.K > 1:
-            el = (self._enc_len // self.K) * 2
+            el = (self._enc_len // self.K) * self.mult
         else:
             el = self._enc_len
+        #el = self._enc_len
         return el
     
     @property
@@ -547,12 +596,21 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
         return dl
 
     @property
+    def mult(self):
+        if self.K > 1: mult = 2
+        else: mult = 1
+        return mult
+
+    @property
     def input_size(self):
         #input_size = len(self.data[0]['target'][0])
         input_size = 1
-        if self.use_feats:
-            # Multiplied by 2 because of sin and cos
-            input_size += len(self.data[0]['feats'][0])
+        #if self.use_feats:
+        #    # Multiplied by 2 because of sin and cos
+        #    input_size += len(self.data[0]['feats'][0])
+        for idx, (card, emb) in self.feats_info.items():
+            if card != -1:
+                input_size += emb
         return input_size
 
     @property
@@ -575,16 +633,19 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         #print(self.indices)
         ts_id = self.indices[idx][0]
-        pos_id = self.indices[idx][1]   
+        pos_id = self.indices[idx][1]
 
-        ex_input = self.data[ts_id]['target'][ pos_id : pos_id+self.enc_len ]
-        ex_target = self.data[ts_id]['target'][ pos_id+self.enc_len : pos_id+self.enc_len+self.dec_len ]
+        if self.which_split in ['train']:
+            stride, mult = self.K, self.mult
+            el = mult * self.base_enc_len
+            dl = self.base_dec_len
+        elif self.which_split in ['dev', 'test']:
+            stride, mult = 1, 1
+            el = self.enc_len
+            dl = self.dec_len
 
-        input_bp = self.data[ts_id]['bp'][ pos_id : pos_id+self.enc_len ]
-        target_bp = self.data[ts_id]['bp'][ pos_id+self.enc_len : pos_id+self.enc_len+self.dec_len ]
-        input_gaps = self.data[ts_id]['gaps'][ pos_id : pos_id+self.enc_len ]
-        target_gaps = self.data[ts_id]['gaps'][ pos_id+self.enc_len : pos_id+self.enc_len+self.dec_len ]
-
+        ex_input = self.data[ts_id]['target'][ pos_id : pos_id+el : stride ]
+        ex_target = self.data[ts_id]['target'][ pos_id+el : pos_id+el+dl : stride ]
         #print('after', ex_input.shape, ex_target.shape, ts_id, pos_id)
         if self.tsid_map is None:
             mapped_id = ts_id
@@ -592,64 +653,50 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
             mapped_id = self.tsid_map[ts_id]
         ex_input = self.input_norm.normalize(ex_input, mapped_id)#.unsqueeze(-1)
         ex_target = self.target_norm.normalize(ex_target, mapped_id)#.unsqueeze(-1)
-        #ex_norm = self.input_norm[mapped_id]
-        #ex_norm = ex_input
 
-        ex_input_feats = self.data[ts_id]['feats'][ pos_id : pos_id+self.enc_len ]
-        ex_target_feats = self.data[ts_id]['feats'][ pos_id+self.enc_len : pos_id+self.enc_len+self.dec_len ]
+        ex_input_feats = self.data[ts_id]['feats'][ pos_id : pos_id+el : stride ]
+        ex_target_feats = self.data[ts_id]['feats'][ pos_id+el : pos_id+el+dl : stride ]
+        ex_input_feats_norm = []
+        ex_target_feats_norm = []
+        for i in range(len(self.feats_info)):
+            if self.feats_norms.get(i, -1) != -1:
+                ex_input_feats_norm.append(self.feats_norms[i].normalize(
+                    ex_input_feats[:, i], mapped_id)
+                )
+                ex_target_feats_norm.append(self.feats_norms[i].normalize(
+                    ex_target_feats[:, i], mapped_id)
+                )
+            else:
+                ex_input_feats_norm.append(ex_input_feats[:, i:i+1])
+                ex_target_feats_norm.append(ex_target_feats[:, i:i+1])
+        ex_input_feats = torch.cat(ex_input_feats_norm, dim=-1)
+        ex_target_feats = torch.cat(ex_target_feats_norm, dim=-1)
 
-        ex_input_coeffs = self.data[ts_id]['coeffs'][ pos_id : pos_id+self.enc_len ]
-        ex_target_coeffs = self.data[ts_id]['coeffs'][ pos_id+self.enc_len : pos_id+self.enc_len+self.dec_len ]
+        ex_input_coeffs = self.data[ts_id]['coeffs'][ pos_id : pos_id+el : stride ]
+        ex_target_coeffs = self.data[ts_id]['coeffs'][ pos_id+el : pos_id+el+dl : stride ]
 
-        #print(type(ex_input), type(ex_target), type(ex_input_feats), type(ex_target_feats))
-        #ex_input = to_float_tensor(ex_input)
-        #ex_target = to_float_tensor(ex_target)
-        ex_input_feats = ex_input_feats
-        ex_target_feats = ex_target_feats
-        ex_input_coeffs = ex_input_coeffs
-        ex_target_coeffs = ex_target_coeffs
-        #ex_norm = to_float_tensor(ex_norm)
-        input_bp = to_float_tensor(np.expand_dims(input_bp, axis=-1))
-        target_bp = to_float_tensor(np.expand_dims(target_bp, axis=-1))
-        input_gaps = to_float_tensor(np.expand_dims(input_gaps, axis=-1))
-        target_gaps = to_float_tensor(np.expand_dims(target_gaps, axis=-1))
-        #print(
-        #   ex_input.shape, ex_target.shape,
-        #   input_bp.shape, target_bp.shape,
-        #   input_gaps.shape, target_gaps.shape
+        #i_res = self.enc_len - len(ex_input)
+        #ex_input = torch.cat(
+        #    [torch.zeros([i_res] + list(ex_input.shape[1:])), ex_input],
+        #    dim=0
+        #)
+        #ex_input_feats = torch.cat(
+        #    [torch.zeros([i_res] +list(ex_input_feats.shape[1:])), ex_input_feats],
+        #    dim=0
+        #)
+        #ex_input_coeffs = torch.cat(
+        #    [torch.zeros([i_res] + list(ex_input_coeffs.shape[1:])), ex_input_coeffs],
+        #    dim=0
         #)
 
-        #print(
-        #   ex_input.shape, ex_target.shape,
-        #   ex_input_feats.shape, ex_target_feats.shape,
-        #   ex_input_coeffs.shape, ex_target_coeffs.shape,
-        #   input_gaps.shape, target_gaps.shape,
-        #)
-        i_res = self.enc_len - len(ex_input)
-        ex_input = torch.cat(
-            [torch.zeros([i_res] + list(ex_input.shape[1:])), ex_input],
-            dim=0
-        )
-        ex_input_feats = torch.cat(
-            [torch.zeros([i_res] +list(ex_input_feats.shape[1:])), ex_input_feats],
-            dim=0
-        )
-        ex_input_coeffs = torch.cat(
-            [torch.zeros([i_res] + list(ex_input_coeffs.shape[1:])), ex_input_coeffs],
-            dim=0
-        )
-        input_gaps = torch.cat(
-            [torch.zeros([i_res] + list(input_gaps.shape[1:])), input_gaps],
-            dim=0
-        )
+        #print(ex_input.shape, ex_target.shape, ex_input_feats.shape, ex_target_feats.shape)
 
         return (
             ex_input, ex_target,
             ex_input_feats, ex_target_feats,
             mapped_id,
             torch.FloatTensor([ts_id, pos_id]),
-            ex_input_coeffs, ex_target_coeffs,
-            input_gaps, target_gaps
+            ex_input_coeffs, ex_target_coeffs
         )
 
     def collate_fn(self, batch):
@@ -875,15 +922,17 @@ class DataProcessor(object):
             K_list = args.K_list
  
  
+        #import ipdb ; ipdb.set_trace()
         lazy_dataset_train = TimeSeriesDatasetOfflineAggregate(
             self.data_train, args.N_input, args.N_output, -1,
             agg_method, K, which_split='train',
             norm_type=args.normalize,
-            use_feats=args.use_feats,
+            feats_info=self.feats_info,
         )
         print('Number of chunks in train data:', len(lazy_dataset_train))
         norm = lazy_dataset_train.input_norm
         dev_norm, test_norm = norm, norm
+        feats_norms = lazy_dataset_train.feats_norms
         #for i in range(len(self.data_dev)):
         #   dev_norm.append(norm[self.dev_tsid_map[i]])
         #for i in range(len(self.data_test)):
@@ -897,8 +946,10 @@ class DataProcessor(object):
             input_norm=dev_norm, which_split='dev',
             #target_norm=Normalizer(self.data_dev, 'same'),
             target_norm=dev_norm,
-            use_feats=args.use_feats,
+            feats_info=self.feats_info,
             tsid_map=self.dev_tsid_map,
+            feats_norms=feats_norms,
+            train_obj=lazy_dataset_train
         )
         print('Number of chunks in dev data:', len(lazy_dataset_dev))
         lazy_dataset_test = TimeSeriesDatasetOfflineAggregate(
@@ -907,8 +958,10 @@ class DataProcessor(object):
             input_norm=test_norm,
             #target_norm=test_norm,
             target_norm=Normalizer(self.data_test, 'same'),
-            use_feats=args.use_feats,
+            feats_info=self.feats_info,
             tsid_map=self.test_tsid_map,
+            feats_norms=feats_norms,
+            train_obj=lazy_dataset_train
         )
         print('Number of chunks in test data:', len(lazy_dataset_test))
         if len(lazy_dataset_train) <= args.batch_size:
@@ -949,7 +1002,7 @@ class DataProcessor(object):
             'test_norm': test_norm,
             'feats_info': self.feats_info,
             'coeffs_info': self.coeffs_info,
-                        'dev_tsid_map': lazy_dataset_dev.tsid_map,
-                        'test_tsid_map': lazy_dataset_test.tsid_map
+            'dev_tsid_map': lazy_dataset_dev.tsid_map,
+            'test_tsid_map': lazy_dataset_test.tsid_map
         }
 

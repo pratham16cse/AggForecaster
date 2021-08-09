@@ -37,35 +37,41 @@ parser = argparse.ArgumentParser()
 parser.add_argument('dataset_name', type=str, help='dataset_name')
 #parser.add_argument('model_name', type=str, help='model_name')
 
-parser.add_argument('--N_input', type=int, default=20,
+parser.add_argument('--N_input', type=int, default=-1,
                     help='number of input steps')
-parser.add_argument('--N_output', type=int, default=20,
+parser.add_argument('--N_output', type=int, default=-1,
                     help='number of output steps')
 
 parser.add_argument('--output_dir', type=str,
-                    help='Path to store all raw outputs', default='Outputs')
+                    help='Path to store all raw outputs', default=None)
 parser.add_argument('--saved_models_dir', type=str,
-                    help='Path to store all saved models', default='saved_models')
+                    help='Path to store all saved models', default=None)
+
 parser.add_argument('--ignore_ckpt', action='store_true', default=False,
                     help='Start the training without loading the checkpoint')
-parser.add_argument('--normalize', type=str, default='same',
-                    help='Normalization type (avg, avg_per_series, quantile90, std)')
 
-parser.add_argument('--epochs', type=int, default=500,
+parser.add_argument('--normalize', type=str, default=None,
+                    choices=['same', 'zscore_per_series', 'gaussian_copula', 'log'],
+                    help='Normalization type (avg, avg_per_series, quantile90, std)')
+parser.add_argument('--epochs', type=int, default=-1,
                     help='number of training epochs')
+
 parser.add_argument('--print_every', type=int, default=50,
                     help='Print test output after every print_every epochs')
-parser.add_argument('--learning_rate', type=float, default=0.001,# nargs='+',
-                   help='Learning rate for the training algorithm')
 
-parser.add_argument('-hls', '--hidden_size', type=int, default=128,# nargs='+',
-                   help='Number of units in RNN')
-parser.add_argument('--num_grulstm_layers', type=int, default=1,# nargs='+',
-                   help='Number of layers in RNN')
-parser.add_argument('--fc_units', type=int, default=16, nargs='+',
-                   help='Number of fully connected units on top of RNN state')
-parser.add_argument('--batch_size', type=int, default=100,
+parser.add_argument('--learning_rate', type=float, default=-1.,# nargs='+',
+                   help='Learning rate for the training algorithm')
+parser.add_argument('--hidden_size', type=int, default=-1,# nargs='+',
+                   help='Number of units in the encoder/decoder state of the model')
+parser.add_argument('--num_grulstm_layers', type=int, default=-1,# nargs='+',
+                   help='Number of layers of the model')
+
+parser.add_argument('--fc_units', type=int, default=16, #nargs='+',
+                   help='Number of fully connected units on top of the encoder/decoder state of the model')
+
+parser.add_argument('--batch_size', type=int, default=-1,
                     help='Input batch size')
+
 parser.add_argument('--gamma', type=float, default=0.01, nargs='+',
                    help='gamma parameter of DILATE loss')
 parser.add_argument('--alpha', type=float, default=0.5,
@@ -85,14 +91,17 @@ parser.add_argument('--variance_rnn', action='store_true', default=False,
                     help='Use second RNN to compute variance or variance related values')
 parser.add_argument('--input_dropout', type=float, default=0.0,
                     help='Dropout on input layer')
-parser.add_argument('--v_dim', type=int, default=5,
-                   help='Dimension of V vector in LowRankGaussian')
 
+parser.add_argument('--v_dim', type=int, default=-1,
+                   help='Dimension of V vector in LowRankGaussian')
 
 parser.add_argument('--use_feats', action='store_true', default=False,
                     help='Use time features derived from calendar-date and other covariates')
+
 parser.add_argument('--t2v_type', type=str,
+                    choices=['local', 'idx', 'mdh_lincomb', 'mdh_parti'],
                     help='time2vec type', default=None)
+
 parser.add_argument('--use_coeffs', action='store_true', default=False,
                     help='Use coefficients obtained by decomposition, wavelet, etc..')
 
@@ -100,28 +109,27 @@ parser.add_argument('--use_coeffs', action='store_true', default=False,
 # Hierarchical model arguments
 parser.add_argument('--L', type=int, default=2,
                     help='number of levels in the hierarchy, leaves inclusive')
-parser.add_argument('--K_list', type=int, nargs='*', default=[1],
+
+parser.add_argument('--K_list', type=int, nargs='*', default=[],
                     help='List of bin sizes of each aggregation')
+
 parser.add_argument('--wavelet_levels', type=int, default=2,
                     help='number of levels of wavelet coefficients')
-
 parser.add_argument('--fully_connected_agg_model', action='store_true', default=False,
                     help='If True, aggregate model will be a feed-forward network')
 parser.add_argument('--transformer_agg_model', action='store_true', default=False,
                     help='If True, aggregate model will be a Transformer')
-
 parser.add_argument('--plot_anecdotes', action='store_true', default=False,
                     help='Plot the comparison of various methods')
 parser.add_argument('--save_agg_preds', action='store_true', default=False,
                     help='Save inputs, targets, and predictions of aggregate base models')
 
 parser.add_argument('--device', type=str,
-                    help='Device to run on', default='cpu')
+                    help='Device to run on', default=None)
 
 # parameters for ablation study
 parser.add_argument('--leak_agg_targets', action='store_true', default=False,
                     help='If True, aggregate targets are leaked to inference models')
-
 parser.add_argument('--patience', type=int, default=20,
                     help='Stop the training if no improvement shown for these many \
                           consecutive steps.')
@@ -131,13 +139,13 @@ parser.add_argument('--patience', type=int, default=20,
 
 # Parameters for ARTransformerModel
 parser.add_argument('--kernel_size', type=int, default=10,
-                   help='Kernel Size of Conv (in ARTransformerModel)')
+                    help='Kernel Size of Conv (in ARTransformerModel)')
 parser.add_argument('--nkernel', type=int, default=32,
-                   help='Number of kernels of Conv (in ARTransformerModel)')
+                    help='Number of kernels of Conv (in ARTransformerModel)')
 parser.add_argument('--dim_ff', type=int, default=512,
-                   help='Dimension of Feedforward (in ARTransformerModel)')
+                    help='Dimension of Feedforward (in ARTransformerModel)')
 parser.add_argument('--nhead', type=int, default=4,
-                   help='Number of attention heads (in ARTransformerModel)')
+                    help='Number of attention heads (in ARTransformerModel)')
 
 
 args = parser.parse_args()
@@ -161,6 +169,7 @@ args.base_model_names = [
 #    'rnn-mse-ar',
 #    'rnn-mse-nar',
 #    'rnn-nll-ar',
+#    'trans-mse-ar',
     'trans-nll-ar',
 #    'trans-fnll-ar',
 #    'rnn-nll-nar',
@@ -245,7 +254,7 @@ if 'rnn-nll-nar' in args.base_model_names:
     #args.inference_model_names.append('rnn-nll-nar_opt-slope')
     #args.inference_model_names.append('rnn-nll-nar_opt-st')
     #args.inference_model_names.append('rnn-nll-nar_kl-sum')
-    #args.inference_model_names.append('rnn-nll-nar_kl-st')
+    args.inference_model_names.append('rnn-nll-nar_kl-st')
 if 'rnn-nll-ar' in args.base_model_names:
     args.inference_model_names.append('RNN-NLL-AR')
     #args.inference_model_names.append('rnn-nll-ar_opt-sum')
@@ -253,13 +262,16 @@ if 'rnn-nll-ar' in args.base_model_names:
     #args.inference_model_names.append('rnn-nll-ar_opt-st')
     args.inference_model_names.append('rnn-nll-ar_kl-sum')
     args.inference_model_names.append('rnn-nll-ar_kl-st')
+if 'trans-mse-ar' in args.base_model_names:
+    args.inference_model_names.append('TRANS-MSE-AR')
 if 'trans-nll-ar' in args.base_model_names:
     args.inference_model_names.append('TRANS-NLL-AR')
     #args.inference_model_names.append('trans-nll-ar_opt-sum')
     #args.inference_model_names.append('trans-nll-ar_optcf-sum')
     #args.inference_model_names.append('trans-nll-ar_opt-slope')
     #args.inference_model_names.append('trans-nll-ar_opt-st')
-    #args.inference_model_names.append('trans-nll-ar_kl-sum')
+    args.inference_model_names.append('trans-nll-ar_kl-sum')
+    args.inference_model_names.append('trans-nll-ar_kl-st')
 if 'trans-fnll-ar' in args.base_model_names:
     args.inference_model_names.append('TRANS-FNLL-AR')
    #args.inference_model_names.append('trans-nll-ar_kl-st')
@@ -290,92 +302,108 @@ else:
 
 #import ipdb ; ipdb.set_trace()
 if args.dataset_name == 'ett':
-    args.epochs = 20
-    #args.N_input = 192
-    #args.N_output = 192
+    if args.epochs == -1: args.epochs = 20
+    if args.N_input == -1: args.N_input = 192
+    if args.N_output == -1: args.N_output = 192
+    if args.K_list == []: args.K_list = []
     #args.K_list = [6]
-    #args.saved_models_dir = 'saved_models_ett_d192_b24_e192_corrshuffle_bs128_seplayers_nodeczeros_nodecconv_t2v_usefeats_t2vglobal_idx_val20'
-    #args.output_dir = 'Outputs_ett_d192_klnorm_b24_e192_corrshuffle_bs128_seplayers_nodeczeros_nodecconv_t2v_usefeats_t2vglobal_idx_val20'
-    args.normalize = 'zscore_per_series'
-    args.learning_rate = 0.0001
-    args.batch_size = 64
-    args.hidden_size = 128
-    args.num_grulstm_layers = 1
-    args.v_dim = 4
+    if args.saved_models_dir is None:
+        args.saved_models_dir = 'saved_models_ett_d192_b24_e192_corrshuffle_bs128_seplayers_nodeczeros_nodecconv_t2v_usefeats_t2vglobal_idx_val20'
+    if args.output_dir is None:
+        args.output_dir = 'Outputs_ett_d192_klnorm_b24_e192_corrshuffle_bs128_seplayers_nodeczeros_nodecconv_t2v_usefeats_t2vglobal_idx_val20'
+    if args.normalize is None: args.normalize = 'zscore_per_series'
+    if args.learning_rate == -1.: args.learning_rate = 0.0001
+    if args.batch_size == -1: args.batch_size = 64
+    if args.hidden_size  == -1: args.hidden_size = 128
+    if args.num_grulstm_layers == -1: args.num_grulstm_layers = 1
+    if args.v_dim == -1: args.v_dim = 4
     args.b = 24
     args.use_feats = True
     #args.t2v_type = 'idx'
-    #args.device = 'cuda:2'
+    if args.device is None: args.device = 'cuda:2'
     #python main.py ett --epochs 20 --N_input 192 --N_output 192 --K_list 6 --saved_models_dir saved_models_ett_d192 --output_dir Outputs_ett_d192_klnorm --normalize zscore_per_series --learning_rate 0.0001 --batch_size 64 --hidden_size 128 --num_grulstm_layers 1 --device cuda:0
 
 elif args.dataset_name == 'taxi30min':
-    args.epochs = 20
-    #args.N_input = 336
-    #args.N_output = 168
+    if args.epochs == -1: args.epochs = 20
+    if args.N_input == -1: args.N_input = 336
+    if args.N_output == -1: args.N_output = 168
     #args.K_list = [12]
-    #args.saved_models_dir = 'saved_models_taxi30min_d168_b48_pefix_e336_corrshuffle_bs128_seplayers_nodeczeros_nodecconv_t2vglobal_mdh_parti'
-    #args.output_dir = 'Outputs_taxi30min_d168_klnorm_b48_pefix_e336_corrshuffle_bs128_seplayers_nodeczeros_nodecconv_t2vglobal_mdh_parti'
-    args.normalize = 'zscore_per_series'
-    args.learning_rate = 0.0001
-    args.batch_size = 128
-    args.hidden_size = 128
-    args.num_grulstm_layers = 1
-    args.v_dim = 4
-    args.b = 48
+    if args.K_list == []: args.K_list = []
+    if args.saved_models_dir is None:
+        args.saved_models_dir = 'saved_models_taxi30min_d168_b48_pefix_e336_corrshuffle_bs128_seplayers_nodeczeros_nodecconv_t2vglobal_mdh_parti'
+    if args.output_dir is None:
+        args.output_dir = 'Outputs_taxi30min_d168_klnorm_b48_pefix_e336_corrshuffle_bs128_seplayers_nodeczeros_nodecconv_t2vglobal_mdh_parti'
+    if args.normalize is None: args.normalize = 'zscore_per_series'
+    if args.learning_rate == -1.: args.learning_rate = 0.0001
+    if args.batch_size == -1: args.batch_size = 128
+    if args.hidden_size == -1: args.hidden_size = 128
+    if args.num_grulstm_layers == -1: args.num_grulstm_layers = 1
+    if args.v_dim == -1: args.v_dim = 4
+    args.b = 24
     #args.t2v_type = 'mdh_parti'
-    #args.device = 'cuda:2'
+    if args.device is None: args.device = 'cuda:2'
 
 elif args.dataset_name == 'etthourly':
-    args.epochs = 50
-    args.N_input = 168
-    args.N_output = 168
+    if args.epochs == -1: args.epochs = 50
+    if args.N_input == -1: args.N_input = 168
+    if args.N_output == -1: args.N_output = 168
     #args.K_list = [12]
-    args.saved_models_dir = 'saved_models_etthourly_noextrafeats_d168_b24_pefix_e168_val20_corrshuffle_seplayers_nodeczeros_nodecconv_t2v'
-    args.output_dir = 'Outputs_etthourly_noextrafeats_d168_klnorm_b24_pefix_e168_val20_corrshuffle_seplayers_nodeczeros_nodecconv_t2v'
-    args.normalize = 'zscore_per_series'
-    args.learning_rate = 0.0001
-    args.batch_size = 64
-    args.hidden_size = 128
-    args.num_grulstm_layers = 1
-    args.v_dim = 4
+    if args.K_list == []: args.K_list = []
+    if args.saved_models_dir is None:
+        args.saved_models_dir = 'saved_models_etthourly_noextrafeats_d168_b24_pefix_e168_val20_corrshuffle_seplayers_nodeczeros_nodecconv_t2v'
+    if args.output_dir is None:
+        args.output_dir = 'Outputs_etthourly_noextrafeats_d168_klnorm_b24_pefix_e168_val20_corrshuffle_seplayers_nodeczeros_nodecconv_t2v'
+    if args.normalize is None: args.normalize = 'zscore_per_series'
+    if args.learning_rate == -1.: args.learning_rate = 0.0001
+    if args.batch_size == -1: args.batch_size = 64
+    if args.hidden_size == -1: args.hidden_size = 128
+    if args.num_grulstm_layers == -1: args.num_grulstm_layers = 1
+    if args.v_dim == -1: args.v_dim = 4
     args.b = 24
     #args.print_every = 5 # TODO: Only for aggregate models
-    args.device = 'cuda:2'
+    if args.device is None: args.device = 'cuda:2'
 
 elif args.dataset_name == 'azure':
-    args.epochs = 20
-    #args.N_input = 720
-    #args.N_output = 360
+    if args.epochs == -1: args.epochs = 20
+    if args.N_input == -1: args.N_input = 720
+    if args.N_output == -1: args.N_output = 360
     #args.K_list = [60]
-    #args.saved_models_dir = 'saved_models_azure_d360_e720_usefeats_bs128_normsame'
-    #args.output_dir = 'Outputs_azure_d360_e720_usefeats_bs128_normsame'
+    if args.K_list == []: args.K_list = []
+    if args.saved_models_dir is None:
+        args.saved_models_dir = 'saved_models_azure_d360_e720_usefeats_bs128_normsame'
+    if args.output_dir is None:   
+        args.output_dir = 'Outputs_azure_d360_e720_usefeats_bs128_normsame'
     #args.normalize = 'zscore_per_series'
-    args.normalize = 'same'
-    args.learning_rate = 0.0001
-    args.batch_size = 128
-    args.hidden_size = 128
-    args.num_grulstm_layers = 1
-    args.v_dim = 4
+    if args.normalize is None: args.normalize = 'same'
+    if args.learning_rate == -1: args.learning_rate = 0.0001
+    if args.batch_size == -1: args.batch_size = 128
+    if args.hidden_size == -1: args.hidden_size = 128
+    if args.num_grulstm_layers == -1: args.num_grulstm_layers = 1
+    if args.v_dim == -1: args.v_dim = 4
     args.b = 10
     args.use_feats - True
     #args.t2v_type = None
-    #args.device = 'cuda:0'
+    if args.device is None: args.device = 'cuda:0'
 
 elif args.dataset_name == 'Solar':
-    args.epochs = 20
-    args.N_input = 336
-    args.N_output = 168
+    if args.epochs == -1: args.epochs = 20
+    if args.N_input == -1: args.N_input = 336
+    if args.N_output == -1: args.N_output = 168
     #args.K_list = [12]
-    args.saved_models_dir = 'saved_models_Solar_d168_b4_e336_corrshuffle_seplayers_nodeczeros_nodecconv_t2v'
-    args.output_dir = 'Outputs_Solar_d168_normzscore_klnorm_b4_e336_corrshuffle_seplayers_nodeczeros_nodecconv_t2v'
-    args.normalize = 'zscore_per_series'
-    args.learning_rate = 0.0001
-    args.batch_size = 64
-    args.hidden_size = 128
-    args.num_grulstm_layers = 1
-    args.v_dim = 4
+    if args.K_list == []: args.K_list = []
+    if args.saved_models_dir is None:
+        args.saved_models_dir = 'saved_models_Solar_d168_b4_e336_corrshuffle_seplayers_nodeczeros_nodecconv_t2v'
+    if args.output_dir is None:
+        args.output_dir = 'Outputs_Solar_d168_normzscore_klnorm_b4_e336_corrshuffle_seplayers_nodeczeros_nodecconv_t2v'
+    if args.normalize is None: args.normalize = 'zscore_per_series'
+    if args.learning_rate == -1: args.learning_rate = 0.0001
+    if args.batch_size == -1: args.batch_size = 64
+    if args.hidden_size == -1: args.hidden_size = 128
+    if args.num_grulstm_layers == -1: args.num_grulstm_layers = 1
+    if args.v_dim == -1: args.v_dim = 4
     args.b = 4
-    args.device = 'cuda:1'
+    if args.device is None: args.device = 'cuda:1'
+
 elif args.dataset_name == 'Traffic911':
     args.epochs = 20
     args.N_input = 336
@@ -473,7 +501,7 @@ for base_model_name in args.base_model_names:
             if base_model_name in [
                 'seq2seqmse', 'seq2seqdilate', 'convmse', 'convmsenonar',
                 'rnn-mse-nar', 'rnn-mse-ar', 'trans-mse-nar', 'nbeats-mse-nar',
-                'nbeatsd-mse-nar'
+                'nbeatsd-mse-nar', 'trans-mse-ar',
             ]:
                 estimate_type = 'point'
             elif base_model_name in [
@@ -905,6 +933,10 @@ for inf_model_name in args.inference_model_names:
         inf_net = inf_models.KLInference(
             args.K_list, base_models_dict, ['sum', 'slope'], device=args.device, opt_normspace=opt_normspace
         )
+
+    elif inf_model_name in ['TRANS-MSE-AR']:
+        base_models_dict = base_models['trans-mse-ar']
+        inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device)
 
     elif inf_model_name in ['TRANS-NLL-AR']:
         base_models_dict = base_models['trans-nll-ar']

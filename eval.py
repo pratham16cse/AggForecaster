@@ -27,7 +27,7 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1, unnor
     for i, data in enumerate(loader, 0):
         loss_mse, loss_dtw, loss_tdi, loss_mae, losses_nll, losses_ql = torch.tensor(0), torch.tensor(0), torch.tensor(0), torch.tensor(0), torch.tensor(0), torch.tensor(0)
         # get the inputs
-        batch_inputs, batch_target, feats_in, feats_tgt, ids, _, coeffs_in, _, _, _ = data
+        batch_inputs, batch_target, feats_in, feats_tgt, ids, _, coeffs_in, _ = data
         #inputs = torch.tensor(inputs, dtype=torch.float32).to(args.device)
         #batch_target = torch.tensor(batch_target, dtype=torch.float32).to(args.device)
         #feats_in = torch.tensor(feats_in, dtype=torch.float32).to(args.device)
@@ -167,10 +167,12 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1, unnor
     # NLL
     if net.estimate_type == 'covariance':
         dist = torch.distributions.lowrank_multivariate_normal.LowRankMultivariateNormal(
-            pred_mu.squeeze(dim=-1), pred_v, pred_std.squeeze(dim=-1)
+            pred_mu.squeeze(dim=-1), pred_v, pred_d.squeeze(dim=-1)
         )
+        #dist = torch.distributions.normal.Normal(pred_mu, pred_std)
         loss_nll = -torch.mean(dist.log_prob(target.squeeze(dim=-1))).item()
-    elif net.estimate_type == 'variance':
+        #loss_nll = -torch.mean(dist.log_prob(target)).item()
+    elif net.estimate_type in ['variance', 'point']:
         dist = torch.distributions.normal.Normal(pred_mu, pred_std)
         loss_nll = -torch.mean(dist.log_prob(target)).item()
 

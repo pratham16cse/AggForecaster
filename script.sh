@@ -26,83 +26,92 @@
 #--t2v_type None
 #python main.py taxi30min \
 #	--N_input 336 --N_output 168 \
-#	--saved_models_dir script_saved_models_taxi30min_e336_d168_t2vnone \
-#	--output_dir script_Outputs_taxi30min_e336_d168_t2vnone \
+#	--saved_models_dir scripteff_saved_models_taxi30min_e336_d168_t2vnone \
+#	--output_dir scripteff_Outputs_taxi30min_e336_d168_t2vnone \
 #	--device cuda:2
 #
 #python main.py taxi30min \
 #	--N_input 336 --N_output 168 \
-#	--saved_models_dir script_saved_models_taxi30min_e336_d168_t2vlocal \
-#	--output_dir script_Outputs_taxi30min_e336_d168_t2vlocal \
+#	--saved_models_dir scripteff_saved_models_taxi30min_e336_d168_t2vlocal \
+#	--output_dir scripteff_Outputs_taxi30min_e336_d168_t2vlocal \
 #	--t2v_type local \
 #	--device cuda:2
 #
 #python main.py taxi30min \
 #	--N_input 336 --N_output 168 \
-#	--saved_models_dir script_saved_models_taxi30min_e336_d168_t2vglobalidx \
-#	--output_dir script_Outputs_taxi30min_e336_d168_t2vglobalidx \
+#	--saved_models_dir scripteff_saved_models_taxi30min_e336_d168_t2vglobalidx \
+#	--output_dir scripteff_Outputs_taxi30min_e336_d168_t2vglobalidx \
 #	--t2v_type idx \
 #	--device cuda:2
 #
 #python main.py taxi30min \
 #	--N_input 336 --N_output 168 \
-#	--saved_models_dir script_saved_models_taxi30min_e336_d168_t2vglobalmdhlincomb \
-#	--output_dir script_Outputs_taxi30min_e336_d168_t2vglobalmdhlincomb \
+#	--saved_models_dir scripteff_saved_models_taxi30min_e336_d168_t2vglobalmdhlincomb \
+#	--output_dir scripteff_Outputs_taxi30min_e336_d168_t2vglobalmdhlincomb \
 #	--t2v_type mdh_lincomb \
 #	--device cuda:2
 #
 #python main.py taxi30min \
 #	--N_input 336 --N_output 168 \
-#	--saved_models_dir script_saved_models_taxi30min_e336_d168_t2vglobalmdhparti \
-#	--output_dir script_Outputs_taxi30min_e336_d168_t2vglobalmdhparti \
+#	--saved_models_dir scripteff_saved_models_taxi30min_e336_d168_t2vglobalmdhparti \
+#	--output_dir scripteff_Outputs_taxi30min_e336_d168_t2vglobalmdhparti \
 #	--t2v_type 'mdh_parti' \
 #	--device cuda:2
 
 #--t2v_type None
 #python main.py ett \
 #	--N_input 384 --N_output 192 \
-#	--saved_models_dir saved_models_ett_e384_d192_t2vnone \
-#	--output_dir Outputs_ett_e384_d192_t2vnone \
+#	--saved_models_dir scripteff_saved_models_ett_e384_d192_t2vnone_featsnorm \
+#	--output_dir scripteff_Outputs_ett_e384_d192_t2vnone_featsnorm \
 #	--device cuda:2
 #
 #python main.py ett \
 #	--N_input 384 --N_output 192 \
-#	--saved_models_dir saved_models_ett_e384_d192_t2vlocal \
-#	--output_dir Outputs_ett_e384_d192_t2vlocal \
+#	--saved_models_dir scripteff_saved_models_ett_e384_d192_t2vlocal_featsnorm \
+#	--output_dir scripteff_Outputs_ett_e384_d192_t2vlocal_featsnorm \
 #	--t2v_type local \
 #	--device cuda:2
 #
 #python main.py ett \
 #	--N_input 384 --N_output 192 \
-#	--saved_models_dir saved_models_ett_e384_d192_t2vglobalidx \
-#	--output_dir Outputs_ett_e384_d192_t2vglobalidx \
+#	--saved_models_dir scripteff_saved_models_ett_e384_d192_t2vglobalidx_dropoutt2v_featsnorm \
+#	--output_dir scripteff_Outputs_ett_e384_d192_t2vglobalidx_dropoutt2v_featsnorm \
 #	--t2v_type idx \
 #	--device cuda:2
 #
 #python main.py ett \
 #	--N_input 384 --N_output 192 \
-#	--saved_models_dir saved_models_ett_e384_d192_t2vglobalmdhlincomb \
-#	--output_dir Outputs_ett_e384_d192_t2vglobalmdhlincomb \
+#	--saved_models_dir scripteff_saved_models_ett_e384_d192_t2vglobalmdhlincomb \
+#	--output_dir scripteff_Outputs_ett_e384_d192_t2vglobalmdhlincomb \
 #	--t2v_type mdh_lincomb \
 #	--device cuda:2
 #
 #python main.py ett \
 #	--N_input 384 --N_output 192 \
-#	--saved_models_dir saved_models_ett_e384_d192_t2vglobalmdhparti \
-#	--output_dir Outputs_ett_e384_d192_t2vglobalmdhparti \
+#	--saved_models_dir scripteff_saved_models_ett_e384_d192_t2vglobalmdhparti \
+#	--output_dir scripteff_Outputs_ett_e384_d192_t2vglobalmdhparti \
 #	--t2v_type mdh_parti \
 #	--device cuda:2
 
 #--t2v_type None
 #python main.py azure \
 #	--N_input 720 --N_output 360 \
-#	--saved_models_dir saved_models_azure_e720_d360_t2vnone \
+#	--saved_models_dir script_saved_models_azure_e720_d360_t2vnone \
 #	--output_dir script_Outputs_azure_e720_d360_t2vnone \
 #	--device cuda:0
 
-python main.py azure \
-	--N_input 720 --N_output 360 \
-	--saved_models_dir saved_models_azure_e720_d360_t2vlocal \
-	--output_dir script_Outputs_azure_e720_d360_t2vlocal \
-	--t2v_type local \
-	--device cuda:0
+#python main.py azure \
+#	--N_input 720 --N_output 360 \
+#	--saved_models_dir scripteff_saved_models_azure_e720_d360_t2vlocal \
+#	--output_dir scripteff_Outputs_azure_e720_d360_t2vlocal \
+#	--t2v_type local \
+#	--device cuda:0
+
+# Commands for AAAI2022
+python main.py ett \
+	--N_input 384 --N_output 192 \
+	--saved_models_dir aaai_saved_models_ett_e384_d192 \
+	--output_dir aaai_Outputs_ett_e384_d192 \
+	--K_list 1 6 \
+	--device cuda:2
+
