@@ -94,8 +94,12 @@ parser.add_argument('--input_dropout', type=float, default=0.0,
 
 parser.add_argument('--v_dim', type=int, default=-1,
                    help='Dimension of V vector in LowRankGaussian')
+parser.add_argument('--b', type=int, default=-1,
+                   help='Number of correlation terms to sample for loss computation during training')
 
-parser.add_argument('--use_feats', action='store_true', default=False,
+#parser.add_argument('--use_feats', action='store_true', default=False,
+#                    help='Use time features derived from calendar-date and other covariates')
+parser.add_argument('--use_feats', type=int, default=-1,
                     help='Use time features derived from calendar-date and other covariates')
 
 parser.add_argument('--t2v_type', type=str,
@@ -317,8 +321,8 @@ if args.dataset_name == 'ett':
     if args.hidden_size  == -1: args.hidden_size = 128
     if args.num_grulstm_layers == -1: args.num_grulstm_layers = 1
     if args.v_dim == -1: args.v_dim = 4
-    args.b = 24
-    args.use_feats = True
+    if args.b == -1: args.b = 24
+    if args.use_feats == -1: args.use_feats = 1
     #args.t2v_type = 'idx'
     if args.device is None: args.device = 'cuda:2'
     #python main.py ett --epochs 20 --N_input 192 --N_output 192 --K_list 6 --saved_models_dir saved_models_ett_d192 --output_dir Outputs_ett_d192_klnorm --normalize zscore_per_series --learning_rate 0.0001 --batch_size 64 --hidden_size 128 --num_grulstm_layers 1 --device cuda:0
@@ -339,7 +343,7 @@ elif args.dataset_name == 'taxi30min':
     if args.hidden_size == -1: args.hidden_size = 128
     if args.num_grulstm_layers == -1: args.num_grulstm_layers = 1
     if args.v_dim == -1: args.v_dim = 4
-    args.b = 24
+    if args.b == -1: args.b = 24
     #args.t2v_type = 'mdh_parti'
     if args.device is None: args.device = 'cuda:2'
 
@@ -359,7 +363,7 @@ elif args.dataset_name == 'etthourly':
     if args.hidden_size == -1: args.hidden_size = 128
     if args.num_grulstm_layers == -1: args.num_grulstm_layers = 1
     if args.v_dim == -1: args.v_dim = 4
-    args.b = 24
+    if args.b == -1: args.b = 24
     #args.print_every = 5 # TODO: Only for aggregate models
     if args.device is None: args.device = 'cuda:2'
 
@@ -380,8 +384,8 @@ elif args.dataset_name == 'azure':
     if args.hidden_size == -1: args.hidden_size = 128
     if args.num_grulstm_layers == -1: args.num_grulstm_layers = 1
     if args.v_dim == -1: args.v_dim = 4
-    args.b = 10
-    args.use_feats - True
+    if args.b == -1: args.b = 10
+    if args.use_feats == -1: args.use_feats = 1
     #args.t2v_type = None
     if args.device is None: args.device = 'cuda:0'
 
@@ -401,7 +405,7 @@ elif args.dataset_name == 'Solar':
     if args.hidden_size == -1: args.hidden_size = 128
     if args.num_grulstm_layers == -1: args.num_grulstm_layers = 1
     if args.v_dim == -1: args.v_dim = 4
-    args.b = 4
+    if args.b == -1: args.b = 4
     if args.device is None: args.device = 'cuda:1'
 
 elif args.dataset_name == 'Traffic911':

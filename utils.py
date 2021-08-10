@@ -418,8 +418,6 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
         assert dec_len%K == 0
 
         print('Creating dataset:', aggregation_type, K)
-        self._enc_len = enc_len
-        self._dec_len = dec_len
         self._base_enc_len = enc_len
         self._base_dec_len = dec_len
         #self.num_values = len(data[0]['target'][0])
@@ -579,20 +577,28 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
         #ipdb.set_trace()
 
     @property
+    def base_enc_len(self):
+        return self._base_enc_len
+
+    @property
+    def base_dec_len(self):
+        return self._base_dec_len
+
+    @property
     def enc_len(self):
         if self.K > 1:
-            el = (self._enc_len // self.K) * self.mult
+            el = (self._base_enc_len // self.K) * self.mult
         else:
-            el = self._enc_len
-        #el = self._enc_len
+            el = self._base_enc_len
+        #el = self._base_enc_len
         return el
     
     @property
     def dec_len(self):
         if self.K > 1:
-            dl = self._dec_len // self.K
+            dl = self._base_dec_len // self.K
         else:
-            dl = self._dec_len
+            dl = self._base_dec_len
         return dl
 
     @property
@@ -618,14 +624,6 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
         #output_size = len(self.data[0]['target'][0])
         output_size = 1
         return output_size
-
-    @property
-    def base_enc_len(self):
-        return self._base_enc_len
-    
-    @property
-    def base_dec_len(self):
-        return self._base_dec_len
 
     def __len__(self):
         return len(self.indices)
@@ -745,7 +743,7 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
     def get_time_features(self, start, seqlen):
         end = shift_timestamp(start, seqlen)
         full_date_range = pd.date_range(start, end, freq=start.freq)
-        chunk_range = full_date_range[ pos_id : pos_id+self._enc_len ]
+        chunk_range = full_date_range[ pos_id : pos_id+self._base_enc_len ]
 
     def get_avg_date(self, date_range):
         return date_range.mean(axis=0)
@@ -870,13 +868,13 @@ class DataProcessor(object):
                 data_train, data_dev, data_test,
                 dev_tsid_map, test_tsid_map,
                                 feats_info, coeffs_info
-            ) = parse_Solar(args.dataset_name, args.N_input, args.N_output)
+            ) = parse_Solar(args.dataset_name, args.N_input, args.N_output, t2v_type=args.t2v_type)
         elif args.dataset_name in ['etthourly']:
             (
                 data_train, data_dev, data_test,
                 dev_tsid_map, test_tsid_map,
                                 feats_info, coeffs_info
-            ) = parse_etthourly(args.dataset_name, args.N_input, args.N_output)
+            ) = parse_etthourly(args.dataset_name, args.N_input, args.N_output, t2v_type=args.t2v_type)
         elif args.dataset_name in ['m4hourly']:
             (
                 data_train, data_dev, data_test,

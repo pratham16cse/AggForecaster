@@ -108,10 +108,23 @@
 #	--device cuda:0
 
 # Commands for AAAI2022
-python main.py ett \
-	--N_input 384 --N_output 192 \
-	--saved_models_dir aaai_saved_models_ett_e384_d192 \
-	--output_dir aaai_Outputs_ett_e384_d192 \
+#python main.py ett \
+#	--N_input 384 --N_output 192 \
+#	--saved_models_dir aaai_saved_models_ett_e384_d192 \
+#	--output_dir aaai_Outputs_ett_e384_d192 \
+#	--K_list 1 6 \
+#	--device cuda:2
+
+#python main.py Solar \
+#	--N_input 336 --N_output 168 \
+#	--saved_models_dir aaai_saved_models_Solar_e336_d168 \
+#	--output_dir aaai_Outputs_Solar_e336_d168 \
+#	--K_list 1 12 \
+#	--device cuda:2
+
+python main.py etthourly \
+	--N_input 168 --N_output 168 \
+	--saved_models_dir aaai_saved_models_etthourly_e168_d168 \
+	--output_dir aaai_Outputs_etthourly_e168_d168 \
 	--K_list 1 6 \
 	--device cuda:2
-
