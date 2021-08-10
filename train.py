@@ -87,7 +87,7 @@ def train_model(
         epoch_loss, epoch_time = 0., 0.
         for i, data in enumerate(trainloader, 0):
             st = time.time()
-            inputs, target, feats_in, feats_tgt, _, _, coeffs_in, coeffs_tgt = data
+            inputs, target, feats_in, feats_tgt, _, _ = data
             target = target.to(args.device)
             batch_size, N_output = target.shape[0:2]
 
@@ -96,8 +96,8 @@ def train_model(
             teacher_force = True if random.random() <= teacher_forcing_ratio else False
             if 'nar' in model_name:
                 out = net(
-                    feats_in.to(args.device), inputs.to(args.device), coeffs_in.to(args.device),
-                    feats_tgt.to(args.device), target.to(args.device), coeffs_tgt.to(args.device)
+                    feats_in.to(args.device), inputs.to(args.device),
+                    feats_tgt.to(args.device), target.to(args.device)
                 )
                 if net.estimate_type in ['point']:
                     means = out
@@ -107,8 +107,8 @@ def train_model(
                     means, stds, vs = out
             else:
                 out = net(
-                    feats_in.to(args.device), inputs.to(args.device), coeffs_in.to(args.device),
-                    feats_tgt.to(args.device), target.to(args.device), coeffs_tgt.to(args.device),
+                    feats_in.to(args.device), inputs.to(args.device),
+                    feats_tgt.to(args.device), target.to(args.device),
                     teacher_force=teacher_force
                 )
                 if net.estimate_type in ['point']:

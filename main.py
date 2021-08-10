@@ -494,7 +494,6 @@ for base_model_name in args.base_model_names:
             devloader = level2data['devloader']
             testloader = level2data['testloader']
             feats_info = level2data['feats_info']
-            coeffs_info = level2data['coeffs_info']
             N_input = level2data['N_input']
             N_output = level2data['N_output']
             input_size = level2data['input_size']
@@ -535,7 +534,7 @@ for base_model_name in args.base_model_names:
             net_gru = get_base_model(
                 args, base_model_name, level,
                 N_input, N_output, input_size, output_size,
-                estimate_type, feats_info, coeffs_info
+                estimate_type, feats_info
             )
     
             # train the network

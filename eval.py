@@ -27,7 +27,7 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1, unnor
     for i, data in enumerate(loader, 0):
         loss_mse, loss_dtw, loss_tdi, loss_mae, losses_nll, losses_ql = torch.tensor(0), torch.tensor(0), torch.tensor(0), torch.tensor(0), torch.tensor(0), torch.tensor(0)
         # get the inputs
-        batch_inputs, batch_target, feats_in, feats_tgt, ids, _, coeffs_in, _ = data
+        batch_inputs, batch_target, feats_in, feats_tgt, ids, _, = data
         #inputs = torch.tensor(inputs, dtype=torch.float32).to(args.device)
         #batch_target = torch.tensor(batch_target, dtype=torch.float32).to(args.device)
         #feats_in = torch.tensor(feats_in, dtype=torch.float32).to(args.device)
@@ -40,8 +40,7 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1, unnor
         # DO NOT PASS TARGET during forward pass
         with torch.no_grad():
             out = net(
-                feats_in.to(args.device), batch_inputs.to(args.device), coeffs_in.to(args.device),
-                feats_tgt.to(args.device)
+                feats_in.to(args.device), batch_inputs.to(args.device), feats_tgt.to(args.device)
             )
             if net.estimate_type in ['point']:
                 batch_pred_mu = out

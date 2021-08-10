@@ -442,8 +442,6 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
             ex = ex[ len(ex)%self.K: ]
             ex_f = data[i]['feats']
             ex_f = ex_f[ len(ex)%self.K: ]
-            ex_c = data[i]['coeffs']
-            ex_c = ex_c[ len(ex)%self.K: ]
 
             #bp = np.arange(1,len(ex), 1)
             if which_split in ['train']:
@@ -452,7 +450,7 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
                 bp = [(i, self.K) for i in np.arange(0, len(ex), self.K)]
 
             if self.K != 1:
-                ex_agg, ex_f_agg, ex_c_agg = [], [], []
+                ex_agg, ex_f_agg = [], []
                 if self.aggregation_type in ['sum']:
                     for b in range(len(bp)):
                         s, e = bp[b][0], bp[b][0]+bp[b][1]
@@ -487,16 +485,12 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
                     s, e = bp[b][0], bp[b][0]+bp[b][1]
                     if self.which_split in ['train']:
                         ex_f_agg.append(self.aggregate_data(ex_f[s:e]))
-                        ex_c_agg.append(self.aggregate_data(ex_c[s:e]))
                     elif self.which_split in ['dev', 'test']:
                         lookup_series_f = self.train_obj.data[self.tsid_map[i]]['feats']
-                        lookup_series_c = self.train_obj.data[self.tsid_map[i]]['coeffs']
                         if len(lookup_series) < self.K*b:
                             ex_f_agg.append(self.aggregate_data(ex_f[s:e]))
-                            ex_c_agg.append(self.aggregate_data(ex_c[s:e]))
                         else:
                             ex_f_agg.append(lookup_series_f[self.K*b])
-                            ex_c_agg.append(lookup_series_c[self.K*b])
 
                 #import ipdb ; ipdb.set_trace()
 
@@ -504,20 +498,17 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
                     {
                         'target':torch.stack(ex_agg, dim=0),
                         'feats':torch.stack(ex_f_agg, dim=0),
-                        'coeffs':torch.stack(ex_c_agg, dim=0),
                     }
                 )
 
             else:
                 ex_agg = ex
                 ex_f_agg = ex_f
-                ex_c_agg = ex_c
 
                 data_agg.append(
                     {
                         'target':ex_agg,
                         'feats':ex_f_agg,
-                        'coeffs':ex_c_agg,
                     }
                 )
         et = time.time()
@@ -670,9 +661,6 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
         ex_input_feats = torch.cat(ex_input_feats_norm, dim=-1)
         ex_target_feats = torch.cat(ex_target_feats_norm, dim=-1)
 
-        ex_input_coeffs = self.data[ts_id]['coeffs'][ pos_id : pos_id+el : stride ]
-        ex_target_coeffs = self.data[ts_id]['coeffs'][ pos_id+el : pos_id+el+dl : stride ]
-
         #i_res = self.enc_len - len(ex_input)
         #ex_input = torch.cat(
         #    [torch.zeros([i_res] + list(ex_input.shape[1:])), ex_input],
@@ -682,10 +670,6 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
         #    [torch.zeros([i_res] +list(ex_input_feats.shape[1:])), ex_input_feats],
         #    dim=0
         #)
-        #ex_input_coeffs = torch.cat(
-        #    [torch.zeros([i_res] + list(ex_input_coeffs.shape[1:])), ex_input_coeffs],
-        #    dim=0
-        #)
 
         #print(ex_input.shape, ex_target.shape, ex_input_feats.shape, ex_target_feats.shape)
 
@@ -693,8 +677,7 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
             ex_input, ex_target,
             ex_input_feats, ex_target_feats,
             mapped_id,
-            torch.FloatTensor([ts_id, pos_id]),
-            ex_input_coeffs, ex_target_coeffs
+            torch.FloatTensor([ts_id, pos_id])
         )
 
     def collate_fn(self, batch):
@@ -822,7 +805,7 @@ class DataProcessor(object):
             (
                 data_train, data_dev, data_test,
                 dev_tsid_map, test_tsid_map,
-                                feats_info, coeffs_info
+                feats_info, coeffs_info
             ) = parse_Traffic911(args.N_input, args.N_output)
         elif args.dataset_name in ['Exchange', 'Wiki']:
             (
@@ -849,49 +832,49 @@ class DataProcessor(object):
             (
                 data_train, data_dev, data_test,
                 dev_tsid_map, test_tsid_map,
-                                feats_info, coeffs_info
+                feats_info
             ) = parse_azure(args.dataset_name, args.N_input, args.N_output, t2v_type=args.t2v_type)
         elif args.dataset_name in ['ett']:
             (
                 data_train, data_dev, data_test,
                 dev_tsid_map, test_tsid_map,
-                                feats_info, coeffs_info
+                feats_info
             ) = parse_ett(args.dataset_name, args.N_input, args.N_output, t2v_type=args.t2v_type)
         elif args.dataset_name in ['sin_noisy']:
             (
                 data_train, data_dev, data_test,
                 dev_tsid_map, test_tsid_map,
-                                feats_info, coeffs_info
+                feats_info, coeffs_info
             ) = parse_sin_noisy(args.dataset_name, args.N_input, args.N_output)
         elif args.dataset_name in ['Solar']:
             (
                 data_train, data_dev, data_test,
                 dev_tsid_map, test_tsid_map,
-                                feats_info, coeffs_info
+                feats_info
             ) = parse_Solar(args.dataset_name, args.N_input, args.N_output, t2v_type=args.t2v_type)
         elif args.dataset_name in ['etthourly']:
             (
                 data_train, data_dev, data_test,
                 dev_tsid_map, test_tsid_map,
-                                feats_info, coeffs_info
+                feats_info
             ) = parse_etthourly(args.dataset_name, args.N_input, args.N_output, t2v_type=args.t2v_type)
         elif args.dataset_name in ['m4hourly']:
             (
                 data_train, data_dev, data_test,
                 dev_tsid_map, test_tsid_map,
-                                feats_info, coeffs_info
+                feats_info, coeffs_info
             ) = parse_m4hourly(args.dataset_name, args.N_input, args.N_output)
         elif args.dataset_name in ['m4daily']:
             (
                 data_train, data_dev, data_test,
                 dev_tsid_map, test_tsid_map,
-                                feats_info, coeffs_info
+                feats_info, coeffs_info
             ) = parse_m4daily(args.dataset_name, args.N_input, args.N_output)
         elif args.dataset_name in ['taxi30min']:
             (
                 data_train, data_dev, data_test,
                 dev_tsid_map, test_tsid_map,
-                                feats_info, coeffs_info
+                feats_info
             ) = parse_taxi30min(args.dataset_name, args.N_input, args.N_output, t2v_type=args.t2v_type)
 
 
@@ -904,7 +887,6 @@ class DataProcessor(object):
         self.dev_tsid_map = dev_tsid_map
         self.test_tsid_map = test_tsid_map
         self.feats_info = feats_info
-        self.coeffs_info = coeffs_info
 
 
     def get_processed_data(self, args, agg_method, K):
@@ -999,7 +981,6 @@ class DataProcessor(object):
             'dev_norm': dev_norm,
             'test_norm': test_norm,
             'feats_info': self.feats_info,
-            'coeffs_info': self.coeffs_info,
             'dev_tsid_map': lazy_dataset_dev.tsid_map,
             'test_tsid_map': lazy_dataset_test.tsid_map
         }

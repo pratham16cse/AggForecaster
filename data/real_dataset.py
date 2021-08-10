@@ -563,34 +563,20 @@ def parse_azure(dataset_name, N_input, N_output, t2v_type=None):
 
     # Add time-features
     for i in range(len(data_train)):
-        #seq_dates = get_date_range("2021-01-01 00:00:00", '1min', len(data_train[i]['target']))
-        #data_train[i]['freq_str'] = '1min'
-        #data_train[i]['start'] = seq_dates[0]
         data_train[i]['feats'] = feats_train[i]
-        data_train[i]['coeffs'] = torch.zeros((len(data_train[i]['target']), 1), dtype=torch.float)
     for i in range(len(data_dev)):
-        #seq_dates = get_date_range("2021-01-01 00:00:00", '1min', len(data_dev[i]['target']))
-        #data_dev[i]['freq_str'] = '1min'
-        #data_dev[i]['start'] = seq_dates[0]
         data_dev[i]['feats'] = feats_dev[i]
-        data_dev[i]['coeffs'] = torch.zeros((len(data_dev[i]['target']), 1), dtype=torch.float)
     for i in range(len(data_test)):
-        #seq_dates = get_date_range("2021-01-01 00:00:00", '1min', len(data_test[i]['target']))
-        #data_test[i]['freq_str'] = '1min'
-        #data_test[i]['start'] = seq_dates[0]
         data_test[i]['feats'] = feats_test[i]
-        data_test[i]['coeffs'] = torch.zeros((len(data_test[i]['target']), 1), dtype=torch.float)
-
 
     feats_info = {0:(60, 32)}
     i = len(feats_info)
     for j in range(i, i+feats_date[0,0].shape[0]):
         feats_info[j] = (-1, -1)
-    coeffs_info = {0: (0, 1)}
 
     return (
         data_train, data_dev, data_test, dev_tsid_map, test_tsid_map,
-        feats_info, coeffs_info
+        feats_info
     )
 
 def parse_ett(dataset_name, N_input, N_output, t2v_type=None):
@@ -680,24 +666,10 @@ def parse_ett(dataset_name, N_input, N_output, t2v_type=None):
     period=96
     for i in range(len(data_train)):
         data_train[i]['feats'] = feats_train[i]
-        seq = data_train[i]['target']
-        #data_train[i]['coeffs'] = decompose_seq(seq, decompose_type, period, N_output, True)
-        data_train[i]['coeffs'] = torch.zeros((len(seq), 1), dtype=torch.float)
-        #print('train:', i, len(data_train))
     for i in range(len(data_dev)):
         data_dev[i]['feats'] = feats_dev[i]
-        #import ipdb ; ipdb.set_trace()
-        seq = data_dev[i]['target']
-        #data_dev[i]['coeffs'] = decompose_seq(seq, decompose_type, period, N_output, False)
-        data_dev[i]['coeffs'] = torch.zeros((len(seq), 1), dtype=torch.float)
-        #print('dev:', i, len(data_dev))
     for i in range(len(data_test)):
         data_test[i]['feats'] = feats_test[i]
-        seq = data_test[i]['target']
-        #data_test[i]['coeffs'] = decompose_seq(seq, decompose_type, period, N_output, False)
-        data_test[i]['coeffs'] = torch.zeros((len(seq), 1), dtype=torch.float)
-        #print('test:', i, len(data_test))
-
 
     feats_info = {0:(24*4, 64), 1:(0, 1), 2:(0, 1), 3:(0, 1), 4:(0, 1), 5:(0, 1), 6:(0, 1)}
     #feats_info = {
@@ -707,11 +679,10 @@ def parse_ett(dataset_name, N_input, N_output, t2v_type=None):
     i = len(feats_info)
     for j in range(i, i+feats_date[0,0].shape[0]):
         feats_info[j] = (-1, -1)
-    coeffs_info = {0:(0, 1), 1:(0, 1), 2:(0, 1)}
 
     return (
         data_train, data_dev, data_test, dev_tsid_map, test_tsid_map,
-        feats_info, coeffs_info
+        feats_info
     )
 
 
@@ -894,25 +865,21 @@ def parse_Solar(dataset_name, N_input, N_output, t2v_type=None):
 
     for i in range(len(data_train)):
         data_train[i]['feats'] = feats_train[i]
-        data_train[i]['coeffs'] = torch.zeros((len(data_train[i]['target']), 1), dtype=torch.float)
     for i in range(len(data_dev)):
         data_dev[i]['feats'] = feats_dev[i]
-        data_dev[i]['coeffs'] = torch.zeros((len(data_dev[i]['target']), 1), dtype=torch.float)
     for i in range(len(data_test)):
         data_test[i]['feats'] = feats_test[i]
-        data_test[i]['coeffs'] = torch.zeros((len(data_test[i]['target']), 1), dtype=torch.float)
 
     feats_info = {0:(24, 16)}
     i = len(feats_info)
     for j in range(i, i+data_train[0]['feats'].shape[-1]):
         feats_info[j] = (-1, -1)
-    coeffs_info = {0:(0, 1)}
 
     #import ipdb;ipdb.set_trace()
                 
     return (
         data_train, data_dev, data_test, dev_tsid_map, test_tsid_map,
-        feats_info, coeffs_info
+        feats_info
     )
 
 def parse_etthourly(dataset_name, N_input, N_output, t2v_type=None):
@@ -987,23 +954,10 @@ def parse_etthourly(dataset_name, N_input, N_output, t2v_type=None):
     decompose_type = 'STL'
     for i in range(len(data_train)):
         data_train[i]['feats'] = feats_train[i]
-        seq = data_train[i]['target']
-        #data_train[i]['coeffs'] = decompose_seq(seq, decompose_type, 24, N_output, True)
-        data_train[i]['coeffs'] = torch.zeros((len(seq), 1), dtype=torch.float)
-        #print('train:', i, len(data_train))
     for i in range(len(data_dev)):
         data_dev[i]['feats'] = feats_dev[i]
-        #import ipdb ; ipdb.set_trace()
-        seq = data_dev[i]['target']
-        #data_dev[i]['coeffs'] = decompose_seq(seq, decompose_type, 24, N_output, False)
-        data_dev[i]['coeffs'] = torch.zeros((len(seq), 1), dtype=torch.float)
-        #print('dev:', i, len(data_dev))
     for i in range(len(data_test)):
         data_test[i]['feats'] = feats_test[i]
-        seq = data_test[i]['target']
-        #data_test[i]['coeffs'] = decompose_seq(seq, decompose_type, 24, N_output, False)
-        data_test[i]['coeffs'] = torch.zeros((len(seq), 1), dtype=torch.float)
-        #print('test:', i, len(data_test))
 
     feats_info = {0:(24, 16), 1:(0, 1), 2:(0, 1), 3:(0, 1), 4:(0, 1), 5:(0, 1), 6:(0, 1)}
     #feats_info = {0:(24, 1)}
@@ -1011,11 +965,10 @@ def parse_etthourly(dataset_name, N_input, N_output, t2v_type=None):
     i = len(feats_info)
     for j in range(i, i+feats_date[0,0].shape[0]):
         feats_info[j] = (-1, -1)
-    coeffs_info = {0:(0, 1), 1:(0, 1), 2:(0, 1)}
 
     return (
         data_train, data_dev, data_test, dev_tsid_map, test_tsid_map,
-        feats_info, coeffs_info
+        feats_info
     )
 
 
@@ -1343,20 +1296,11 @@ def parse_taxi30min(dataset_name, N_input, N_output, t2v_type=None):
     data_test = get_list_of_dict_format(data_test)
 
     for i in range(len(data_train)):
-        #data_train[i]['target'] = torch.tensor(data_train[i]['target'])
         data_train[i]['feats'] = feats_train[i]
-        #data_train[i]['feats'] = torch.tensor(feats_train[i])
-        seq = data_train[i]['target']
-        data_train[i]['coeffs'] = torch.zeros((len(data_train[i]['target']), 1), dtype=torch.float)
-        #print(i)
     for i in range(len(data_dev)):
-        #data_dev[i]['target'] = torch.tensor(data_dev[i]['target'])
         data_dev[i]['feats'] = feats_dev[i]
-        data_dev[i]['coeffs'] = torch.zeros((len(data_dev[i]['target']), 1), dtype=torch.float)
     for i in range(len(data_test)):
-        #data_test[i]['target'] = torch.tensor(data_test[i]['target'])
         data_test[i]['feats'] = feats_test[i]
-        data_test[i]['coeffs'] = torch.zeros((len(data_test[i]['target']), 1), dtype=torch.float)
 
     feats_info = {
         0:(48, 16),
@@ -1364,13 +1308,11 @@ def parse_taxi30min(dataset_name, N_input, N_output, t2v_type=None):
     i = len(feats_info)
     for j in range(i, i+data_train[0]['feats'].shape[-1]):
         feats_info[j] = (-1, -1)
-    #coeffs_info = {0:(0, 1), 1:(0, 1), 2:(0, 1)}
-    coeffs_info = {0:(0, 1)}
 
     #import ipdb ; ipdb.set_trace()
         
     return (
-        data_train, data_dev, data_test, dev_tsid_map, test_tsid_map, feats_info, coeffs_info
+        data_train, data_dev, data_test, dev_tsid_map, test_tsid_map, feats_info
     )
 
 

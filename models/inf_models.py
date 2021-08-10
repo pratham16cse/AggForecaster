@@ -65,13 +65,12 @@ class RNNNLLNAR(torch.nn.Module):
     def forward(self, dataset, norms):
         feats_in = dataset['sum'][1][2].to(self.device)
         inputs = dataset['sum'][1][0].to(self.device)
-        coeffs_in = dataset['sum'][1][6].to(self.device)
         feats_tgt = dataset['sum'][1][3].to(self.device)
         ids = dataset['sum'][1][4].cpu()
 
         mdl = self.base_models_dict['sum'][1]
         with torch.no_grad():
-            out = mdl(feats_in, inputs, coeffs_in, feats_tgt)
+            out = mdl(feats_in, inputs, feats_tgt)
             if mdl.estimate_type in ['point']:
                 pred_mu = out
             elif mdl.estimate_type in ['variance']:
@@ -463,23 +462,22 @@ class KLInference(torch.nn.Module):
                 model = self.base_models_dict[agg][level]
                 inputs = dataset[agg][level][0]
                 feats_in, feats_tgt = dataset[agg][level][2], dataset[agg][level][3]
-                coeffs_in = dataset[agg][level][6]
                 ids = dataset[agg][level][4].cpu()
 
                 with torch.no_grad():
                     if model.estimate_type in ['point']:
                         means, d, v = model(
-                            feats_in.to(self.device), inputs.to(self.device), coeffs_in.to(self.device),
+                            feats_in.to(self.device), inputs.to(self.device),
                             feats_tgt.to(self.device)
                         )
                     elif model.estimate_type in ['variance']:
                         means, d = model(
-                            feats_in.to(self.device), inputs.to(self.device), coeffs_in.to(self.device),
+                            feats_in.to(self.device), inputs.to(self.device),
                             feats_tgt.to(self.device)
                         )
                     elif model.estimate_type in ['covariance']:
                         means, d, v = model(
-                            feats_in.to(self.device), inputs.to(self.device), coeffs_in.to(self.device),
+                            feats_in.to(self.device), inputs.to(self.device),
                             feats_tgt.to(self.device)
                         )
 

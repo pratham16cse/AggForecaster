@@ -154,17 +154,15 @@ class PositionalEncoding(nn.Module):
     
 class ARTransformerModel(nn.Module):
     def __init__(
-            self, dec_len, feats_info, coeffs_info, estimate_type, use_feats, use_coeffs, t2v_type,
+            self, dec_len, feats_info, estimate_type, use_feats, t2v_type,
             v_dim, kernel_size, nkernel, device
         ):
         super(ARTransformerModel, self).__init__()
 
         self.dec_len = dec_len
         self.feats_info = feats_info
-        self.coeffs_info = coeffs_info
         self.estimate_type = estimate_type
         self.use_feats = use_feats
-        self.use_coeffs = use_coeffs
         self.t2v_type = t2v_type
         self.v_dim = v_dim
         self.device = device
@@ -219,10 +217,7 @@ class ARTransformerModel(nn.Module):
             self.linearMap = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, nkernel, bias=False))
         self.positional = PositionalEncoding(d_model=nkernel)
 
-        if self.use_coeffs:
-            enc_input_size = nkernel# + 2
-        else:
-            enc_input_size = nkernel
+        enc_input_size = nkernel
 
         if self.t2v_type:
             if self.t2v_type not in ['local']:  
@@ -269,15 +264,11 @@ class ARTransformerModel(nn.Module):
             self.linear_v = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, self.v_dim))
 
     def forward(
-        self, feats_in, X_in, coeffs_in, feats_out, X_out=None, coeffs_out=None, teacher_force=None
+        self, feats_in, X_in, feats_out, X_out=None, teacher_force=None
     ):
 
         #X_in = X_in[..., -X_in.shape[1]//5:, :]
         #feats_in = feats_in[..., -feats_in.shape[1]//5:, :]
-        #coeffs_in = coeffs_in[..., -coeffs_in.shape[1]//5:, :]
-
-        #if self.use_coeffs:
-        #    X_in = coeffs_in[..., 0:1]
 
         mean = X_in.mean(dim=1, keepdim=True)
         #std = X_in.std(dim=1,keepdim=True)
@@ -362,8 +353,6 @@ class ARTransformerModel(nn.Module):
             enc_input = enc_input + self.t2v_dropout(t2v)
         else:
             enc_input = self.positional(enc_input)
-        #if self.use_coeffs:
-        #    enc_input = torch.cat([enc_input, coeffs_in[..., 1:].transpose(0, 1)], dim=-1)
         encoder_output = self.encoder(enc_input)
 
         if self.use_feats:
@@ -645,21 +634,19 @@ class ARCNNTransformerModel(nn.Module):
 
 class RNNNARModel(nn.Module):
     def __init__(
-            self, dec_len, num_rnn_layers, feats_info, coeffs_info, hidden_size, batch_size,
-            estimate_type, use_feats, use_coeffs, v_dim, device
+            self, dec_len, num_rnn_layers, feats_info, hidden_size, batch_size,
+            estimate_type, use_feats, v_dim, device
         ):
         super(RNNNARModel, self).__init__()
 
         self.dec_len = dec_len
         self.num_rnn_layers = num_rnn_layers
         self.feats_info = feats_info
-        self.coeffs_info = coeffs_info
         self.hidden_size = hidden_size
         self.batch_size = batch_size
         self.estimate_type = estimate_type
         self.device = device
         self.use_feats = use_feats
-        self.use_coeffs = use_coeffs
         self.v_dim = v_dim
 
         if self.use_feats:
@@ -675,10 +662,7 @@ class RNNNARModel(nn.Module):
             feats_embed_dim = sum([s for (_, s) in self.feats_info.values() if s is not -1])
         else:
             feats_embed_dim = 0
-        num_coeffs = len(self.coeffs_info)
         enc_input_size = 1 + feats_embed_dim
-        if self.use_coeffs:
-            enc_input_size += num_coeffs
         self.encoder = nn.LSTM(enc_input_size, self.hidden_size, batch_first=True)
 
         if self.use_feats:
@@ -721,7 +705,7 @@ class RNNNARModel(nn.Module):
             torch.zeros(self.num_rnn_layers, batch_size, self.hidden_size, device=self.device)
         )
 
-    def forward(self, feats_in, X_in, coeffs_in, feats_out, X_out=None, coeffs_out=None):
+    def forward(self, feats_in, X_in, feats_out, X_out=None):
 
         if self.use_feats:
             feats_in_merged, feats_out_merged = [], []
@@ -752,8 +736,6 @@ class RNNNARModel(nn.Module):
             enc_input = torch.cat([feats_in_embed, X_in], dim=-1)
         else:
             enc_input = X_in
-        if self.use_coeffs:
-            enc_input = torch.cat([enc_input, coeffs_in], dim=-1)
 
         enc_hidden = self.init_hidden(X_in.shape[0])
         enc_output, enc_state = self.encoder(enc_input, enc_hidden)
@@ -1554,7 +1536,7 @@ class Net_GRU(nn.Module):
 
 def get_base_model(
     args, base_model_name, level, N_input, N_output,
-    input_size, output_size, estimate_type, feats_info, coeffs_info
+    input_size, output_size, estimate_type, feats_info
 ):
 
     #hidden_size = max(int(config['hidden_size']*1.0/int(np.sqrt(level))), args.fc_units)
@@ -1635,12 +1617,11 @@ def get_base_model(
                 net_gru = RNNNARModel(
                     dec_len=N_output,
                     num_rnn_layers=args.num_grulstm_layers,
-                    feats_info=feats_info, coeffs_info=coeffs_info,
+                    feats_info=feats_info,
                     hidden_size=hidden_size,
                     batch_size=args.batch_size,
                     estimate_type=estimate_type,
                     use_feats=args.use_feats,
-                    use_coeffs=args.use_coeffs,
                     v_dim=args.v_dim,
                     device=args.device
                 ).to(args.device)
@@ -1670,8 +1651,8 @@ def get_base_model(
                 ).to(args.device)
             else:
                 net_gru = ARTransformerModel(
-                    N_output, feats_info, coeffs_info, estimate_type, args.use_feats,
-                    args.use_coeffs, args.t2v_type, args.v_dim,
+                    N_output, feats_info, estimate_type, args.use_feats,
+                    args.t2v_type, args.v_dim,
                     kernel_size=10, nkernel=32, device=args.device
                 ).to(args.device)
         elif 'nbeatsd' in base_model_name:
