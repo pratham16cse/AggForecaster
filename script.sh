@@ -122,9 +122,16 @@
 #	--K_list 1 12 \
 #	--device cuda:2
 
-python main.py etthourly \
-	--N_input 168 --N_output 168 \
-	--saved_models_dir aaai_saved_models_etthourly_e168_d168 \
-	--output_dir aaai_Outputs_etthourly_e168_d168 \
-	--K_list 1 6 \
+#python main.py etthourly \
+#	--N_input 168 --N_output 168 \
+#	--saved_models_dir aaai_saved_models_etthourly_e168_d168 \
+#	--output_dir aaai_Outputs_etthourly_e168_d168 \
+#	--K_list 1 6 \
+#	--device cuda:2
+
+python main.py electricity \
+	--N_input 336 --N_output 168 \
+	--saved_models_dir aaai_saved_models_electricity_e336_d168 \
+	--output_dir aaai_Outputs_electricity_e336_d168 \
+	--K_list 1 12 \
 	--device cuda:2

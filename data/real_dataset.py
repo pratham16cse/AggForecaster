@@ -1483,3 +1483,80 @@ def parse_aggtest(dataset_name, N_input, N_output, t2v_type=None):
         feats_info
     )
 
+def parse_electricity(dataset_name, N_input, N_output, t2v_type=None):
+    #df = pd.read_csv('data/electricity_load_forecasting_panama/continuous_dataset.csv')
+    df = pd.read_csv(
+        os.path.join(DATA_DIRS, 'data', 'electricity_load_forecasting_panama', 'continuous_dataset.csv')
+    )
+    data = df[['nat_demand']].to_numpy().T
+
+    n = data.shape[1]
+    units = n//N_output
+    dev_len = int(0.2*units) * N_output
+    test_len = int(0.2*units) * N_output
+    train_len = n - dev_len - test_len
+
+    cal_date = pd.to_datetime(df['datetime'])
+    if t2v_type is None:
+        feats_date = np.expand_dims(np.arange(0,n), axis=-1) / n * 10.
+    elif 'mdh' in t2v_type:
+        feats_date = np.stack(
+            [
+                cal_date.dt.month,
+                cal_date.dt.day,
+                cal_date.dt.hour,
+            ], axis=1
+        )
+    elif 'idx' in t2v_type or 'local' in t2v_type:
+        feats_date = np.expand_dims(np.arange(0,n), axis=-1) / n * 10.
+    feats_date = np.expand_dims(feats_date, axis=0)
+
+    feats_hod = np.expand_dims(np.expand_dims(cal_date.dt.hour.values, axis=-1), axis=0)
+
+    #import ipdb ; ipdb.set_trace()
+
+    feats = np.concatenate([feats_hod, feats_date], axis=-1)
+
+    data = torch.tensor(data, dtype=torch.float)
+    feats = torch.tensor(feats, dtype=torch.float)
+
+    data_train = data[:, :train_len]
+    feats_train = feats[:, :train_len]
+
+    data_dev, data_test = [], []
+    feats_dev, feats_test = [], []
+    dev_tsid_map, test_tsid_map = [], []
+    for i in range(data.shape[0]):
+        for j in range(train_len+N_output, train_len+dev_len+1, N_output):
+            if j <= n:
+                data_dev.append(data[i, :j])
+                feats_dev.append(feats[i, :j])
+                dev_tsid_map.append(i)
+    for i in range(data.shape[0]):
+        for j in range(train_len+dev_len+N_output, n+1, N_output):
+            if j <= n:
+                data_test.append(data[i, :j])
+                feats_test.append(feats[i, :j])
+                test_tsid_map.append(i)
+
+    data_train = get_list_of_dict_format(data_train)
+    data_dev = get_list_of_dict_format(data_dev)
+    data_test = get_list_of_dict_format(data_test)
+
+    for i in range(len(data_train)):
+        data_train[i]['feats'] = feats_train[i]
+    for i in range(len(data_dev)):
+        data_dev[i]['feats'] = feats_dev[i]
+    for i in range(len(data_test)):
+        data_test[i]['feats'] = feats_test[i]
+
+    feats_info = {0:(24, 16)}
+    i = len(feats_info)
+    for j in range(i, i+feats_date[0,0].shape[0]):
+        feats_info[j] = (-1, -1)
+
+    return (
+        data_train, data_dev, data_test, dev_tsid_map, test_tsid_map, feats_info
+    )
+
+

@@ -408,6 +408,25 @@ elif args.dataset_name == 'Solar':
     if args.b == -1: args.b = 4
     if args.device is None: args.device = 'cuda:1'
 
+elif args.dataset_name == 'electricity':
+    if args.epochs == -1: args.epochs = 20
+    if args.N_input == -1: args.N_input = 336
+    if args.N_output == -1: args.N_output = 168
+    #args.K_list = [12]
+    if args.K_list == []: args.K_list = []
+    if args.saved_models_dir is None:
+        args.saved_models_dir = 'saved_models_electricity'
+    if args.output_dir is None:
+        args.output_dir = 'Outputs_electricity'
+    if args.normalize is None: args.normalize = 'zscore_per_series'
+    if args.learning_rate == -1: args.learning_rate = 0.0001
+    if args.batch_size == -1: args.batch_size = 64
+    if args.hidden_size == -1: args.hidden_size = 128
+    if args.num_grulstm_layers == -1: args.num_grulstm_layers = 1
+    if args.v_dim == -1: args.v_dim = 4
+    if args.b == -1: args.b = 4
+    if args.device is None: args.device = 'cuda:1'
+
 elif args.dataset_name == 'aggtest':
     if args.epochs == -1: args.epochs = 1
     if args.N_input == -1: args.N_input = 20
