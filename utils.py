@@ -14,7 +14,7 @@ from statsmodels.tsa.seasonal import seasonal_decompose
 import time
 
 from data.synthetic_dataset import create_synthetic_dataset, create_sin_dataset, SyntheticDataset
-from data.real_dataset import parse_ECG5000, parse_Traffic, parse_Taxi, parse_Traffic911, parse_gc_datasets, parse_weather, parse_bafu, parse_meteo, parse_azure, parse_ett, parse_sin_noisy, parse_Solar, parse_etthourly, parse_m4hourly, parse_m4daily, parse_taxi30min
+from data.real_dataset import parse_ECG5000, parse_Traffic, parse_Taxi, parse_Traffic911, parse_gc_datasets, parse_weather, parse_bafu, parse_meteo, parse_azure, parse_ett, parse_sin_noisy, parse_Solar, parse_etthourly, parse_m4hourly, parse_m4daily, parse_taxi30min, parse_aggtest
 
 
 to_float_tensor = lambda x: torch.FloatTensor(x.copy())
@@ -543,11 +543,19 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
             if stride == -1:
                 j = 0
                 while j < len(self.data[i]['target']):
-                    if j+self.mult*self.base_enc_len+self.base_dec_len <= len(self.data[i]['target']):
+                    if j+self.mult*self.base_enc_len+self.base_dec_len <= len(data[i]['target']):
                         self.indices.append((i, j))
+                    #if self.K>1:
+                    #    print(
+                    #        j, j+self.mult*self.base_enc_len+self.base_dec_len,
+                    #        self.data[i]['target'][j:j+self.mult*self.base_enc_len+self.base_dec_len:K],
+                    #        len(self.data[i]['target'])
+                    #    )
                     #s = (np.random.randint(0, min(self.dec_len, 50)))
                     s = 1
                     j += s
+                #if self.K>1:
+                #    import ipdb ; ipdb.set_trace()
             else:
                 #if self.K > 1:
                 #import ipdb
@@ -557,10 +565,23 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
                     for j in range(start_idx, len(self.data[i]['target']), 1):
                         if j+self.enc_len+self.dec_len <= len(self.data[i]['target']):
                             self.indices.append((i, j))
-                    #import ipdb ; ipdb.set_trace()
+                            #if self.K>1:
+                            #    print(
+                            #        j, j+self.enc_len+self.dec_len,
+                            #        self.data[i]['target'][j:j+self.enc_len+self.dec_len],
+                            #        len(self.data[i]['target'])
+                            #    )
+                            #    import ipdb ; ipdb.set_trace()
                 if which_split == 'test':
                     j = len(self.data[i]['target']) - self.enc_len - self.dec_len
                     self.indices.append((i, j))
+                    #if self.K>1:
+                    #    print(
+                    #        j, j+self.enc_len+self.dec_len,
+                    #        self.data[i]['target'][j:j+self.enc_len+self.dec_len],
+                    #        len(self.data[i]['target'])
+                    #    )
+                    #    import ipdb ; ipdb.set_trace()
                 #if self.K>1:
                 #    import ipdb ; ipdb.set_trace()
 
@@ -876,6 +897,12 @@ class DataProcessor(object):
                 dev_tsid_map, test_tsid_map,
                 feats_info
             ) = parse_taxi30min(args.dataset_name, args.N_input, args.N_output, t2v_type=args.t2v_type)
+        elif args.dataset_name in ['aggtest']:
+            (
+                data_train, data_dev, data_test,
+                dev_tsid_map, test_tsid_map,
+                feats_info
+            ) = parse_aggtest(args.dataset_name, args.N_input, args.N_output, t2v_type=args.t2v_type)
 
 
         if args.use_feats:
@@ -944,27 +971,31 @@ class DataProcessor(object):
             train_obj=lazy_dataset_train
         )
         print('Number of chunks in test data:', len(lazy_dataset_test))
-        if len(lazy_dataset_train) <= args.batch_size:
+        if len(lazy_dataset_train) >= args.batch_size:
             batch_size = args.batch_size
         else:
             batch_size = args.batch_size
             while len(lazy_dataset_train) // batch_size < 10:
                 batch_size = batch_size // 2
         #import ipdb ; ipdb.set_trace()
+        if self.args.dataset_name in ['aggtest']:
+            train_shuffle = False
+        else:
+            train_shuffle = True
         trainloader = DataLoader(
-            lazy_dataset_train, batch_size=batch_size, shuffle=True,
-            drop_last=True, num_workers=12, pin_memory=True,
-                        #collate_fn=lazy_dataset_train.collate_fn
+            lazy_dataset_train, batch_size=batch_size, shuffle=train_shuffle,
+            drop_last=False, num_workers=12, pin_memory=True,
+            #collate_fn=lazy_dataset_train.collate_fn
         )
         devloader = DataLoader(
             lazy_dataset_dev, batch_size=batch_size, shuffle=False,
             drop_last=False, num_workers=12, pin_memory=True,
-                        #collate_fn=lazy_dataset_dev.collate_fn
+            #collate_fn=lazy_dataset_dev.collate_fn
         )
         testloader = DataLoader(
             lazy_dataset_test, batch_size=batch_size, shuffle=False,
             drop_last=False, num_workers=12, pin_memory=True,
-                        #collate_fn=lazy_dataset_test.collate_fn
+            #collate_fn=lazy_dataset_test.collate_fn
         )
         #import ipdb
         #ipdb.set_trace()
