@@ -57,20 +57,25 @@ class CNNRNN(torch.nn.Module):
 
 class RNNNLLNAR(torch.nn.Module):
     """docstring for NLL"""
-    def __init__(self, base_models_dict, device):
+    def __init__(self, base_models_dict, device, is_oracle=False):
         super(RNNNLLNAR, self).__init__()
         self.base_models_dict = base_models_dict
         self.device = device
+        self.is_oracle = is_oracle
 
     def forward(self, dataset, norms):
         feats_in = dataset['sum'][1][2].to(self.device)
         inputs = dataset['sum'][1][0].to(self.device)
         feats_tgt = dataset['sum'][1][3].to(self.device)
+        if self.is_oracle:
+            target = dataset['sum'][1][1].to(self.device)
+        else:
+            target = None
         ids = dataset['sum'][1][4].cpu()
 
         mdl = self.base_models_dict['sum'][1]
         with torch.no_grad():
-            out = mdl(feats_in, inputs, feats_tgt)
+            out = mdl(feats_in, inputs, feats_tgt, target)
             if mdl.estimate_type in ['point']:
                 pred_mu = out
             elif mdl.estimate_type in ['variance']:

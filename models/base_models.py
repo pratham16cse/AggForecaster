@@ -465,6 +465,67 @@ class ARTransformerModel(nn.Module):
         #    v_out[..., -self.dec_len:, :]
         #)
 
+class OracleModel(nn.Module):
+    def __init__(
+            self, dec_len, estimate_type
+            ):
+        super(OracleModel, self).__init__()
+
+        self.dec_len = dec_len
+        self.estimate_type = estimate_type
+        self.dummy_layer = nn.Linear(1, 1)
+
+    def forward(self, feats_in, X_in, feats_out, X_out=None, teacher_force=None):
+        assert X_out is not None
+        dists = []
+        for i in range(X_in.shape[1]-self.dec_len):
+            dist = torch.pow(X_in[:, i:i+self.dec_len] - X_out, 2).mean(dim=1)
+            #dist = torch.abs(X_in[:, i:i+self.dec_len] - X_out).mean(dim=1)
+            dists.append(dist)
+        dists = torch.cat(dists, dim=1)
+        #import ipdb; ipdb.set_trace()
+        min_indices_ = torch.argmin(dists, dim=1).unsqueeze(-1).unsqueeze(-1)
+        min_indices = []
+        for i in range(self.dec_len):
+            min_indices.append(min_indices_+i)
+        min_indices = torch.cat(min_indices, dim=1)
+        mean_out = X_in.gather(1, min_indices)
+
+        #import ipdb; ipdb.set_trace()
+
+        return mean_out
+
+class OracleForecastModel(nn.Module):
+    def __init__(
+            self, dec_len, estimate_type
+            ):
+        super(OracleForecastModel, self).__init__()
+
+        self.dec_len = dec_len
+        self.estimate_type = estimate_type
+        self.dummy_layer = nn.Linear(1, 1)
+        self.warm_start = self.dec_len * 2
+
+    def forward(self, feats_in, X_in, feats_out, X_out=None, teacher_force=None):
+        dists = []
+        key = X_in[:, -self.warm_start:]
+        for i in range(X_in.shape[1]-2*self.warm_start):
+            dist = torch.pow(X_in[:, i:i+self.warm_start] - key, 2).mean(dim=1)
+            #dist = torch.abs(X_in[:, i:i+self.warm_start] - key).mean(dim=1)
+            dists.append(dist)
+        dists = torch.cat(dists, dim=1)
+        #import ipdb; ipdb.set_trace()
+        min_indices_ = torch.argmin(dists, dim=1).unsqueeze(-1).unsqueeze(-1)
+        min_indices = []
+        for i in range(self.dec_len):
+            min_indices.append(min_indices_+self.warm_start+i)
+        min_indices = torch.cat(min_indices, dim=1)
+        mean_out = X_in.gather(1, min_indices)
+
+        #import ipdb; ipdb.set_trace()
+
+        return mean_out
+
 
 class ARCNNTransformerModel(nn.Module):
     def __init__(
@@ -1667,5 +1728,9 @@ def get_base_model(
                 point_estimates=point_estimates, feats_info=feats_info, coeffs_info=coeffs_info,
                 use_coeffs=args.use_coeffs
             ).to(args.device)
+        elif base_model_name in ['oracle']:
+            net_gru = OracleModel(N_output, estimate_type).to(args.device)
+        elif base_model_name in ['oracleforecast']:
+            net_gru = OracleForecastModel(N_output, estimate_type).to(args.device)
 
     return net_gru

@@ -94,7 +94,7 @@ def train_model(
             # forward + backward + optimize
             teacher_forcing_ratio = args.teacher_forcing_ratio
             teacher_force = True if random.random() <= teacher_forcing_ratio else False
-            if 'nar' in model_name:
+            if 'nar' in model_name or 'oracle' in model_name:
                 out = net(
                     feats_in.to(args.device), inputs.to(args.device),
                     feats_tgt.to(args.device), target.to(args.device)
@@ -135,6 +135,7 @@ def train_model(
                     'trans-fnll-ar', 'rnn-fnll-nar',
                     'transm-nll-nar', 'transm-fnll-nar',
                     'transda-nll-nar', 'transda-fnll-nar',
+                    'oracle',
                 ]:
                 if args.train_twostage:
                     if curr_epoch < epochs/2:

@@ -182,6 +182,8 @@ args.base_model_names = [
 #    'transm-fnll-nar',
 #    'transda-nll-nar',
 #    'transda-fnll-nar',
+    'oracle',
+    'oracleforecast'
 ]
 args.aggregate_methods = [
     'sum',
@@ -289,6 +291,10 @@ if 'transda-nll-nar' in args.base_model_names:
     args.inference_model_names.append('TRANSDA-NLL-NAR')
 if 'transda-fnll-nar' in args.base_model_names:
     args.inference_model_names.append('TRANSDA-FNLL-NAR')
+if 'oracle' in args.base_model_names:
+    args.inference_model_names.append('oracle')
+if 'oracleforecast' in args.base_model_names:
+    args.inference_model_names.append('SimRetrieval')
 
 
 
@@ -543,7 +549,7 @@ for base_model_name in args.base_model_names:
             if base_model_name in [
                 'seq2seqmse', 'seq2seqdilate', 'convmse', 'convmsenonar',
                 'rnn-mse-nar', 'rnn-mse-ar', 'trans-mse-nar', 'nbeats-mse-nar',
-                'nbeatsd-mse-nar', 'trans-mse-ar',
+                'nbeatsd-mse-nar', 'trans-mse-ar', 'oracle', 'oracleforecast',
             ]:
                 estimate_type = 'point'
             elif base_model_name in [
@@ -580,11 +586,12 @@ for base_model_name in args.base_model_names:
             if agg_method in ['sumwithtrend', 'slope', 'wavelet'] and level == 1:
                 base_models[base_model_name][agg_method][level] = base_models[base_model_name]['sum'][1]
             else:
-                train_model(
-                    args, base_model_name, net_gru,
-                    level2data, estimate_type,
-                    saved_models_path, output_dir, writer, verbose=1
-                )
+                if base_model_name not in ['oracle', 'oracleforecast']:
+                    train_model(
+                        args, base_model_name, net_gru,
+                        level2data, estimate_type,
+                        saved_models_path, output_dir, writer, verbose=1
+                    )
 
                 base_models[base_model_name][agg_method][level] = net_gru
 
@@ -1019,6 +1026,14 @@ for inf_model_name in args.inference_model_names:
     elif inf_model_name in ['RNN-FNLL-NAR']:
         base_models_dict = base_models['rnn-fnll-nar']
         inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device)
+
+    elif inf_model_name in ['oracle']:
+        base_models_dict = base_models['oracle']
+        inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device, is_oracle=True)
+
+    elif inf_model_name in ['SimRetrieval']:
+        base_models_dict = base_models['oracleforecast']
+        inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device, is_oracle=True)
 
     elif inf_model_name in ['TRANSM-NLL-NAR']:
         base_models_dict = base_models['transm-nll-nar']
