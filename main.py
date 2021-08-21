@@ -171,19 +171,19 @@ args.base_model_names = [
 #    'nbeats-mse-nar',
 #    'nbeatsd-mse-nar'
 #    'rnn-mse-ar',
-#    'rnn-mse-nar',
 #    'rnn-nll-ar',
 #    'trans-mse-ar',
     'trans-nll-ar',
 #    'trans-fnll-ar',
+#    'rnn-mse-nar',
 #    'rnn-nll-nar',
 #    'rnn-fnll-nar',
 #    'transm-nll-nar',
 #    'transm-fnll-nar',
 #    'transda-nll-nar',
 #    'transda-fnll-nar',
-    'oracle',
-    'oracleforecast'
+#    'oracle',
+#    'oracleforecast'
 ]
 args.aggregate_methods = [
     'sum',
@@ -248,8 +248,8 @@ if 'nbeatsd-mse-nar' in args.base_model_names:
     args.inference_model_names.append('NBEATSD-MSE-NAR')
 if 'rnn-mse-nar' in args.base_model_names:
     args.inference_model_names.append('RNN-MSE-NAR')
-    args.inference_model_names.append('rnn-mse-nar_opt-sum')
-    args.inference_model_names.append('rnn-mse-nar_optcf-sum')
+    #args.inference_model_names.append('rnn-mse-nar_opt-sum')
+    #args.inference_model_names.append('rnn-mse-nar_optcf-sum')
     #args.inference_model_names.append('rnn-mse-nar_opt-slope')
     #args.inference_model_names.append('rnn-mse-nar_kl-sum')
     #args.inference_model_names.append('rnn-mse-nar_kl-st')
@@ -743,89 +743,6 @@ writer.close()
 
 # ----- Start: Inference models for bottom level----- #
 print('\n Starting Inference Models')
-
-#test_inputs_dict = dict()
-#test_targets_dict = dict()
-#test_targets_dict_leak = dict()
-#mapped_id_dict = dict()
-#test_feats_in_dict = dict()
-#test_feats_tgt_dict = dict()
-#test_inputs_gaps_dict = dict()
-#test_targets_gaps_dict = dict()
-#test_coeffs_in_dict = dict()
-#N_input, N_output = 0, 0
-#for agg_method in args.aggregate_methods:
-#    test_inputs_dict[agg_method] = dict()
-#    test_targets_dict[agg_method] = dict()
-#    test_targets_dict_leak[agg_method] = dict()
-#    mapped_id_dict[agg_method] = dict()
-#    test_feats_in_dict[agg_method] = dict()
-#    test_feats_tgt_dict[agg_method] = dict()
-#    test_inputs_gaps_dict[agg_method] = dict()
-#    test_targets_gaps_dict[agg_method] = dict()
-#    test_coeffs_in_dict[agg_method] = dict()
-#
-#    if agg_method in ['wavelet']:
-#        levels = list(range(1, args.wavelet_levels+3))
-#    else:
-#        levels = args.K_list
-#
-#    for level in levels:
-#        lvl_data = dataset[agg_method][level]
-#        test_inputs, test_targets = [], []
-#        test_feats_in, test_feats_tgt = [], []
-#        test_coeffs_in = []
-#        mapped_id = []
-#        test_inputs_gaps, test_targets_gaps = [], []
-#        for i, gen_test in enumerate(lvl_data['testloader']):
-#            (
-#                batch_test_inputs, batch_test_targets,
-#                batch_test_feats_in, batch_test_feats_tgt,
-#                batch_mapped_id,
-#                _, batch_test_coeffs_in, _, batch_test_inputs_gaps, batch_test_targets_gaps
-#            ) = gen_test
-#
-#            test_inputs.append(batch_test_inputs)
-#            test_targets.append(batch_test_targets)
-#            test_feats_in.append(batch_test_feats_in)
-#            test_feats_tgt.append(batch_test_feats_tgt)
-#            mapped_id.append(batch_mapped_id)
-#            test_inputs_gaps.append(batch_test_inputs_gaps)
-#            test_targets_gaps.append(batch_test_targets_gaps)
-#            test_coeffs_in.append(batch_test_coeffs_in)
-#
-#        test_inputs  = torch.cat(test_inputs, dim=0)#, dtype=torch.float32).to(args.device)
-#        test_targets = torch.cat(test_targets, dim=0)#, dtype=torch.float32).to(args.device)
-#        test_feats_in  = torch.cat(test_feats_in, dim=0)#, dtype=torch.float32).to(args.device)
-#        test_feats_tgt = torch.cat(test_feats_tgt, dim=0)#, dtype=torch.float32).to(args.device)
-#        mapped_id = torch.cat(mapped_id, dim=0)#, dtype=torch.float32).to(args.device)
-#        test_inputs_gaps  = torch.cat(test_inputs_gaps, dim=0)#, dtype=torch.float32).to(args.device)
-#        test_targets_gaps = torch.cat(test_targets_gaps, dim=0)#, dtype=torch.float32).to(args.device)
-#        test_coeffs_in  = torch.cat(test_coeffs_in, dim=0)#, dtype=torch.float32).to(args.device)
-#
-#        test_inputs_dict[agg_method][level] = test_inputs
-#        test_targets_dict[agg_method][level] = test_targets
-#        #test_targets_dict_leak[agg_method][level], _ = utils.normalize(
-#        #    test_targets, test_norm
-#        #)
-#        #test_targets_dict_leak[agg_method][level] = lvl_data['test_norm'].normalize(
-#        #    test_targets, torch.tensor(lvl_data['test_tsid_map'])
-#        #)
-#        test_targets_dict_leak = test_targets_dict # TODO: Normalization correction
-#        mapped_id_dict[agg_method][level] = mapped_id
-#        test_feats_in_dict[agg_method][level] = test_feats_in
-#        test_feats_tgt_dict[agg_method][level] = test_feats_tgt
-#        test_inputs_gaps_dict[agg_method][level] = test_inputs_gaps
-#        test_targets_gaps_dict[agg_method][level] = test_targets_gaps
-#        test_coeffs_in_dict[agg_method][level] = test_coeffs_in
-#
-#        if level == 1:
-#            N_input = lvl_data['N_input']
-#            N_output = lvl_data['N_output']
-#
-#assert N_input > 0
-#assert N_output > 0
-#criterion = torch.nn.MSELoss()
 
 #import ipdb
 #ipdb.set_trace()
@@ -1493,7 +1410,7 @@ for inf_model_name in args.inference_model_names:
         inputs, target, pred_mu, pred_std, pred_d, pred_v,
         metric_mse, metric_dtw, metric_tdi, metric_crps, metric_mae, metric_smape,
         total_time
-    )= eval_inf_model(args, inf_net, dataset, args.gamma, verbose=1)
+    )= eval_inf_model(args, inf_net, dataset, 'test', args.gamma, verbose=1)
 
     inference_models[inf_model_name] = inf_net
     metric_mse = metric_mse.item()

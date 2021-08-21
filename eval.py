@@ -517,31 +517,43 @@ def eval_inf_model_bak(
     )
 
 
-def eval_inf_model(args, net, dataset, gamma, verbose=1):
+def eval_inf_model(args, net, dataset, which_split, gamma, verbose=1):
+    '''
+        which_split: str (train, dev, test)
+    '''
+    if which_split in ['train']:
+        raise NotImplementedError
+    elif which_split in ['dev']:
+        loader_str = 'devloader'
+        norm_str = 'dev_norm'
+    elif which_split in ['test']:
+        loader_str = 'testloader'
+        norm_str = 'test_norm'
+
     criterion = torch.nn.MSELoss()
     criterion_mae = torch.nn.L1Loss()
 
     num_batches = 0
-    for _ in dataset['sum'][1]['testloader']:
+    for _ in dataset['sum'][1][loader_str]:
         num_batches += 1
 
     iters = {}
     for agg_method in args.aggregate_methods:
         iters[agg_method] = {}
         for K in args.K_list:
-            iters[agg_method][K] = iter(dataset[agg_method][K]['testloader'])
+            iters[agg_method][K] = iter(dataset[agg_method][K][loader_str])
 
     norms = {}
     for agg_method in args.aggregate_methods:
         norms[agg_method] = {}
         for K in args.K_list:
-            norms[agg_method][K] = dataset[agg_method][K]['test_norm']
+            norms[agg_method][K] = dataset[agg_method][K][norm_str]
 
     inputs, mapped_ids, target, pred_mu, pred_d, pred_v, pred_std = [], [], [], [], [], [], []
     start_time = time.time()
     for i in range(num_batches):
         dataset_batch = {}
-        for agg_method in args.aggregate_methods:        
+        for agg_method in args.aggregate_methods:
             dataset_batch[agg_method] = {}
             for K in args.K_list:
                 dataset_batch[agg_method][K] = iters[agg_method][K].next()
@@ -583,7 +595,7 @@ def eval_inf_model(args, net, dataset, gamma, verbose=1):
 
     inputs = torch.cat(inputs, dim=0)
     mapped_ids = torch.cat(mapped_ids, dim=0)
-    inputs = dataset['sum'][1]['test_norm'].unnormalize(
+    inputs = dataset['sum'][1][norm_str].unnormalize(
         inputs[..., 0], ids=mapped_ids
     )
 

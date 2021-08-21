@@ -1490,7 +1490,12 @@ def parse_electricity(dataset_name, N_input, N_output, t2v_type=None):
     )
     data = df[['nat_demand']].to_numpy().T
 
-    n = data.shape[1]
+    #n = data.shape[1]
+    n = (1903 + 1) * 24 # Select first n=1904*24 entries because of non-stationarity in the data after first n values
+    data = data[:, :n]
+    df = df.iloc[:n]
+
+
     units = n//N_output
     dev_len = int(0.2*units) * N_output
     test_len = int(0.2*units) * N_output
