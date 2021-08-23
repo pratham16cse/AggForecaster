@@ -129,12 +129,12 @@
 #	--K_list 1 6 \
 #	--device cuda:2
 
-#python main.py electricity \
-#	--N_input 336 --N_output 168 \
-#	--saved_models_dir aaai_saved_models_electricity_e336_d168 \
-#	--output_dir aaai_Outputs_electricity_e336_d168 \
-#	--K_list 1 12 \
-#	--device cuda:2
+python main.py electricity \
+	--N_input 336 --N_output 168 \
+	--saved_models_dir aaai_saved_models_electricity_e336_d168_testprune \
+	--output_dir aaai_Outputs_electricity_e336_d168_testprune \
+	--K_list 1 3 \
+	--device cuda:2
 
 # Commands for Oracle and SimRetrieval
 #python main.py ett \
@@ -144,12 +144,12 @@
 #	--normalize same \
 #	--device cuda:2
 
-python main.py Solar \
-	--N_input 1680 --N_output 168 \
-	--saved_models_dir aaai_saved_models_Solar_oracle \
-	--output_dir aaai_Outputs_Solar_oracle \
-	--normalize same \
-	--device cuda:2
+#python main.py Solar \
+#	--N_input 1680 --N_output 168 \
+#	--saved_models_dir aaai_saved_models_Solar_oracle \
+#	--output_dir aaai_Outputs_Solar_oracle \
+#	--normalize same \
+#	--device cuda:2
 
 #python main.py etthourly \
 #	--N_input 840 --N_output 168 \

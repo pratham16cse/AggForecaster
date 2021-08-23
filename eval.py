@@ -564,19 +564,6 @@ def eval_inf_model(args, net, dataset, which_split, gamma, verbose=1):
 
         batch_target = dataset_batch['sum'][1][1]
 
-        #if batch_pred_d is not None:
-        #    batch_pred_d = batch_pred_d.cpu()
-        #    batch_pred_v = batch_pred_v.cpu()
-
-        #    dist = torch.distributions.lowrank_multivariate_normal.LowRankMultivariateNormal(
-        #        torch.squeeze(batch_pred_mu, dim=-1), batch_pred_v, torch.squeeze(batch_pred_d, dim=-1)
-        #    )
-        #    batch_pred_std = torch.diagonal(dist.covariance_matrix, dim1=-2, dim2=-1).unsqueeze(dim=-1)
-        #else:
-        #    batch_pred_d = torch.ones_like(batch_pred_mu) * 1e-9
-        #    batch_pred_v = torch.ones_like(batch_pred_mu) * 1e-9
-        #    batch_pred_std = torch.ones_like(batch_pred_mu) * 1e-9
-
         pred_mu.append(batch_pred_mu.cpu())
         pred_d.append(batch_pred_d.cpu())
         pred_v.append(batch_pred_v.cpu())
