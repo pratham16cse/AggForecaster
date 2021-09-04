@@ -35,15 +35,15 @@ def add_metrics_to_dict(
     metrics_dict, model_name, metric_mse, metric_dtw, metric_tdi, metric_crps, metric_mae,
         metric_smape
 ):
-    if model_name not in metrics_dict:
-        metrics_dict[model_name] = dict()
+    #if model_name not in metrics_dict:
+    #    metrics_dict[model_name] = dict()
 
-    metrics_dict[model_name]['mse'] = metric_mse
-    metrics_dict[model_name]['dtw'] = metric_dtw
-    metrics_dict[model_name]['tdi'] = metric_tdi
-    metrics_dict[model_name]['crps'] = metric_crps
-    metrics_dict[model_name]['mae'] = metric_mae
-    metrics_dict[model_name]['smape'] = metric_smape
+    metrics_dict['mse'] = metric_mse
+    metrics_dict['dtw'] = metric_dtw
+    metrics_dict['tdi'] = metric_tdi
+    metrics_dict['crps'] = metric_crps
+    metrics_dict['mae'] = metric_mae
+    metrics_dict['smape'] = metric_smape
 
     return metrics_dict
 
@@ -543,8 +543,11 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
             if stride == -1:
                 j = 0
                 while j < len(self.data[i]['target']):
-                    if j+self.mult*self.base_enc_len+self.base_dec_len <= len(data[i]['target']):
+                    if j+self.mult*self.base_enc_len+self.base_dec_len <= len(self.data[i]['target']):
                         self.indices.append((i, j))
+                        #if self.K>1:
+                        #    if len(self.data[i]['target'][j:j+self.mult*self.base_enc_len+self.base_dec_len]) != 840:
+                        #        import ipdb; ipdb.set_trace()
                     #if self.K>1:
                     #    print(
                     #        j, j+self.mult*self.base_enc_len+self.base_dec_len,
@@ -989,7 +992,7 @@ class DataProcessor(object):
         else:
             train_shuffle = True
         trainloader = DataLoader(
-            lazy_dataset_train, batch_size=batch_size, shuffle=train_shuffle,
+            lazy_dataset_train, batch_size=batch_size, shuffle=True,
             drop_last=False, num_workers=12, pin_memory=True,
             #collate_fn=lazy_dataset_train.collate_fn
         )

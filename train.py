@@ -60,6 +60,7 @@ def train_model(
     optimizer, scheduler = get_optimizer(args, lr, net)
 
     criterion = torch.nn.MSELoss()
+    cos_sim = torch.nn.CosineSimilarity(dim=2)
 
     if (not args.ignore_ckpt) and os.path.isfile(saved_models_path):
         print('Loading from saved model')
@@ -99,12 +100,20 @@ def train_model(
                     feats_in.to(args.device), inputs.to(args.device),
                     feats_tgt.to(args.device), target.to(args.device)
                 )
-                if net.estimate_type in ['point']:
-                    means = out
-                elif net.estimate_type in ['variance']:
-                    means, stds = out
-                elif net.estimate_type in ['covariance']:
-                    means, stds, vs = out
+                if net.is_signature:
+                    if net.estimate_type in ['point']:
+                        means, dec_state, sig_state = out
+                    elif net.estimate_type in ['variance']:
+                        means, stds, dec_state, sig_state = out
+                    elif net.estimate_type in ['covariance']:
+                        means, stds, vs, dec_state, sig_state = out
+                else:
+                    if net.estimate_type in ['point']:
+                        means = out
+                    elif net.estimate_type in ['variance']:
+                        means, stds = out
+                    elif net.estimate_type in ['covariance']:
+                        means, stds, vs = out
             else:
                 out = net(
                     feats_in.to(args.device), inputs.to(args.device),
@@ -135,7 +144,7 @@ def train_model(
                     'trans-fnll-ar', 'rnn-fnll-nar',
                     'transm-nll-nar', 'transm-fnll-nar',
                     'transda-nll-nar', 'transda-fnll-nar',
-                    'oracle',
+                    'oracle', 'transsig-nll-nar'
                 ]:
                 if args.train_twostage:
                     if curr_epoch < epochs/2:
@@ -226,6 +235,11 @@ def train_model(
             #if i==0:
             #    import ipdb
             #    ipdb.set_trace()
+
+            if net.is_signature:
+                sig_loss = torch.mean(1. - cos_sim(dec_state, sig_state))
+                loss += sig_loss
+
 
             epoch_loss += loss.item()
 

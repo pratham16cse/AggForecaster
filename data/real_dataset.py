@@ -883,6 +883,13 @@ def parse_Solar(dataset_name, N_input, N_output, t2v_type=None):
     )
 
 def parse_etthourly(dataset_name, N_input, N_output, t2v_type=None):
+
+#    train_len = 52*168
+#    dev_len = 17*168
+#    test_len = 17*168
+#    n = train_len + dev_len + test_len
+#    df = pd.read_csv('../Informer2020/data/ETT/ETTh1.csv').iloc[:n]
+
     df = pd.read_csv('../Informer2020/data/ETT/ETTh1.csv')
     data = df[['OT']].to_numpy().T
     #data = np.expand_dims(data, axis=-1)
@@ -892,6 +899,7 @@ def parse_etthourly(dataset_name, N_input, N_output, t2v_type=None):
     dev_len = int(0.2*units) * N_output
     test_len = int(0.2*units) * N_output
     train_len = n - dev_len - test_len
+
     #train_len = int(0.6*n)
     #dev_len = int(0.2*n)
     #test_len = n - train_len - dev_len
@@ -941,6 +949,7 @@ def parse_etthourly(dataset_name, N_input, N_output, t2v_type=None):
     for i in range(data.shape[0]):
         for j in range(train_len+dev_len+N_output, n+1, N_output):
             if j <= n:
+                print(i,j,n)
                 data_test.append(data[i, :j])
                 feats_test.append(feats[i, :j])
                 test_tsid_map.append(i)
@@ -965,6 +974,8 @@ def parse_etthourly(dataset_name, N_input, N_output, t2v_type=None):
     i = len(feats_info)
     for j in range(i, i+feats_date[0,0].shape[0]):
         feats_info[j] = (-1, -1)
+
+    #import ipdb ; ipdb.set_trace()
 
     return (
         data_train, data_dev, data_test, dev_tsid_map, test_tsid_map,
@@ -1500,6 +1511,8 @@ def parse_electricity(dataset_name, N_input, N_output, t2v_type=None):
     dev_len = int(0.2*units) * N_output
     test_len = int(0.2*units) * N_output
     train_len = n - dev_len - test_len
+
+    #import ipdb ; ipdb.set_trace()
 
     cal_date = pd.to_datetime(df['datetime'])
     if t2v_type is None:

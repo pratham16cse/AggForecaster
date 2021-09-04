@@ -40,14 +40,23 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1, unnor
         # DO NOT PASS TARGET during forward pass
         with torch.no_grad():
             out = net(
-                feats_in.to(args.device), batch_inputs.to(args.device), feats_tgt.to(args.device)
+                feats_in.to(args.device), batch_inputs.to(args.device), feats_tgt.to(args.device),
+                batch_target.to(args.device)
             )
-            if net.estimate_type in ['point']:
-                batch_pred_mu = out
-            elif net.estimate_type in ['variance']:
-                batch_pred_mu, batch_pred_d = out
-            elif net.estimate_type in ['covariance']:
-                batch_pred_mu, batch_pred_d, batch_pred_v = out
+            if net.is_signature:
+                if net.estimate_type in ['point']:
+                    batch_pred_mu, _, _ = out
+                elif net.estimate_type in ['variance']:
+                    batch_pred_mu, batch_pred_d, _, _ = out
+                elif net.estimate_type in ['covariance']:
+                    batch_pred_mu, batch_pred_d, batch_pred_v, _, _ = out
+            else:
+                if net.estimate_type in ['point']:
+                    batch_pred_mu = out
+                elif net.estimate_type in ['variance']:
+                    batch_pred_mu, batch_pred_d = out
+                elif net.estimate_type in ['covariance']:
+                    batch_pred_mu, batch_pred_d, batch_pred_v = out
         batch_pred_mu = batch_pred_mu.cpu()
         if net.estimate_type == 'covariance':
             batch_pred_d = batch_pred_d.cpu()
@@ -87,6 +96,9 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1, unnor
         #    batch_pred_std = torch.ones_like(batch_pred_mu) #* 1e-9
         #    batch_pred_d = torch.zeros_like(batch_pred_mu) #* 1e-9
         #    batch_pred_v = torch.zeros_like(batch_pred_mu) #* 1e-9
+
+        if unnorm:
+            batch_inputs = norm.unnormalize(batch_inputs[..., 0], ids, is_var=False).unsqueeze(-1)
 
         inputs.append(batch_inputs)
         target.append(batch_target)
@@ -560,7 +572,9 @@ def eval_inf_model(args, net, dataset, which_split, gamma, verbose=1):
 
         #import ipdb ; ipdb.set_trace()
         print('Batch id:', i, num_batches)
-        batch_pred_mu, batch_pred_d, batch_pred_v, batch_pred_std = net(dataset_batch, norms)
+        batch_pred_mu, batch_pred_d, batch_pred_v, batch_pred_std = net(
+            dataset_batch, norms, which_split
+        )
 
         batch_target = dataset_batch['sum'][1][1]
 
@@ -585,6 +599,11 @@ def eval_inf_model(args, net, dataset, which_split, gamma, verbose=1):
     inputs = dataset['sum'][1][norm_str].unnormalize(
         inputs[..., 0], ids=mapped_ids
     )
+    #import ipdb ; ipdb.set_trace()
+    #if which_split in ['dev']:
+    #    target = dataset['sum'][1][norm_str].unnormalize(
+    #        target[..., 0], ids=mapped_ids
+    #    ).unsqueeze(-1)
 
     # MSE
     loss_mse = criterion(target, pred_mu)
