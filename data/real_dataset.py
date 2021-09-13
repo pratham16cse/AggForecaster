@@ -824,11 +824,6 @@ def parse_Solar(dataset_name, N_input, N_output, t2v_type=None):
 
     # Features
     feats = torch.tensor(feats, dtype=torch.float)#.unsqueeze(dim=-1)
-    #feats = np.sin(np.ones((data.shape[0], 1)) * np.expand_dims(np.arange(n), axis=0) * np.pi / 30.)
-    #feats = np.expand_dims(feats, axis=-1)
-    #feats = torch.tensor(feats, dtype=torch.int64)
-
-    #data = torch.tensor(np.sin(feats.numpy()), dtype=torch.float)
 
     n = data.shape[1]
     #train_len = int(0.9*n)
@@ -875,7 +870,7 @@ def parse_Solar(dataset_name, N_input, N_output, t2v_type=None):
     for j in range(i, i+data_train[0]['feats'].shape[-1]):
         feats_info[j] = (-1, -1)
 
-    #import ipdb;ipdb.set_trace()
+    import ipdb;ipdb.set_trace()
                 
     return (
         data_train, data_dev, data_test, dev_tsid_map, test_tsid_map,

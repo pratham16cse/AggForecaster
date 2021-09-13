@@ -181,6 +181,8 @@ args.base_model_names = [
 #    'rnn-nll-ar',
 #    'trans-mse-ar',
     'trans-nll-ar',
+#    'trans-bvnll-ar',
+#    'trans-nll-atr',
 #    'trans-fnll-ar',
 #    'rnn-mse-nar',
 #    'rnn-nll-nar',
@@ -197,6 +199,7 @@ args.aggregate_methods = [
     'sum',
 #    'sumwithtrend',
     'slope',
+#    'haar',
 #    'wavelet'
 ]
 
@@ -281,13 +284,27 @@ if 'trans-mse-ar' in args.base_model_names:
 if 'trans-nll-ar' in args.base_model_names:
     args.inference_model_names.append('TRANS-NLL-AR')
     #args.inference_model_names.append('trans-nll-ar_opt-sum')
-    args.inference_model_names.append('trans-nll-ar_optcf-sum')
-    args.inference_model_names.append('trans-nll-ar_optcf-slope')
-    args.inference_model_names.append('trans-nll-ar_optcf-st')
+    #args.inference_model_names.append('trans-nll-ar_optcf-sum')
+    #args.inference_model_names.append('trans-nll-ar_optcf-slope')
+    #args.inference_model_names.append('trans-nll-ar_optcf-haar')
+    #args.inference_model_names.append('trans-nll-ar_optcf-st')
     #args.inference_model_names.append('trans-nll-ar_opt-slope')
     #args.inference_model_names.append('trans-nll-ar_opt-st')
     #args.inference_model_names.append('trans-nll-ar_kl-sum')
     args.inference_model_names.append('trans-nll-ar_kl-st')
+if 'trans-bvnll-ar' in args.base_model_names:
+    args.inference_model_names.append('TRANS-BVNLL-AR')
+    #args.inference_model_names.append('trans-bvnll-ar_opt-sum')
+    args.inference_model_names.append('trans-bvnll-ar_optcf-sum')
+    args.inference_model_names.append('trans-bvnll-ar_optcf-slope')
+    #args.inference_model_names.append('trans-bvnll-ar_optcf-haar')
+    args.inference_model_names.append('trans-bvnll-ar_optcf-st')
+    #args.inference_model_names.append('trans-bvnll-ar_opt-slope')
+    #args.inference_model_names.append('trans-bvnll-ar_opt-st')
+    #args.inference_model_names.append('trans-bvnll-ar_kl-sum')
+    #args.inference_model_names.append('trans-bvnll-ar_kl-st')
+if 'trans-nll-atr' in args.base_model_names:
+    args.inference_model_names.append('TRANS-NLL-ATR')
 if 'trans-fnll-ar' in args.base_model_names:
     args.inference_model_names.append('TRANS-FNLL-AR')
    #args.inference_model_names.append('trans-nll-ar_kl-st')
@@ -576,13 +593,15 @@ for base_model_name in args.base_model_names:
             elif base_model_name in [
                 'seq2seqnll', 'convnll', 'trans-q-nar', 'rnn-q-nar', 'rnn-q-ar',
                 'rnn-nll-nar', 'rnn-nll-ar', 'rnn-aggnll-nar', 'trans-nll-ar',
-                'transm-nll-nar', 'transda-nll-nar', 'transsig-nll-nar'
+                'transm-nll-nar', 'transda-nll-nar', 'transsig-nll-nar', 'trans-nll-atr'
             ]:
                 estimate_type = 'variance'
             elif base_model_name in [
                 'rnn-fnll-nar', 'trans-fnll-ar', 'transm-nll-nar', 'transda-fnll-nar'
             ]:
                 estimate_type = 'covariance'
+            elif base_model_name in ['trans-bvnll-ar']:
+                estimate_type = 'bivariate'
 
             saved_models_dir = os.path.join(
                 args.saved_models_dir,
@@ -604,7 +623,7 @@ for base_model_name in args.base_model_names:
             )
     
             # train the network
-            if agg_method in ['sumwithtrend', 'slope', 'wavelet'] and level == 1:
+            if agg_method in ['sumwithtrend', 'slope', 'wavelet', 'haar'] and level == 1:
                 base_models[base_model_name][agg_method][level] = base_models[base_model_name]['sum'][1]
             else:
                 if base_model_name not in ['oracle', 'oracleforecast']:
@@ -933,6 +952,14 @@ def run_inference_model(
             K_list, base_models_dict, agg_method, device=args.device, opt_normspace=False
         )
 
+    elif inf_model_name in ['trans-nll-ar_optcf-haar']:
+        base_models_dict = base_models['trans-nll-ar']
+        agg_method = ['haar'] if agg_method is None else agg_method
+        K_list = args.K_list if K is None else K
+        inf_net = inf_models.DualTPP_CF(
+            K_list, base_models_dict, agg_method, device=args.device, opt_normspace=False
+        )
+
     elif inf_model_name in ['trans-nll-ar_optcf-st']:
         base_models_dict = base_models['trans-nll-ar']
         agg_method = ['sum', 'slope'] if agg_method is None else agg_method
@@ -957,17 +984,97 @@ def run_inference_model(
         base_models_dict = base_models['trans-nll-ar']
         agg_method = ['sum'] if agg_method is None else agg_method
         K_list = args.K_list if K is None else K
-        inf_net = inf_models.KLInference(
-            K_list, base_models_dict, agg_method, device=args.device, opt_normspace=opt_normspace
+        #inf_net = inf_models.KLInference(
+        #    K_list, base_models_dict, agg_method, device=args.device, opt_normspace=opt_normspace
+        #)
+        inf_net = inf_models.KLInferenceSGD(
+            K_list, base_models_dict, agg_method, device=args.device, opt_normspace=False
         )
 
     elif inf_model_name in ['trans-nll-ar_kl-st']:
         base_models_dict = base_models['trans-nll-ar']
         agg_method = ['sum', 'slope'] if agg_method is None else agg_method
         K_list = args.K_list if K is None else K
+        #inf_net = inf_models.KLInference(
+        #    K_list, base_models_dict, agg_method, device=args.device, opt_normspace=opt_normspace
+        #)
+        inf_net = inf_models.KLInferenceSGD(
+            K_list, base_models_dict, agg_method, device=args.device, opt_normspace=False
+        )
+
+    elif inf_model_name in ['TRANS-BVNLL-AR']:
+        base_models_dict = base_models['trans-bvnll-ar']
+        inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device)
+
+    elif inf_model_name in ['trans-bvnll-ar_opt-sum']:
+        agg_method = ['sum'] if agg_method is None else agg_method
+        base_models_dict = base_models['trans-bvnll-ar']
+        K_list = args.K_list if K is None else K
+        inf_net = inf_models.DualTPP(K_list, base_models_dict, agg_method, device=args.device)
+
+    elif inf_model_name in ['trans-bvnll-ar_optcf-sum']:
+        base_models_dict = base_models['trans-bvnll-ar']
+        agg_method = ['sum'] if agg_method is None else agg_method
+        K_list = args.K_list if K is None else K
+        inf_net = inf_models.DualTPP_CF(
+            K_list, base_models_dict, agg_method, device=args.device, opt_normspace=False
+        )
+
+    elif inf_model_name in ['trans-bvnll-ar_optcf-slope']:
+        base_models_dict = base_models['trans-bvnll-ar']
+        agg_method = ['slope'] if agg_method is None else agg_method
+        K_list = args.K_list if K is None else K
+        inf_net = inf_models.DualTPP_CF(
+            K_list, base_models_dict, agg_method, device=args.device, opt_normspace=False
+        )
+
+    elif inf_model_name in ['trans-bvnll-ar_optcf-haar']:
+        base_models_dict = base_models['trans-bvnll-ar']
+        agg_method = ['haar'] if agg_method is None else agg_method
+        K_list = args.K_list if K is None else K
+        inf_net = inf_models.DualTPP_CF(
+            K_list, base_models_dict, agg_method, device=args.device, opt_normspace=False
+        )
+
+    elif inf_model_name in ['trans-bvnll-ar_optcf-st']:
+        base_models_dict = base_models['trans-bvnll-ar']
+        agg_method = ['sum', 'slope'] if agg_method is None else agg_method
+        K_list = args.K_list if K is None else K
+        inf_net = inf_models.DualTPP_CF(
+            K_list, base_models_dict, agg_method, device=args.device, opt_normspace=False
+        )
+
+    elif inf_model_name in ['trans-bvnll-ar_opt-slope']:
+        base_models_dict = base_models['trans-bvnll-ar']
+        agg_method = ['slope'] if agg_method is None else agg_method
+        K_list = args.K_list if K is None else K
+        inf_net = inf_models.DualTPP(K_list, base_models_dict, agg_method, device=args.device)
+
+    elif inf_model_name in ['trans-bvnll-ar_opt-st']:
+        base_models_dict = base_models['trans-bvnll-ar']
+        agg_method = ['sum', 'slope'] if agg_method is None else agg_method
+        K_list = args.K_list if K is None else K
+        inf_net = inf_models.DualTPP(K_list, base_models_dict, agg_method, device=args.device)
+
+    elif inf_model_name in ['trans-bvnll-ar_kl-sum']:
+        base_models_dict = base_models['trans-bvnll-ar']
+        agg_method = ['sum'] if agg_method is None else agg_method
+        K_list = args.K_list if K is None else K
         inf_net = inf_models.KLInference(
             K_list, base_models_dict, agg_method, device=args.device, opt_normspace=opt_normspace
         )
+
+    elif inf_model_name in ['trans-bvnll-ar_kl-st']:
+        base_models_dict = base_models['trans-bvnll-ar']
+        agg_method = ['sum', 'slope'] if agg_method is None else agg_method
+        K_list = args.K_list if K is None else K
+        inf_net = inf_models.KLInference(
+            K_list, base_models_dict, agg_method, device=args.device, opt_normspace=opt_normspace
+        )
+
+    elif inf_model_name in ['TRANS-NLL-ATR']:
+        base_models_dict = base_models['trans-nll-atr']
+        inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device)
 
     elif inf_model_name in ['TRANS-FNLL-AR']:
         base_models_dict = base_models['trans-fnll-ar']

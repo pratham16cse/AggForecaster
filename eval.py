@@ -50,6 +50,8 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1, unnor
                     batch_pred_mu, batch_pred_d, _, _ = out
                 elif net.estimate_type in ['covariance']:
                     batch_pred_mu, batch_pred_d, batch_pred_v, _, _ = out
+                elif net.estimate_type in ['bivariate']:
+                    batch_pred_mu, batch_pred_d, _, _, _ = out
             else:
                 if net.estimate_type in ['point']:
                     batch_pred_mu = out
@@ -57,6 +59,8 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1, unnor
                     batch_pred_mu, batch_pred_d = out
                 elif net.estimate_type in ['covariance']:
                     batch_pred_mu, batch_pred_d, batch_pred_v = out
+                elif net.estimate_type in ['bivariate']:
+                    batch_pred_mu, batch_pred_d, _ = out
         batch_pred_mu = batch_pred_mu.cpu()
         if net.estimate_type == 'covariance':
             batch_pred_d = batch_pred_d.cpu()
@@ -72,7 +76,7 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1, unnor
                 dist.covariance_matrix, dim1=-2, dim2=-1).unsqueeze(dim=-1)
             if unnorm:
                 batch_pred_std = norm.unnormalize(batch_pred_std[..., 0], ids=ids, is_var=True).unsqueeze(-1)
-        elif net.estimate_type == 'variance':
+        elif net.estimate_type in ['variance', 'bivariate']:
             batch_pred_std = batch_pred_d.cpu()
             batch_pred_v = torch.ones_like(batch_pred_mu) * 1e-9
             if unnorm:
@@ -183,7 +187,7 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1, unnor
         #dist = torch.distributions.normal.Normal(pred_mu, pred_std)
         loss_nll = -torch.mean(dist.log_prob(target.squeeze(dim=-1))).item()
         #loss_nll = -torch.mean(dist.log_prob(target)).item()
-    elif net.estimate_type in ['variance', 'point']:
+    elif net.estimate_type in ['variance', 'point', 'bivariate']:
         dist = torch.distributions.normal.Normal(pred_mu, pred_std)
         loss_nll = -torch.mean(dist.log_prob(target)).item()
 

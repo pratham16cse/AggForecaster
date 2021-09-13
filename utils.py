@@ -432,6 +432,7 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
         self.tsid_map = tsid_map
         self.feats_norms = feats_norms
         self.train_obj = train_obj
+        self.generate_a()
 
         # Perform aggregation if level != 1
         st = time.time()
@@ -476,6 +477,21 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
                             lookup_series = self.train_obj.data[self.tsid_map[i]]['target']
                             if len(lookup_series) <= self.K*b:
                                 ex_agg.append(self.aggregate_data_slope(ex[s:e]))
+                            else:
+                                ex_agg.append(lookup_series[self.K*b])
+                                #print(i, self.aggregate_data(ex[s:e]), lookup_series[self.K*b])
+                                #assert self.aggregate_data_slope(ex[s:e]) == lookup_series[self.K*b]
+
+                elif self.aggregation_type in ['haar']:
+                    for b in range(len(bp)):
+                        s, e = bp[b][0], bp[b][0]+bp[b][1]
+                        if self.which_split in ['train']:
+                            ex_agg.append(self.aggregate_data_haar(ex[s:e]))
+                        elif self.which_split in ['dev', 'test']:
+                            #import ipdb ; ipdb.set_trace()
+                            lookup_series = self.train_obj.data[self.tsid_map[i]]['target']
+                            if len(lookup_series) <= self.K*b:
+                                ex_agg.append(self.aggregate_data_haar(ex[s:e]))
                             else:
                                 ex_agg.append(lookup_series[self.K*b])
                                 #print(i, self.aggregate_data(ex[s:e]), lookup_series[self.K*b])
@@ -723,29 +739,41 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
     def aggregate_data(self, values):
         return values.mean(dim=0)
 
-    def aggregate_data_slope(self, y, compute_b=False):
-        x = torch.arange(y.shape[0], dtype=torch.float)
-        m_x = x.mean()
-        s_xx = ((x-m_x)**2).sum()
+    def aggregate_data_slope(self, y):
+        return (self.a * y).sum()
+    #def aggregate_data_slope(self, y, compute_b=False):
+    #    x = torch.arange(y.shape[0], dtype=torch.float)
+    #    m_x = x.mean()
+    #    s_xx = ((x-m_x)**2).sum()
 
-        #m_y = np.mean(y, axis=0)
-        #s_xy = np.sum((x-m_x)*(y-m_y), axis=0)
-        #w = s_xy/s_xx
+    #    #m_y = np.mean(y, axis=0)
+    #    #s_xy = np.sum((x-m_x)*(y-m_y), axis=0)
+    #    #w = s_xy/s_xx
 
-        a = (x - m_x) / s_xx
-        w = (a*y).sum()
+    #    a = (x - m_x) / s_xx
+    #    w = (a*y).sum()
 
-        if compute_b:
-            b = m_y - w*m_x
-            return w, b
-        else:
-            return w
+    #    if compute_b:
+    #        b = m_y - w*m_x
+    #        return w, b
+    #    else:
+    #        return w
+
+    def aggregate_data_haar(self, values):
+        i = values.shape[0]//2
+        return values[i:].mean()-values[:i].mean()
 
     def aggregate_data_wavelet(self, values, K):
         coeffs = pywt.wavedec(sqz(values), 'haar', level=self.wavelet_levels, mode='periodic')
         coeffs = [expand(x) for x in coeffs]
         coeffs = coeffs[-(K-1)]
         return coeffs
+
+    def generate_a(self):
+        x = torch.arange(self.K, dtype=torch.float)
+        m_x = x.mean()
+        s_xx = ((x-m_x)**2).sum()
+        self.a = (x - m_x) / s_xx
 
     def get_time_features(self, start, seqlen):
         end = shift_timestamp(start, seqlen)

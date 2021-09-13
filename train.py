@@ -94,38 +94,34 @@ def train_model(
 
             # forward + backward + optimize
             teacher_forcing_ratio = args.teacher_forcing_ratio
-            teacher_force = True if random.random() <= teacher_forcing_ratio else False
-            if 'nar' in model_name or 'oracle' in model_name:
-                out = net(
-                    feats_in.to(args.device), inputs.to(args.device),
-                    feats_tgt.to(args.device), target.to(args.device)
-                )
-                if net.is_signature:
-                    if net.estimate_type in ['point']:
-                        means, dec_state, sig_state = out
-                    elif net.estimate_type in ['variance']:
-                        means, stds, dec_state, sig_state = out
-                    elif net.estimate_type in ['covariance']:
-                        means, stds, vs, dec_state, sig_state = out
-                else:
-                    if net.estimate_type in ['point']:
-                        means = out
-                    elif net.estimate_type in ['variance']:
-                        means, stds = out
-                    elif net.estimate_type in ['covariance']:
-                        means, stds, vs = out
+            #teacher_force = True if random.random() <= teacher_forcing_ratio else False
+            if model_name in ['trans-nll-atr']:
+                teacher_force = True
             else:
-                out = net(
-                    feats_in.to(args.device), inputs.to(args.device),
-                    feats_tgt.to(args.device), target.to(args.device),
-                    teacher_force=teacher_force
-                )
+                teacher_force = False
+            out = net(
+                feats_in.to(args.device), inputs.to(args.device),
+                feats_tgt.to(args.device), target.to(args.device),
+                teacher_force=teacher_force
+            )
+            if net.is_signature:
+                if net.estimate_type in ['point']:
+                    means, dec_state, sig_state = out
+                elif net.estimate_type in ['variance']:
+                    means, stds, dec_state, sig_state = out
+                elif net.estimate_type in ['covariance']:
+                    means, stds, vs, dec_state, sig_state = out
+                elif net.estimate_type in ['bivariate']:
+                    means, stds, rho, dec_state, sig_state = out
+            else:
                 if net.estimate_type in ['point']:
                     means = out
                 elif net.estimate_type in ['variance']:
                     means, stds = out
                 elif net.estimate_type in ['covariance']:
                     means, stds, vs = out
+                elif net.estimate_type in ['bivariate']:
+                    means, stds, rho = out
 
             loss_mse,loss_shape,loss_temporal = torch.tensor(0),torch.tensor(0),torch.tensor(0)
 
@@ -144,7 +140,8 @@ def train_model(
                     'trans-fnll-ar', 'rnn-fnll-nar',
                     'transm-nll-nar', 'transm-fnll-nar',
                     'transda-nll-nar', 'transda-fnll-nar',
-                    'oracle', 'transsig-nll-nar'
+                    'oracle', 'transsig-nll-nar', 'trans-bvnll-ar',
+                    'trans-nll-atr'
                 ]:
                 if args.train_twostage:
                     if curr_epoch < epochs/2:
@@ -181,6 +178,19 @@ def train_model(
                     loss = torch.mean(-dist.log_prob(target))
                 elif net.estimate_type in ['point']:
                     loss = mse_loss(target, means)
+                elif net.estimate_type in ['bivariate']:
+                    means_avg = 0.5 * (means[..., :-1, :] + means[..., 1:, :])
+                    var_a, var_b = stds[..., :-1, :]**2, stds[..., 1:, :]**2
+                    var_avg = var_a/4. + var_b/4. + rho * var_a * var_b / 2.
+                    stds_avg = var_avg**0.5
+                    target_avg = 0.5 * (target[..., :-1, :] + target[..., 1:, :])
+
+                    dist = torch.distributions.normal.Normal(means, stds)
+                    dist_avg = torch.distributions.normal.Normal(means_avg, stds_avg)
+
+                    loss = torch.mean(-dist.log_prob(target))
+                    loss += torch.mean(-dist_avg.log_prob(target_avg))
+                    #import ipdb ; ipdb.set_trace()
 
                 if args.mse_loss_with_nll:
                     loss += criterion(target, means)
