@@ -75,6 +75,13 @@ def get_list_of_dict_format(data):
         data_new.append(entry_dict)
     return data_new
 
+def prune_dev_test_sequence(data, seq_len):
+    for i in range(len(data)):
+        data[i]['target'] = data[i]['target'][-seq_len:]
+        data[i]['feats'] = data[i]['feats'][-seq_len:]
+    return data
+
+
 def decompose_seq(seq, decompose_type, period, N_output, is_train):
     if is_train:
         if decompose_type == 'seasonal':
@@ -677,8 +684,12 @@ def parse_ett(dataset_name, N_input, N_output, t2v_type=None):
     #}
     #feats_info = {0:(24*4, 32), 1:(12, 8), 2:(0, 1), 3:(0, 1), 4:(0, 1), 5:(0, 1), 6:(0, 1), 7:(0, 1)}
     i = len(feats_info)
-    for j in range(i, i+feats_date[0,0].shape[0]):
+    for j in range(i, feats_date[0,0].shape[0]):
         feats_info[j] = (-1, -1)
+
+    seq_len = 2*N_input+N_output
+    data_dev = prune_dev_test_sequence(data_dev, seq_len)
+    data_test = prune_dev_test_sequence(data_test, seq_len)
 
     return (
         data_train, data_dev, data_test, dev_tsid_map, test_tsid_map,
@@ -808,8 +819,7 @@ def parse_Solar(dataset_name, N_input, N_output, t2v_type=None):
             x = np.array(x)
             #x = np.expand_dims(x, axis=-1)
             data_test.append(torch.tensor(x, dtype=torch.float))
-            x_f = (np.cumsum(np.ones_like(x)) % 24)
-            x_f = np.expand_dims(x_f, axis=-1)
+            x_f = np.expand_dims((np.arange(len(x)) % 24), axis=-1)
             n = len(x)
             cal_date = pd.date_range(
                 start=line_dict['start'], periods=len(line_dict['target']), freq='H'
@@ -818,6 +828,10 @@ def parse_Solar(dataset_name, N_input, N_output, t2v_type=None):
                 feats_date = np.expand_dims(np.arange(0,n), axis=-1) / n * 10.
             x_f = np.concatenate([x_f, feats_date], axis=-1)
             feats_test.append(torch.tensor(x_f, dtype=torch.float))
+
+    # Select only last rolling window from test data
+    m = len(data)
+    data_test, feats_test = data_test[-m:], feats_test[-m:]
 
     data = np.array(data)
     data = torch.tensor(data, dtype=torch.float)
@@ -867,10 +881,15 @@ def parse_Solar(dataset_name, N_input, N_output, t2v_type=None):
 
     feats_info = {0:(24, 16)}
     i = len(feats_info)
-    for j in range(i, i+data_train[0]['feats'].shape[-1]):
+    for j in range(i, data_train[0]['feats'].shape[-1]):
         feats_info[j] = (-1, -1)
 
-    import ipdb;ipdb.set_trace()
+    #import ipdb;ipdb.set_trace()
+    # Only consider last (N_input+N_output)-length chunk from dev and test data
+    seq_len = 2*N_input+N_output
+    data_dev = prune_dev_test_sequence(data_dev, seq_len)
+    data_test = prune_dev_test_sequence(data_test, seq_len)
+    #import ipdb;ipdb.set_trace()
                 
     return (
         data_train, data_dev, data_test, dev_tsid_map, test_tsid_map,
@@ -967,9 +986,12 @@ def parse_etthourly(dataset_name, N_input, N_output, t2v_type=None):
     #feats_info = {0:(24, 1)}
     #feats_info = {0:(0, 1)}
     i = len(feats_info)
-    for j in range(i, i+feats_date[0,0].shape[0]):
+    for j in range(i, feats_date[0,0].shape[0]):
         feats_info[j] = (-1, -1)
 
+    seq_len = 2*N_input+N_output
+    data_dev = prune_dev_test_sequence(data_dev, seq_len)
+    data_test = prune_dev_test_sequence(data_test, seq_len)
     #import ipdb ; ipdb.set_trace()
 
     return (
@@ -1565,8 +1587,12 @@ def parse_electricity(dataset_name, N_input, N_output, t2v_type=None):
 
     feats_info = {0:(24, 16)}
     i = len(feats_info)
-    for j in range(i, i+feats_date[0,0].shape[0]):
+    for j in range(i, feats_date[0,0].shape[0]):
         feats_info[j] = (-1, -1)
+
+    seq_len = 2*N_input+N_output
+    data_dev = prune_dev_test_sequence(data_dev, seq_len)
+    data_test = prune_dev_test_sequence(data_test, seq_len)
 
     return (
         data_train, data_dev, data_test, dev_tsid_map, test_tsid_map, feats_info
