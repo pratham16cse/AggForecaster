@@ -167,7 +167,6 @@ class ARTransformerModel(nn.Module):
         self.v_dim = v_dim
         self.device = device
         self.is_signature = is_signature
-        self.use_covariate_var_model = False
 
         self.kernel_size = kernel_size
         self.nkernel = nkernel
@@ -180,6 +179,7 @@ class ARTransformerModel(nn.Module):
                 if card is not -1:
                     if card is not 0:
                         self.embed_feat_layers.append(nn.Embedding(card, emb_size))
+                        #self.embed_feat_layers.append(nn.Linear(1, emb_size))
                     else:
                         self.embed_feat_layers.append(nn.Linear(1, 1, bias=False))
             self.embed_feat_layers = nn.ModuleList(self.embed_feat_layers)
@@ -190,6 +190,7 @@ class ARTransformerModel(nn.Module):
                 bias=False,
                 #padding=self.kernel_size//2
             )
+            #self.conv_feats = nn.Linear(in_channels, nkernel)
 
         self.conv_data = nn.Conv1d(
             kernel_size=self.kernel_size, stride=1, in_channels=1, out_channels=nkernel,
@@ -332,9 +333,6 @@ class ARTransformerModel(nn.Module):
         self, feats_in, X_in, feats_out, X_out=None, teacher_force=None
     ):
 
-        #X_in = X_in[..., -X_in.shape[1]//5:, :]
-        #feats_in = feats_in[..., -feats_in.shape[1]//5:, :]
-
         mean = X_in.mean(dim=1, keepdim=True)
         #std = X_in.std(dim=1,keepdim=True)
         X_in = (X_in - mean)
@@ -352,6 +350,13 @@ class ARTransformerModel(nn.Module):
                     feats_in_merged.append(
                         self.embed_feat_layers[i](feats_in_)
                     )
+                    #feats_in_ = feats_in[..., i:i+1]
+                    #feats_in_tf = self.embed_feat_layers[i](feats_in_)
+                    #if card != 0:
+                    #    feats_in_tf = torch.cat([
+                    #        feats_in_tf[..., 0:1], torch.sin(feats_in_tf[..., 1:])
+                    #    ], dim=-1)
+                    #feats_in_merged.append(feats_in_tf)
             feats_in_merged = torch.cat(feats_in_merged, dim=2)
 
             feats_in_embed = self.conv_feats(
@@ -365,6 +370,8 @@ class ARTransformerModel(nn.Module):
                     ], dim=1
                 ).transpose(1,2)
             ).transpose(1,2).clamp(min=0)#[..., :X_in.shape[1],:].clamp(min=0)
+            #feats_in_embed = F.relu(feats_in_embed)
+            #feats_in_embed = self.conv_feats(feats_in_merged)#.clamp(min=0)
 
         X_in_embed = self.conv_data(
             torch.cat(
@@ -377,6 +384,9 @@ class ARTransformerModel(nn.Module):
                 ], dim=1
             ).transpose(1,2)
         ).transpose(1,2).clamp(min=0)#[..., :X_in.shape[1], :]
+        #X_in_embed = F.relu(X_in_embed)
+
+        #import ipdb ; ipdb.set_trace()
 
         if self.use_feats:
             enc_input = self.linearMap(torch.cat([feats_in_embed,X_in_embed],dim=-1)).transpose(0,1)
@@ -418,6 +428,13 @@ class ARTransformerModel(nn.Module):
                     feats_out_merged.append(
                         self.embed_feat_layers[i](feats_out_)
                     )
+                    #feats_out_ = feats_out[..., i:i+1]
+                    #feats_out_tf = self.embed_feat_layers[i](feats_out_)
+                    #if card != 0:
+                    #    feats_out_tf = torch.cat([
+                    #        feats_out_tf[..., 0:1], torch.sin(feats_out_tf[..., 1:])
+                    #    ], dim=-1)
+                    #feats_out_merged.append(feats_out_tf)
             feats_out_merged = torch.cat(feats_out_merged, dim=2)
             feats_out_merged = torch.cat(
                 [feats_in_merged[:,-self.warm_start+1:, :],feats_out_merged],
@@ -434,6 +451,8 @@ class ARTransformerModel(nn.Module):
                     ], dim=1
                 ).transpose(1,2)
             ).transpose(1,2).clamp(min=0)
+            #feats_out_embed = F.relu(feats_out_embed)
+            #feats_out_embed = self.conv_feats(feats_out_merged)#.clamp(min=0)
 
         #import ipdb ; ipdb.set_trace()
         X_out_embed = self.conv_data(
@@ -477,15 +496,18 @@ class ARTransformerModel(nn.Module):
                     t2v = self.t2v_linear(t2v)
             dec_input = dec_input + self.t2v_dropout(t2v)
         else:
+            #dec_input = self.positional(dec_input, start_idx=X_in.shape[1]-self.warm_start)
             dec_input = self.positional(dec_input, start_idx=X_in.shape[1])
         #import ipdb ; ipdb.set_trace()
 
         decoder_output = self.decoder_mean(dec_input, encoder_output).clamp(min=0)
+        #decoder_output = F.relu(decoder_output)
         decoder_output = decoder_output.transpose(0,1)
         mean_out = self.linear_mean(decoder_output)
 
         if self.estimate_type in ['variance', 'covariance', 'bivariate']:
             X_pred = self.decoder_std(dec_input, encoder_output).clamp(min=0)
+            #X_pred = F.relu(X_pred)
             X_pred = X_pred.transpose(0,1)
             std_out = F.softplus(self.linear_std(X_pred))
             if self.estimate_type in ['covariance']:

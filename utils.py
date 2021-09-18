@@ -701,15 +701,16 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
     #        return w
 
     def aggregate_feats(self, feats):
-        feats_agg = []
-        for j in range(len(self.feats_info)):
-            card = self.feats_info[j][0]
-            if card != 0:
-                feats_agg.append(feats[0,j])
-            else:
-                feats_agg.append(feats[:, j].mean())
-        feats_agg = torch.stack(feats_agg, dim=0)
-        return feats_agg
+        #feats_agg = []
+        #for j in range(len(self.feats_info)):
+        #    card = self.feats_info[j][0]
+        #    if card != 0:
+        #        feats_agg.append(feats[self.K//2,j])
+        #    else:
+        #        feats_agg.append(feats[:, j].mean())
+        #feats_agg = torch.stack(feats_agg, dim=0)
+        #return feats_agg
+        return feats.mean(dim=0)
 
     def aggregate_data_haar(self, values):
         i = values.shape[0]//2

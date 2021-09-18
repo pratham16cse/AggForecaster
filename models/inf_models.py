@@ -897,7 +897,8 @@ class KLInference(torch.nn.Module):
 
 class KLInferenceSGD(torch.nn.Module):
     """docstring for DualTPP"""
-    def __init__(self, K_list, base_models_dict, aggregates, device, opt_normspace=False):
+    def __init__(self, K_list, base_models_dict, aggregates, device, opt_normspace=False,
+            covariance=False):
         '''
         K: int
             number of steps to aggregate at each level
@@ -911,26 +912,55 @@ class KLInferenceSGD(torch.nn.Module):
         self.aggregates = aggregates
         self.device = device
         self.opt_normspace = opt_normspace
+        self.covariance = covariance
 
-    def aggregate_data(self, y, agg, K, is_var):
-        if agg == 'sum' and not is_var:
-            return 1./y.shape[1] * torch.sum(y, axis=1, keepdims=True)
-        elif agg == 'sum' and is_var:
-            return 1./y.shape[1]**2 * torch.sum(y, axis=1, keepdims=True)
-        elif agg == 'slope':
-            if K==1:
-                return y
-            #x = torch.arange(y.shape[0], dtype=torch.float)
-            x = torch.arange(y.shape[1], dtype=torch.float).unsqueeze(0).repeat(y.shape[0], 1)
-            m_x = x.mean(dim=1, keepdims=True)
-            s_xx = ((x-m_x)**2).sum(dim=1, keepdims=True)
+    def get_a(self, agg_type, K):
+        if agg_type in ['sum']:
+            a = 1./K * torch.ones(K)
+        elif agg_type in ['slope']:
+            x = torch.arange(K, dtype=torch.float)
+            m_x = x.mean()
+            s_xx = ((x-m_x)**2).sum()
             a = (x - m_x) / s_xx
-            if not is_var:
-                w = torch.sum(a*y, axis=1, keepdims=True)
-                return w
-            else:
-                w = torch.sum(a**2*y, axis=1, keepdims=True)
-                return w
+        return a
+
+    def aggregate_data(self, y, v, agg, K, a, is_var):
+        a = a.unsqueeze(0).repeat(y.shape[0], 1)
+        if K==1:
+            return y
+        if is_var==False:
+            y_a = (a*y).sum(dim=1, keepdims=True)
+        else:
+            w_d = (a**2*y).sum(dim=1, keepdims=True)
+            w_v = (((a.unsqueeze(-1)*v).sum(-1)**2)).sum(dim=1, keepdims=True)
+            y_a = w_d + w_v
+        return y_a
+        #elif agg == 'sum' and is_var:
+        #    a = torch.ones(y.shape[1], dtype=torch.float)* 1./y.shape[1]
+        #    a = a.unsqueeze(0).repeat(y.shape[0], 1)
+        #    w_d = torch.sum(a**2*y, axis=1, keepdims=True)
+        #    w_v = (
+        #        (a.unsqueeze(-1)*v).sum(dim=-1) * (a.unsqueeze(-1)*v).sum(dim=-1)
+        #    ).sum(dim=1, keepdims=True)
+        #    return w_d + w_v
+        #    #return 1./y.shape[1]**2 * torch.sum(y, axis=1, keepdims=True)
+        #elif agg == 'slope':
+        #    if K==1:
+        #        return y
+        #    #x = torch.arange(y.shape[0], dtype=torch.float)
+        #    x = torch.arange(y.shape[1], dtype=torch.float).unsqueeze(0).repeat(y.shape[0], 1)
+        #    m_x = x.mean(dim=1, keepdims=True)
+        #    s_xx = ((x-m_x)**2).sum(dim=1, keepdims=True)
+        #    a = (x - m_x) / s_xx
+        #    if not is_var:
+        #        w = torch.sum(a*y, axis=1, keepdims=True)
+        #        return w
+        #    else:
+        #        w_d = torch.sum(a**2*y, axis=1, keepdims=True)
+        #        w_v = (
+        #            (a.unsqueeze(-1)*v).sum(dim=-1) * (a.unsqueeze(-1)*v).sum(dim=-1)
+        #        ).sum(dim=1, keepdims=True)
+        #        return w_d + w_v
 
     #def log_prob(self, x_, means, std):
     #    return -cp.sum(cp.log(1/(((2*np.pi)**0.5)*std)) - (((x_ - means)**2) / (2.*(std)**2)))
@@ -1079,7 +1109,19 @@ class KLInferenceSGD(torch.nn.Module):
     def initialize_params(self, base_mu, base_sigma):
         #import ipdb ; ipdb.set_trace()
         self.x_mu = torch.nn.Parameter(torch.clone(base_mu).squeeze(-1))
-        self.x_var = torch.nn.Parameter(torch.clone(base_sigma).squeeze(-1)**2)
+        #self.x_mu = base_mu.squeeze(-1)
+        self.x_d = torch.nn.Parameter(torch.clone(base_sigma).squeeze(-1)**2)
+        self.x_v = torch.nn.Parameter(
+            torch.ones((base_mu.shape[0], base_mu.shape[1], 4), dtype=torch.float) * 5.
+        )
+
+    #@property
+    def x_var(self):
+        #import ipdb ; ipdb.set_trace()
+        #return (
+        #    self.x_d + torch.diagonal(torch.matmul(self.x_v, self.x_v.transpose(1,2)), dim1=1, dim2=2)
+        #)
+        return self.x_d + (self.x_v**2).sum(dim=-1)
 
     def KL_loss(self, x_mu, x_var, mu, std):
         #import ipdb ; ipdb.set_trace()
@@ -1108,8 +1150,15 @@ class KLInferenceSGD(torch.nn.Module):
         self.initialize_params(base_lvl_mu, params_dict[base_lvl][1][1])
 
         all_preds_mu, all_preds_std = [], []
+        all_preds_d, all_preds_v = [], []
 
-        optimizer = torch.optim.Adam(self.parameters(), lr=0.0001)
+        optimizer = torch.optim.Adam(self.parameters(), lr=0.01)
+
+        a_dict = {}
+        for agg in self.aggregates:
+            a_dict[agg] = {}
+            for K in self.K_list:
+                a_dict[agg][K] = self.get_a(agg, K)
 
         opt_bs = bs
         # Minimize the KL_loss
@@ -1140,12 +1189,15 @@ class KLInferenceSGD(torch.nn.Module):
                                 for i in range(0, N, lvl):
                                     lvl_x_mu.append(
                                         self.aggregate_data(
-                                            self.x_mu[bch:bch+opt_bs, i:i+lvl], agg, lvl, is_var=False
+                                            self.x_mu[bch:bch+opt_bs, i:i+lvl], None,
+                                            agg, lvl, a_dict[agg][lvl], is_var=False
                                         )
                                     )
                                     lvl_x_var.append(
                                         self.aggregate_data(
-                                            self.x_var[bch:bch+opt_bs, i:i+lvl], agg, lvl, is_var=True
+                                            self.x_d[bch:bch+opt_bs, i:i+lvl], 
+                                            self.x_v[bch:bch+opt_bs, i:i+lvl], 
+                                            agg, lvl, a_dict[agg][lvl], is_var=True
                                         )
                                     )
                                 x_mu_dict[agg][lvl] = lvl_x_mu
@@ -1157,7 +1209,7 @@ class KLInferenceSGD(torch.nn.Module):
                             if lvl==1:
                                 opt_loss += self.KL_loss(
                                     self.x_mu[bch:bch+opt_bs],
-                                    self.x_var[bch:bch+opt_bs],
+                                    self.x_var()[bch:bch+opt_bs],
                                     params[0][bch:bch+opt_bs, ..., 0].detach(),
                                     params[1][bch:bch+opt_bs, ..., 0].detach()
                                 )
@@ -1175,21 +1227,23 @@ class KLInferenceSGD(torch.nn.Module):
                 optimizer.step()
                 s += 1
 
-                #if s % 100 == 0:
+                if s % 100 == 0:
                 #if True:
-                #    #import ipdb ; ipdb.set_trace()
-                #    print('opt_loss:', opt_loss, 'grad:', (self.x_var.grad.norm()))
+                    #import ipdb ; ipdb.set_trace()
+                    print('opt_loss:', opt_loss, 'grad:', self.x_d.grad.norm(), self.x_v.grad.norm(), self.x_d.grad.norm()+self.x_v.grad.norm())
                 #import ipdb ; ipdb.set_trace()
 
                 #if (torch.abs(opt_loss_prev - opt_loss)/opt_loss_prev).item() <= 1e-3:
-                if (self.x_var.grad.norm()) <= 10.:
+                if (self.x_d.grad.norm()+self.x_v.grad.norm()) <= 5000.:
                     break
                 else:
                     opt_loss_prev = opt_loss
 
             #import ipdb ; ipdb.set_trace()
             all_preds_mu.append(self.x_mu.unsqueeze(dim=-1))
-            all_preds_std.append(torch.sqrt(self.x_var.unsqueeze(dim=-1)))
+            all_preds_std.append(torch.sqrt(self.x_var().unsqueeze(dim=-1)))
+            all_preds_d.append(self.x_d.unsqueeze(dim=-1))
+            all_preds_v.append(self.x_v)
 
         #all_preds_mu = torch.FloatTensor(x_mu.value).unsqueeze(dim=-1)
         #all_preds_std = torch.sqrt(torch.FloatTensor(x_var.value).unsqueeze(dim=-1))
@@ -1210,10 +1264,13 @@ class KLInferenceSGD(torch.nn.Module):
         #        all_preds_std[..., 0], ids=ids_dict[base_lvl][1], is_var=True
         #    )
 
-        d = params_dict[base_lvl][1][2]
-        v = params_dict[base_lvl][1][3]
+        #d = params_dict[base_lvl][1][2]
+        #v = params_dict[base_lvl][1][3]
+        all_preds_d = torch.cat(all_preds_d, dim=0)
+        all_preds_v = torch.cat(all_preds_v, dim=0)
 
-        return all_preds_mu, d, v, all_preds_std
+        #return all_preds_mu, d, v, all_preds_std
+        return all_preds_mu, all_preds_d, all_preds_v, all_preds_std
 
 
 class OPT_st(torch.nn.Module):

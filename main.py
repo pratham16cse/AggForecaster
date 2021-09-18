@@ -8,7 +8,7 @@ from models.base_models import EncoderRNN, DecoderRNN, Net_GRU, NetFullyConnecte
 from models.index_models import get_index_model
 from loss.dilate_loss import dilate_loss
 from train import train_model, get_optimizer
-from eval import eval_base_model, eval_inf_model, eval_inf_index_model
+from eval import eval_base_model, eval_inf_model, eval_inf_index_model, eval_aggregates
 from torch.utils.data import DataLoader
 import random
 from tslearn.metrics import dtw, dtw_path
@@ -292,6 +292,7 @@ if 'trans-nll-ar' in args.base_model_names:
     #args.inference_model_names.append('trans-nll-ar_opt-st')
     #args.inference_model_names.append('trans-nll-ar_kl-sum')
     args.inference_model_names.append('trans-nll-ar_kl-st')
+    #args.inference_model_names.append('trans-nll-ar_covkl-st')
 if 'trans-bvnll-ar' in args.base_model_names:
     args.inference_model_names.append('TRANS-BVNLL-AR')
     #args.inference_model_names.append('trans-bvnll-ar_opt-sum')
@@ -1002,6 +1003,18 @@ def run_inference_model(
             K_list, base_models_dict, agg_method, device=args.device, opt_normspace=False
         )
 
+    #elif inf_model_name in ['trans-nll-ar_covkl-st']:
+    #    base_models_dict = base_models['trans-nll-ar']
+    #    agg_method = ['sum', 'slope'] if agg_method is None else agg_method
+    #    K_list = args.K_list if K is None else K
+    #    #inf_net = inf_models.KLInference(
+    #    #    K_list, base_models_dict, agg_method, device=args.device, opt_normspace=opt_normspace
+    #    #)
+    #    inf_net = inf_models.KLInferenceSGD(
+    #        K_list, base_models_dict, agg_method, device=args.device, opt_normspace=False,
+    #        covariance=True
+    #    )
+
     elif inf_model_name in ['TRANS-BVNLL-AR']:
         base_models_dict = base_models['trans-bvnll-ar']
         inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device)
@@ -1205,6 +1218,10 @@ def run_inference_model(
         total_time
     ) = eval_inf_model(args, inf_net, dataset, which_split, args.gamma, verbose=1)
 
+    agg2metrics = eval_aggregates(
+        inputs, target, pred_mu, pred_std, pred_d, pred_v
+    )
+
     inference_models[inf_model_name] = inf_net
     metric_mse = metric_mse.item()
 
@@ -1230,9 +1247,10 @@ def run_inference_model(
             pred_v.detach().numpy()
         )
 
-    return metric2val
+    return metric2val, agg2metrics
 
 model2metrics = dict()
+model2aggmetrics = dict()
 for inf_model_name in args.inference_model_names:
 
     if args.cv_inf:
@@ -1254,7 +1272,7 @@ for inf_model_name in args.inference_model_names:
         hparams2metrics = []
         for agg_method, K in hparam_configs:
             print('cv with agg_method, K:', agg_method, K)
-            metric2val = run_inference_model(
+            metric2val, agg2metrics = run_inference_model(
                 args, inf_model_name, base_models, 'dev', opt_normspace,
                 agg_method, K
             )
@@ -1265,18 +1283,20 @@ for inf_model_name in args.inference_model_names:
             'best_cfg_idx:', best_cfg_idx,
             'best_agg_method and best K:', hparam_configs[best_cfg_idx],
         )
-        metric2val = run_inference_model(
+        metric2val, agg2metrics = run_inference_model(
             args, inf_model_name, base_models, 'test', opt_normspace,
             hparam_configs[best_cfg_idx][0],
             hparam_configs[best_cfg_idx][1]
         )
         model2metrics[inf_model_name] = metric2val
+        model2aggmetrics[inf_model_name] = agg2metrics
     else:
         #raise NotImplementedError
-        metric2val = run_inference_model(
+        metric2val, agg2metrics = run_inference_model(
             args, inf_model_name, base_models, 'test', opt_normspace
         )
         model2metrics[inf_model_name] = metric2val
+        model2aggmetrics[inf_model_name] = agg2metrics
 
 
 with open(os.path.join(args.output_dir, 'results_'+args.dataset_name+'.txt'), 'w') as fp:
@@ -1293,6 +1313,24 @@ with open(os.path.join(args.output_dir, 'results_'+args.dataset_name+'.txt'), 'w
                 metrics_dict['tdi'],
             )
         )
+
+with open(os.path.join(args.output_dir, 'results_agg_'+args.dataset_name+'.txt'), 'w') as fp:
+
+    fp.write('\nModel Name, MAE, CRPS, MSE')
+    for model_name, agg2metrics in model2aggmetrics.items():
+        for agg, K2metrics in agg2metrics.items():
+            for K, metrics_dict in K2metrics.items():
+                fp.write(
+                    '\n{}, {}, {}, {:.6f}, {:.6f}, {:.6f}'.format(
+                        model_name,
+                        agg, K,
+                        round(metrics_dict['mae'], 3),
+                        round(metrics_dict['crps'], 3),
+                        round(metrics_dict['mse'], 3),
+                        #metrics_dict['dtw'],
+                        #metrics_dict['tdi'],
+                    )
+                )
 
 for model_name, metrics_dict in model2metrics.items():
     for metric, metric_val in metrics_dict.items():
