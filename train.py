@@ -40,8 +40,7 @@ def get_optimizer(args, lr, net):
 
 
 def train_model(
-    args, model_name, net, data_dict, point_estimates, saved_models_path,
-    output_dir, writer, verbose=1,
+    args, model_name, net, data_dict, saved_models_path, writer, verbose=1,
 ):
 
     lr = args.learning_rate

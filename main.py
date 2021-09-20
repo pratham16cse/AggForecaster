@@ -135,7 +135,7 @@ parser.add_argument('--device', type=str,
 # parameters for ablation study
 parser.add_argument('--leak_agg_targets', action='store_true', default=False,
                     help='If True, aggregate targets are leaked to inference models')
-parser.add_argument('--patience', type=int, default=10,
+parser.add_argument('--patience', type=int, default=50,
                     help='Stop the training if no improvement shown for these many \
                           consecutive steps.')
 #parser.add_argument('--seed', type=int,
@@ -351,7 +351,7 @@ if args.dataset_name == 'ett':
     if args.output_dir is None:
         args.output_dir = 'Outputs_ett_d192_klnorm_b24_e192_corrshuffle_bs128_seplayers_nodeczeros_nodecconv_t2v_usefeats_t2vglobal_idx_val20'
     if args.normalize is None: args.normalize = 'zscore_per_series'
-    if args.learning_rate == -1.: args.learning_rate = 0.0001
+    if args.learning_rate == -1.: args.learning_rate = 0.00001
     if args.batch_size == -1: args.batch_size = 64
     if args.hidden_size  == -1: args.hidden_size = 128
     if args.num_grulstm_layers == -1: args.num_grulstm_layers = 1
@@ -395,7 +395,7 @@ elif args.dataset_name == 'etthourly':
     if args.output_dir is None:
         args.output_dir = 'Outputs_etthourly_noextrafeats_d168_klnorm_b24_pefix_e168_val20_corrshuffle_seplayers_nodeczeros_nodecconv_t2v'
     if args.normalize is None: args.normalize = 'zscore_per_series'
-    if args.learning_rate == -1.: args.learning_rate = 0.0001
+    if args.learning_rate == -1.: args.learning_rate = 0.00001
     if args.batch_size == -1: args.batch_size = 64
     if args.hidden_size == -1: args.hidden_size = 128
     if args.num_grulstm_layers == -1: args.num_grulstm_layers = 1
@@ -610,8 +610,6 @@ for base_model_name in args.base_model_names:
             os.makedirs(saved_models_dir, exist_ok=True)
             writer = SummaryWriter(saved_models_dir)
             saved_models_path = os.path.join(saved_models_dir, 'state_dict_model.pt')
-            output_dir = os.path.join(args.output_dir, base_model_name)
-            os.makedirs(output_dir, exist_ok=True)
             print('\n {} {} {}'.format(base_model_name, agg_method, str(level)))
 
 
@@ -629,8 +627,7 @@ for base_model_name in args.base_model_names:
                 if base_model_name not in ['oracle', 'oracleforecast']:
                     train_model(
                         args, base_model_name, net_gru,
-                        level2data, estimate_type,
-                        saved_models_path, output_dir, writer, verbose=1
+                        level2data, saved_models_path, writer, verbose=1
                     )
 
                 base_models[base_model_name][agg_method][level] = net_gru

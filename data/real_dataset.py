@@ -588,6 +588,10 @@ def parse_azure(dataset_name, N_input, N_output, t2v_type=None):
 
 def parse_ett(dataset_name, N_input, N_output, t2v_type=None):
     df = pd.read_csv('/mnt/infonas/data/pbansal/ETTm1.csv')
+    # Remove incomplete data from last day
+    df = df[:-80]
+
+
     data = df[['OT']].to_numpy().T
     #data = np.expand_dims(data, axis=-1)
 
@@ -684,7 +688,7 @@ def parse_ett(dataset_name, N_input, N_output, t2v_type=None):
     #}
     #feats_info = {0:(24*4, 32), 1:(12, 8), 2:(0, 1), 3:(0, 1), 4:(0, 1), 5:(0, 1), 6:(0, 1), 7:(0, 1)}
     i = len(feats_info)
-    for j in range(i, feats_date[0,0].shape[0]):
+    for j in range(i, data_train[0]['feats'].shape[-1]):
         feats_info[j] = (-1, -1)
 
     seq_len = 2*N_input+N_output
@@ -905,6 +909,9 @@ def parse_etthourly(dataset_name, N_input, N_output, t2v_type=None):
 #    df = pd.read_csv('../Informer2020/data/ETT/ETTh1.csv').iloc[:n]
 
     df = pd.read_csv('../Informer2020/data/ETT/ETTh1.csv')
+    # Remove incomplete data from last day
+    df = df[:-20]
+
     data = df[['OT']].to_numpy().T
     #data = np.expand_dims(data, axis=-1)
 
@@ -986,7 +993,7 @@ def parse_etthourly(dataset_name, N_input, N_output, t2v_type=None):
     #feats_info = {0:(24, 1)}
     #feats_info = {0:(0, 1)}
     i = len(feats_info)
-    for j in range(i, feats_date[0,0].shape[0]):
+    for j in range(i, data_train[0]['feats'].shape[-1]):
         feats_info[j] = (-1, -1)
 
     seq_len = 2*N_input+N_output
@@ -1587,7 +1594,7 @@ def parse_electricity(dataset_name, N_input, N_output, t2v_type=None):
 
     feats_info = {0:(24, 16)}
     i = len(feats_info)
-    for j in range(i, feats_date[0,0].shape[0]):
+    for j in range(i, data_train[0]['feats'].shape[-1]):
         feats_info[j] = (-1, -1)
 
     seq_len = 2*N_input+N_output
