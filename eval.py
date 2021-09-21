@@ -654,3 +654,66 @@ def eval_inf_model(args, net, dataset, which_split, gamma, verbose=1):
         metric_crps, metric_mae, metric_smape, total_time
     )
 
+
+def get_a(agg_type, K):
+    if agg_type in ['sum']:
+        a =  1./K * torch.ones(K)
+    elif agg_type in ['slope']:
+        x = torch.arange(K, dtype=torch.float)
+        m_x = x.mean()
+        s_xx = ((x-m_x)**2).sum()
+        a = (x - m_x) / s_xx
+    elif agg_type in ['diff']:
+        l = K // 2
+        a_ = torch.ones(K)
+        a = torch.cat([-1.*a_[:l], a_[l:]], dim=0)
+    return a
+
+def aggregate_data(y, v, agg_type, K, is_var):
+    bs, N = y.shape[0], y.shape[1]
+    a = get_a(agg_type, K)
+    a = a.unsqueeze(0).repeat(bs, 1)
+    y_agg = []
+    #import ipdb ; ipdb.set_trace()
+    for i in range(0, N, K):
+        y_w = y[..., i:i+K, 0]
+        if is_var is False:
+            y_a = (a*y_w).sum(dim=1, keepdims=True)
+        else:
+            v_w = v[..., i:i+K, :]
+            #import ipdb ; ipdb.set_trace()
+            w_d = torch.sum(a**2*y_w, dim=1, keepdims=True)
+            w_v = (((a.unsqueeze(-1)*v_w).sum(-1))**2).sum(dim=1, keepdims=True)
+            y_a = w_d + w_v
+
+        y_agg.append(y_a)
+    y_agg = torch.cat(y_agg, dim=1).unsqueeze(-1)
+    return y_agg
+
+def eval_aggregates(inputs, target, mu, std, d, v):
+    criterion = torch.nn.MSELoss()
+    criterion_mae = torch.nn.L1Loss()
+
+    agg2metrics = {}
+    for agg in ['sum', 'slope', 'diff']:
+        agg2metrics[agg] = {}
+        for K in [2, 3, 4, 6, 12, 24]:
+            agg2metrics[agg][K] = {}
+            target_agg = aggregate_data(target, None, agg, K, False)
+            mu_agg = aggregate_data(mu, None, agg, K, False)
+            std_agg = aggregate_data(d, v, agg, K, True)
+
+            mse = criterion(target_agg, mu_agg).item()
+            mae = criterion_mae(target_agg, mu_agg).item()
+
+            crps = ps.crps_gaussian(
+                target_agg.detach().numpy(), mu_agg.detach().numpy(),
+                std_agg.detach().numpy()
+            ).mean()
+
+            agg2metrics[agg][K]['mse'] = mse
+            agg2metrics[agg][K]['mae'] = mae
+            agg2metrics[agg][K]['crps'] = crps
+
+
+    return agg2metrics
