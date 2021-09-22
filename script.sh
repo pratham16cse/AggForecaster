@@ -145,7 +145,15 @@
 #	--K_list 1 2 6 12 \
 #	--cv_inf 0 \
 #	--device cuda:1
-#
+
+python main.py foodinflation \
+	--N_input 90 --N_output 30 \
+	--saved_models_dir saved_models_foodinflation \
+	--output_dir Outputs_foodinflation \
+	--K_list 1 \
+	--cv_inf 0 \
+	--device cuda:1
+
 # Commands for Oracle and SimRetrieval
 #python main.py ett \
 #	--N_input 3840 --N_output 192 \
