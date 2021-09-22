@@ -657,48 +657,16 @@ def eval_inf_model(args, net, dataset, which_split, gamma, verbose=1):
     )
 
 
-#def get_a(agg_type, K):
-#    if agg_type in ['sum']:
-#        a =  1./K * torch.ones(K)
-#    elif agg_type in ['slope']:
-#        x = torch.arange(K, dtype=torch.float)
-#        m_x = x.mean()
-#        s_xx = ((x-m_x)**2).sum()
-#        a = (x - m_x) / s_xx
-#    elif agg_type in ['diff']:
-#        l = K // 2
-#        a_ = torch.ones(K)
-#        a = torch.cat([-1.*a_[:l], a_[l:]], dim=0)
-#    return a
-#
-#def aggregate_data(y, v, agg_type, K, is_var):
-#    bs, N = y.shape[0], y.shape[1]
-#    a = get_a(agg_type, K)
-#    a = a.unsqueeze(0).repeat(bs, 1)
-#    y_agg = []
-#    #import ipdb ; ipdb.set_trace()
-#    for i in range(0, N, K):
-#        y_w = y[..., i:i+K, 0]
-#        if is_var is False:
-#            y_a = (a*y_w).sum(dim=1, keepdims=True)
-#        else:
-#            v_w = v[..., i:i+K, :]
-#            #import ipdb ; ipdb.set_trace()
-#            w_d = torch.sum(a**2*y_w, dim=1, keepdims=True)
-#            w_v = (((a.unsqueeze(-1)*v_w).sum(-1))**2).sum(dim=1, keepdims=True)
-#            y_a = w_d + w_v
-#
-#        y_agg.append(y_a)
-#    y_agg = torch.cat(y_agg, dim=1).unsqueeze(-1)
-#    return y_agg
-
-def eval_aggregates(inputs, target, mu, std, d, v=None):
+def eval_aggregates(inputs, target, mu, std, d, v=None, K_list=None):
     N = target.shape[1]
 
     criterion = torch.nn.MSELoss()
     criterion_mae = torch.nn.L1Loss()
 
-    K_candidates = [1, 2, 3, 4, 6, 12, 24, 30]
+    if K_list is None:
+        K_candidates = [1, 2, 3, 4, 6, 12, 24, 30]
+    else:
+        K_candidates = K_list
     K_list = [K for K in K_candidates if N%K==0]
 
     agg2metrics = {}
