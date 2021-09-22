@@ -693,13 +693,18 @@ def eval_inf_model(args, net, dataset, which_split, gamma, verbose=1):
 #    return y_agg
 
 def eval_aggregates(inputs, target, mu, std, d, v=None):
+    N = target.shape[1]
+
     criterion = torch.nn.MSELoss()
     criterion_mae = torch.nn.L1Loss()
+
+    K_candidates = [1, 2, 3, 4, 6, 12, 24, 30]
+    K_list = [K for K in K_candidates if N%K==0]
 
     agg2metrics = {}
     for agg in ['sum', 'slope', 'diff']:
         agg2metrics[agg] = {}
-        for K in [2, 3, 4, 6, 12, 24]:
+        for K in K_list:
             agg2metrics[agg][K] = {}
             target_agg = utils.aggregate_data(target[..., 0], agg, K, False).unsqueeze(-1)
             mu_agg = utils.aggregate_data(mu[..., 0], agg, K, False).unsqueeze(-1)
