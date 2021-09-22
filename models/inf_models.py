@@ -8,6 +8,7 @@ import pywt
 from scipy.linalg import block_diag
 
 from utils import normalize, unnormalize, sqz, expand
+import utils
 
 device = 'cuda'
 
@@ -57,11 +58,12 @@ class CNNRNN(torch.nn.Module):
 
 class RNNNLLNAR(torch.nn.Module):
     """docstring for NLL"""
-    def __init__(self, base_models_dict, device, is_oracle=False):
+    def __init__(self, base_models_dict, device, is_oracle=False, covariance=False):
         super(RNNNLLNAR, self).__init__()
         self.base_models_dict = base_models_dict
         self.device = device
         self.is_oracle = is_oracle
+        self.covariance = covariance
 
     def forward(self, dataset, norms, which_split):
         feats_in = dataset['sum'][1][2].to(self.device)
@@ -113,6 +115,7 @@ class RNNNLLNAR(torch.nn.Module):
             pred_v = torch.ones_like(pred_mu) * 1e-9
             if which_split in ['test']:
                 pred_std = norms['sum'][1].unnormalize(pred_std[..., 0], ids=ids, is_var=True).unsqueeze(-1)
+                pred_d = pred_std**2
         else:
             pred_d = torch.ones_like(pred_mu) * 1e-9
             pred_v = torch.ones_like(pred_mu) * 1e-9
@@ -1183,16 +1186,20 @@ class KLInferenceSGD(torch.nn.Module):
                             if lvl != 1:
                                 for i in range(0, N, lvl):
                                     lvl_x_mu.append(
-                                        self.aggregate_data(
-                                            self.x_mu[bch:bch+opt_bs, i:i+lvl], None,
-                                            agg, lvl, a_dict[agg][lvl], is_var=False
+                                        utils.aggregate_window(
+                                            self.x_mu[bch:bch+opt_bs, i:i+lvl],
+                                            a_dict[agg][lvl], False,
                                         )
                                     )
+                                    if self.covariance:
+                                        v_for_agg = self.x_v[bch:bch+opt_bs, i:i+lvl]
+                                    else:
+                                        v_for_agg = None
                                     lvl_x_var.append(
-                                        self.aggregate_data(
+                                        utils.aggregate_window(
                                             self.x_d[bch:bch+opt_bs, i:i+lvl],
-                                            self.x_v[bch:bch+opt_bs, i:i+lvl],
-                                            agg, lvl, a_dict[agg][lvl], is_var=True
+                                            a_dict[agg][lvl], True, 
+                                            v_for_agg,
                                         )
                                     )
                                 x_mu_dict[agg][lvl] = lvl_x_mu

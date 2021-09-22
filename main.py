@@ -1224,8 +1224,13 @@ def run_inference_model(
         total_time
     ) = eval_inf_model(args, inf_net, dataset, which_split, args.gamma, verbose=1)
 
+    if inf_net.covariance == False:
+        pred_v_foragg = None
+    else:
+        pred_v_foragg = pred_v
+    #import ipdb ; ipdb.set_trace()
     agg2metrics = eval_aggregates(
-        inputs, target, pred_mu, pred_std, pred_d, pred_v
+        inputs, target, pred_mu, pred_std, pred_d, pred_v_foragg
     )
 
     inference_models[inf_model_name] = inf_net

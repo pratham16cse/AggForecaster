@@ -2,6 +2,7 @@ import numpy as np
 import torch
 from tslearn.metrics import dtw, dtw_path
 from utils import unnormalize, normalize
+import utils
 from loss.dilate_loss import dilate_loss
 import properscoring as ps
 import time
@@ -647,6 +648,7 @@ def eval_inf_model(args, net, dataset, which_split, gamma, verbose=1):
     total_time = end_time - start_time
 
     #print('Eval mse= ', metric_mse, ' dtw= ', metric_dtw, ' tdi= ', metric_tdi)
+    #import ipdb ; ipdb.set_trace()
 
     return (
         inputs, target, pred_mu, pred_std, pred_d, pred_v,
@@ -655,42 +657,42 @@ def eval_inf_model(args, net, dataset, which_split, gamma, verbose=1):
     )
 
 
-def get_a(agg_type, K):
-    if agg_type in ['sum']:
-        a =  1./K * torch.ones(K)
-    elif agg_type in ['slope']:
-        x = torch.arange(K, dtype=torch.float)
-        m_x = x.mean()
-        s_xx = ((x-m_x)**2).sum()
-        a = (x - m_x) / s_xx
-    elif agg_type in ['diff']:
-        l = K // 2
-        a_ = torch.ones(K)
-        a = torch.cat([-1.*a_[:l], a_[l:]], dim=0)
-    return a
+#def get_a(agg_type, K):
+#    if agg_type in ['sum']:
+#        a =  1./K * torch.ones(K)
+#    elif agg_type in ['slope']:
+#        x = torch.arange(K, dtype=torch.float)
+#        m_x = x.mean()
+#        s_xx = ((x-m_x)**2).sum()
+#        a = (x - m_x) / s_xx
+#    elif agg_type in ['diff']:
+#        l = K // 2
+#        a_ = torch.ones(K)
+#        a = torch.cat([-1.*a_[:l], a_[l:]], dim=0)
+#    return a
+#
+#def aggregate_data(y, v, agg_type, K, is_var):
+#    bs, N = y.shape[0], y.shape[1]
+#    a = get_a(agg_type, K)
+#    a = a.unsqueeze(0).repeat(bs, 1)
+#    y_agg = []
+#    #import ipdb ; ipdb.set_trace()
+#    for i in range(0, N, K):
+#        y_w = y[..., i:i+K, 0]
+#        if is_var is False:
+#            y_a = (a*y_w).sum(dim=1, keepdims=True)
+#        else:
+#            v_w = v[..., i:i+K, :]
+#            #import ipdb ; ipdb.set_trace()
+#            w_d = torch.sum(a**2*y_w, dim=1, keepdims=True)
+#            w_v = (((a.unsqueeze(-1)*v_w).sum(-1))**2).sum(dim=1, keepdims=True)
+#            y_a = w_d + w_v
+#
+#        y_agg.append(y_a)
+#    y_agg = torch.cat(y_agg, dim=1).unsqueeze(-1)
+#    return y_agg
 
-def aggregate_data(y, v, agg_type, K, is_var):
-    bs, N = y.shape[0], y.shape[1]
-    a = get_a(agg_type, K)
-    a = a.unsqueeze(0).repeat(bs, 1)
-    y_agg = []
-    #import ipdb ; ipdb.set_trace()
-    for i in range(0, N, K):
-        y_w = y[..., i:i+K, 0]
-        if is_var is False:
-            y_a = (a*y_w).sum(dim=1, keepdims=True)
-        else:
-            v_w = v[..., i:i+K, :]
-            #import ipdb ; ipdb.set_trace()
-            w_d = torch.sum(a**2*y_w, dim=1, keepdims=True)
-            w_v = (((a.unsqueeze(-1)*v_w).sum(-1))**2).sum(dim=1, keepdims=True)
-            y_a = w_d + w_v
-
-        y_agg.append(y_a)
-    y_agg = torch.cat(y_agg, dim=1).unsqueeze(-1)
-    return y_agg
-
-def eval_aggregates(inputs, target, mu, std, d, v):
+def eval_aggregates(inputs, target, mu, std, d, v=None):
     criterion = torch.nn.MSELoss()
     criterion_mae = torch.nn.L1Loss()
 
@@ -699,9 +701,10 @@ def eval_aggregates(inputs, target, mu, std, d, v):
         agg2metrics[agg] = {}
         for K in [2, 3, 4, 6, 12, 24]:
             agg2metrics[agg][K] = {}
-            target_agg = aggregate_data(target, None, agg, K, False)
-            mu_agg = aggregate_data(mu, None, agg, K, False)
-            std_agg = aggregate_data(d, v, agg, K, True)
+            target_agg = utils.aggregate_data(target[..., 0], agg, K, False).unsqueeze(-1)
+            mu_agg = utils.aggregate_data(mu[..., 0], agg, K, False).unsqueeze(-1)
+            var_agg = utils.aggregate_data(d[..., 0], agg, K, True, v=v).unsqueeze(-1)
+            std_agg = torch.sqrt(var_agg)
 
             mse = criterion(target_agg, mu_agg).item()
             mae = criterion_mae(target_agg, mu_agg).item()

@@ -404,6 +404,58 @@ def aggregate_data_wavelet(
         agg_test_input, agg_test_target
     )
 
+def get_a(agg_type, K):
+
+    if K == 1:
+        return torch.ones(1, dtype=torch.float)
+
+    if agg_type in ['sum']:
+        a = 1./K * torch.ones(K)
+    elif agg_type in ['slope']:
+        x = torch.arange(K, dtype=torch.float)
+        m_x = x.mean()
+        s_xx = ((x-m_x)**2).sum()
+        a = (x - m_x) / s_xx
+    elif agg_type in ['diff']:
+        l = K // 2
+        a_ = torch.ones(K)
+        a = torch.cat([-1.*a_[:l], a_[l:]], dim=0)
+    return a
+
+def aggregate_window(y, a, is_var, v=None):
+    if is_var == False:
+        y_a = (a*y).sum(dim=1, keepdims=True)
+    else:
+        w_d = (a**2*y).sum(dim=1, keepdims=True)
+        if v is not None:
+            w_v = (((a.unsqueeze(-1)*v).sum(-1)**2)).sum(dim=1, keepdims=True)
+            y_a = w_d + w_v
+        else:
+            y_a = w_d
+
+    return y_a
+
+def aggregate_data(y, agg_type, K, is_var, a=None, v=None):
+    # y shape: batch_size x N
+    # if a need not be recomputed in every call, pass a vector directly
+    # if v is not None, it is used as a V vector of low-rank multivariate gaussian
+    # v shape: batch_size x N x args.v_dim
+    bs, N = y.shape[0], y.shape[1]
+    if a is None:
+        a = get_a(agg_type, K)
+    a = a.unsqueeze(0).repeat(bs, 1)
+    y_agg = []
+    for i in range(0, N, K):
+        y_w = y[..., i:i+K]
+        if v is not None:
+            v_w = v[..., i:i+K, :]
+            y_a = aggregate_window(y_w, a, is_var, v=v_w)
+        else:
+            y_a = aggregate_window(y_w, a, is_var)
+        y_agg.append(y_a)
+    y_agg = torch.cat(y_agg, dim=1)#.unsqueeze(-1)
+    return y_agg
+
 
 class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
     """docstring for TimeSeriesDatasetOfflineAggregate"""
@@ -431,7 +483,8 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
         self.tsid_map = tsid_map
         self.feats_norms = feats_norms
         #self.train_obj = train_obj
-        self.generate_a()
+        #self.generate_a()
+        self.a = get_a(self.aggregation_type, self.K)
         self.S = 1
 
         # Perform aggregation if level != 1
@@ -453,20 +506,28 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
 
             if self.K != 1:
                 ex_agg, ex_f_agg = [], []
-                if self.aggregation_type in ['sum']:
-                    for b in range(len(bp)):
-                        s, e = bp[b][0], bp[b][0]+bp[b][1]
-                        ex_agg.append(self.aggregate_data(ex[s:e]))
+                for b in range(len(bp)):
+                    s, e = bp[b][0], bp[b][0]+bp[b][1]
+                    ex_agg.append(
+                        aggregate_window(
+                            ex[s:e].unsqueeze(0), self.a, False,
+                        )[0]
+                    )
+                #if self.aggregation_type in ['sum']:
+                #    for b in range(len(bp)):
+                #        s, e = bp[b][0], bp[b][0]+bp[b][1]
+                #        import ipdb ; ipdb.set_trace()
+                #        ex_agg.append(self.aggregate_data(ex[s:e]))
 
-                elif self.aggregation_type in ['slope']:
-                    for b in range(len(bp)):
-                        s, e = bp[b][0], bp[b][0]+bp[b][1]
-                        ex_agg.append(self.aggregate_data_slope(ex[s:e]))
+                #elif self.aggregation_type in ['slope']:
+                #    for b in range(len(bp)):
+                #        s, e = bp[b][0], bp[b][0]+bp[b][1]
+                #        ex_agg.append(self.aggregate_data_slope(ex[s:e]))
 
-                elif self.aggregation_type in ['haar']:
-                    for b in range(len(bp)):
-                        s, e = bp[b][0], bp[b][0]+bp[b][1]
-                        ex_agg.append(self.aggregate_data_haar(ex[s:e]))
+                #elif self.aggregation_type in ['haar']:
+                #    for b in range(len(bp)):
+                #        s, e = bp[b][0], bp[b][0]+bp[b][1]
+                #        ex_agg.append(self.aggregate_data_haar(ex[s:e]))
 
                 # Aggregating features
                 for b in range(len(bp)):
@@ -478,7 +539,7 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
 
                 data_agg.append(
                     {
-                        'target':torch.stack(ex_agg, dim=0),
+                        'target':torch.cat(ex_agg, dim=0),
                         'feats':torch.stack(ex_f_agg, dim=0),
                     }
                 )
