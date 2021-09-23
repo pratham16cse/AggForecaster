@@ -6,6 +6,7 @@ import random
 import json
 from torch.utils.data import Dataset, DataLoader
 from statsmodels.tsa.seasonal import seasonal_decompose, STL
+import glob
 
 DATA_DIRS = '/mnt/infonas/data/pratham/Forecasting/DILATE'
 
@@ -1684,6 +1685,95 @@ def parse_foodinflation(dataset_name, N_input, N_output, t2v_type=None):
         data_test[i]['feats'] = feats_test[i]
 
     feats_info = {0:(31, 16), 1:(12, 6)}
+    i = len(feats_info)
+    for j in range(i, data_train[0]['feats'].shape[-1]):
+        feats_info[j] = (-1, -1)
+
+    seq_len = 2*N_input+N_output
+    data_dev = prune_dev_test_sequence(data_dev, seq_len)
+    data_test = prune_dev_test_sequence(data_test, seq_len)
+
+    #import ipdb ; ipdb.set_trace()
+
+    return (
+        data_train, data_dev, data_test, dev_tsid_map, test_tsid_map, feats_info
+    )
+
+def parse_telemetry(dataset_name, N_input, N_output, t2v_type=None):
+
+    trn_channel_paths = glob.glob(os.path.join(DATA_DIRS, 'data', 'telemetry', 'data', 'train', '*'))
+    tst_channel_paths = glob.glob(os.path.join(DATA_DIRS, 'data', 'telemetry', 'data', 'test', '*'))
+    #print(len(trn_channel_paths), len(tst_channel_paths))
+    #print(channel_paths)
+
+    def read_data(channel_paths):
+        data, feats = [], []
+        for chl_path in channel_paths:
+            vals = np.load(chl_path)
+            x, x_f = vals[:, 0], vals[:, 1:]
+            data.append(torch.tensor(x, dtype=torch.float))
+            n = len(x)
+            minutes_f = np.expand_dims(np.arange(n) % 60, axis=1)
+            #x_f = np.concatenate([minutes_f, x_f], axis=1)
+            x_f = minutes_f
+            feats.append(torch.tensor(x_f, dtype=torch.float))
+        return data, feats
+
+
+    data, feats = read_data(trn_channel_paths)
+    data_test, feats_test = read_data(tst_channel_paths)
+
+    m = len(data)
+
+    #train_len = n - dev_len - test_len
+
+    dev_len = 180
+    data_train, feats_train = [], []
+    data_dev, feats_dev = [], []
+    for i in range(len(data)):
+        data_train.append(data[i][:-dev_len])
+        feats_train.append(feats[i][:-dev_len])
+        data_dev.append(data[i])
+        feats_dev.append(feats[i])
+
+    data_dev_w, feats_dev_w = [], []
+    dev_tsid_map = []
+    for i in range(len(data_dev)):
+        n = len(data_dev[i])
+        train_len = len(data_train[i])
+        #import ipdb ; ipdb.set_trace()
+        for j in range(train_len+N_output, train_len+dev_len+1, N_output):
+            if j <= n:
+                data_dev_w.append(data_dev[i][:j])
+                feats_dev_w.append(feats_dev[i][:j])
+                dev_tsid_map.append(i)
+    data_dev, feats_dev = data_dev_w, feats_dev_w
+
+    data_test_w, feats_test_w = [], []
+    test_tsid_map = []
+    for i in range(len(data_test)):
+        n = len(data_test[i])
+        test_in_len = n // 2 # Use first 50% data as input and another 50% data as output
+        test_in_len = test_in_len - test_in_len % N_output
+        for j in range(test_in_len+N_output, n+1, N_output):
+            if j <= n:
+                data_test_w.append(data_test[i][:j])
+                feats_test_w.append(feats_test[i][:j])
+                test_tsid_map.append(i)
+    data_test, feats_test = data_test_w, feats_test_w
+
+    data_train = get_list_of_dict_format(data_train)
+    data_dev = get_list_of_dict_format(data_dev)
+    data_test = get_list_of_dict_format(data_test)
+
+    for i in range(len(data_train)):
+        data_train[i]['feats'] = feats_train[i]
+    for i in range(len(data_dev)):
+        data_dev[i]['feats'] = feats_dev[i]
+    for i in range(len(data_test)):
+        data_test[i]['feats'] = feats_test[i]
+
+    feats_info = {0:(60, 16)}
     i = len(feats_info)
     for j in range(i, data_train[0]['feats'].shape[-1]):
         feats_info[j] = (-1, -1)

@@ -295,8 +295,8 @@ if 'trans-nll-ar' in args.base_model_names:
     #args.inference_model_names.append('trans-nll-ar_opt-slope')
     #args.inference_model_names.append('trans-nll-ar_opt-st')
     #args.inference_model_names.append('trans-nll-ar_kl-sum')
-    args.inference_model_names.append('trans-nll-ar_kl-st')
-    args.inference_model_names.append('trans-nll-ar_covkl-st')
+    #args.inference_model_names.append('trans-nll-ar_kl-st')
+    #args.inference_model_names.append('trans-nll-ar_covkl-st')
 if 'trans-bvnll-ar' in args.base_model_names:
     args.inference_model_names.append('TRANS-BVNLL-AR')
     #args.inference_model_names.append('trans-bvnll-ar_opt-sum')
@@ -529,6 +529,28 @@ elif args.dataset_name == 'foodinflation':
         args.saved_models_dir = 'saved_models_foodinflation'
     if args.output_dir is None:
         args.output_dir = 'Outputs_foodinflation'
+    if args.normalize is None: args.normalize = 'zscore_per_series'
+    if args.learning_rate == -1: args.learning_rate = 0.0001
+    if args.batch_size == -1: args.batch_size = 64
+    if args.hidden_size == -1: args.hidden_size = 128
+    if args.num_grulstm_layers == -1: args.num_grulstm_layers = 1
+    if args.v_dim == -1: args.v_dim = 4
+    if args.b == -1: args.b = 4
+    if args.use_feats == -1: args.use_feats = 1
+    if args.device is None: args.device = 'cuda:1'
+    if args.cv_inf == -1: args.cv_inf = 1
+    if args.lr_inf == -1: args.lr_inf = 0.01
+
+elif args.dataset_name == 'telemetry':
+    if args.epochs == -1: args.epochs = 20
+    if args.N_input == -1: args.N_input = 90
+    if args.N_output == -1: args.N_output = 30
+    #args.K_list = [12]
+    if args.K_list == []: args.K_list = []
+    if args.saved_models_dir is None:
+        args.saved_models_dir = 'saved_models_telemetry'
+    if args.output_dir is None:
+        args.output_dir = 'Outputs_telemetry'
     if args.normalize is None: args.normalize = 'zscore_per_series'
     if args.learning_rate == -1: args.learning_rate = 0.0001
     if args.batch_size == -1: args.batch_size = 64

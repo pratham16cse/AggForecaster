@@ -146,10 +146,18 @@
 #	--cv_inf 0 \
 #	--device cuda:1
 
-python main.py foodinflation \
+#python main.py foodinflation \
+#	--N_input 90 --N_output 30 \
+#	--saved_models_dir saved_models_foodinflation \
+#	--output_dir Outputs_foodinflation \
+#	--K_list 1 \
+#	--cv_inf 0 \
+#	--device cuda:1
+
+python main.py telemetry \
 	--N_input 90 --N_output 30 \
-	--saved_models_dir saved_models_foodinflation \
-	--output_dir Outputs_foodinflation \
+	--saved_models_dir saved_models_telemetry \
+	--output_dir Outputs_telemetry \
 	--K_list 1 \
 	--cv_inf 0 \
 	--device cuda:1
