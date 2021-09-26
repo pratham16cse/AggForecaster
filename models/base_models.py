@@ -521,13 +521,13 @@ class ARTransformerModel(nn.Module):
                 return (mean_out[..., -self.dec_len:, :], std_out[..., -self.dec_len:, :], rho_out, decoder_output, signature_state)
         else:
             if self.estimate_type in ['point']:
-                return mean_out[..., -self.dec_len:, :]
+                return mean_out[..., -self.dec_len:, :], decoder_output[..., -self.dec_len:, :]
             elif self.estimate_type in ['variance']:
-                return (mean_out[..., -self.dec_len:, :], std_out[..., -self.dec_len:, :])
+                return (mean_out[..., -self.dec_len:, :], std_out[..., -self.dec_len:, :], decoder_output[..., -self.dec_len:, :])
             elif self.estimate_type in ['covariance']:
-                return (mean_out[..., -self.dec_len:, :], std_out[..., -self.dec_len:, :], v_out[..., -self.dec_len:, :])
+                return (mean_out[..., -self.dec_len:, :], std_out[..., -self.dec_len:, :], v_out[..., -self.dec_len:, :], decoder_output[..., -self.dec_len:, :])
             elif self.estimate_type in ['bivariate']:
-                return (mean_out[..., -self.dec_len:, :], std_out[..., -self.dec_len:, :], rho_out)
+                return (mean_out[..., -self.dec_len:, :], std_out[..., -self.dec_len:, :], rho_out, decoder_output[..., -self.dec_len:, :])
 
 
 class ATRTransformerModel(nn.Module):

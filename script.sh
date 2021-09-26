@@ -116,43 +116,43 @@
 
 #python main.py ett \
 #	--N_input 384 --N_output 192 \
-#	--saved_models_dir aaai_saved_models_ett_e384_d192_chunkfix_3_lr1e5_prunelastday_rp \
-#	--output_dir aaai_Outputs_ett_e384_d192_chunkfix_3_lr1e5_prunelastday_rp \
+#	--saved_models_dir aaai_saved_models_ett_e384_d192_chunkfix_3_lr1e5_prunelastday_rp3 \
+#	--output_dir aaai_Outputs_ett_e384_d192_chunkfix_3_lr1e5_prunelastday_rp3 \
 #	--K_list 1 4 6 12 \
 #	--cv_inf 0 \
 #	--device cuda:2
 
 #python main.py Solar \
 #	--N_input 336 --N_output 168 \
-#	--saved_models_dir aaai_saved_models_Solar_e336_d168_2_rp \
-#	--output_dir aaai_Outputs_Solar_e336_d168_2_rp \
+#	--saved_models_dir aaai_saved_models_Solar_e336_d168_2_rp3 \
+#	--output_dir aaai_Outputs_Solar_e336_d168_2_rp3 \
 #	--K_list 1 2 6 12 \
 #	--cv_inf 0 \
 #	--device cuda:2
 
 #python main.py etthourly \
 #	--N_input 168 --N_output 168 \
-#	--saved_models_dir aaai_saved_models_etthourly_e168_d168_9_lr1e5_prunelastday_rp \
-#	--output_dir aaai_Outputs_etthourly_e168_d168_9_lr1e5_prunelastday_rp \
+#	--saved_models_dir aaai_saved_models_etthourly_e168_d168_9_lr1e5_prunelastday_rp3 \
+#	--output_dir aaai_Outputs_etthourly_e168_d168_9_lr1e5_prunelastday_rp3 \
 #	--K_list 1 2 6 \
 #	--cv_inf 0 \
 #	--device cuda:1
 #
 #python main.py electricity \
 #	--N_input 336 --N_output 168 \
-#	--saved_models_dir aaai_saved_models_electricity_e336_d168_testprune_2_rp \
-#	--output_dir aaai_Outputs_electricity_e336_d168_testprune_2_rp \
+#	--saved_models_dir aaai_saved_models_electricity_e336_d168_testprune_2_rp3 \
+#	--output_dir aaai_Outputs_electricity_e336_d168_testprune_2_rp3 \
 #	--K_list 1 2 6 12 \
 #	--cv_inf 0 \
 #	--device cuda:1
 
-python main.py foodinflation \
-	--N_input 90 --N_output 30 \
-	--saved_models_dir saved_models_foodinflation \
-	--output_dir Outputs_foodinflation \
-	--K_list 1 \
-	--cv_inf 0 \
-	--device cuda:1
+#python main.py foodinflation \
+#	--N_input 90 --N_output 30 \
+#	--saved_models_dir saved_models_foodinflation \
+#	--output_dir Outputs_foodinflation \
+#	--K_list 1 \
+#	--cv_inf 0 \
+#	--device cuda:1
 
 # Commands for Oracle and SimRetrieval
 #python main.py ett \

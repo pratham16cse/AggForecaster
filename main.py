@@ -7,7 +7,7 @@ from data.synthetic_dataset import create_synthetic_dataset, SyntheticDataset
 from models.base_models import EncoderRNN, DecoderRNN, Net_GRU, NetFullyConnected, get_base_model
 from models.index_models import get_index_model
 from loss.dilate_loss import dilate_loss
-from train import train_model, get_optimizer
+from train import train_model, get_optimizer, train_joint_agg_model
 from eval import eval_base_model, eval_inf_model, eval_inf_index_model, eval_aggregates
 from torch.utils.data import DataLoader
 import random
@@ -296,6 +296,7 @@ if 'trans-nll-ar' in args.base_model_names:
     #args.inference_model_names.append('trans-nll-ar_opt-st')
     #args.inference_model_names.append('trans-nll-ar_kl-sum')
     args.inference_model_names.append('trans-nll-ar_kl-st')
+    args.inference_model_names.append('trans-nll-ar_jointagg')
     args.inference_model_names.append('trans-nll-ar_covkl-st')
 if 'trans-bvnll-ar' in args.base_model_names:
     args.inference_model_names.append('TRANS-BVNLL-AR')
@@ -666,156 +667,11 @@ for base_model_name in args.base_model_names:
 
             writer.flush()
 
-            if args.save_agg_preds and level>=1:
-                testloader = level2data['testloader']
-                test_norm = level2data['test_norm']
-                print(agg_method, level, level2data['N_output'])
-                (
-                    test_inputs, test_target, pred_mu, pred_std,
-                    metric_dilate, metric_mse, metric_dtw, metric_tdi,
-                    metric_crps, metric_mae, metric_crps_part, metric_nll
-                ) = eval_base_model(
-                    args, base_model_name,
-                    base_models[base_model_name][agg_method][level],
-                    testloader, test_norm,
-                    args.gamma, verbose=1
-                )
-                test_target = utils.unnormalize(test_target.detach().numpy(), test_norm, is_var=False)
-                pred_mu = utils.unnormalize(pred_mu.detach().numpy(), test_norm, is_var=False)
-                pred_std = utils.unnormalize(pred_std.detach().numpy(), test_norm, is_var=True)
-
-                output_dir = os.path.join(args.output_dir, args.dataset_name + '_base')
-                os.makedirs(output_dir, exist_ok=True)
-                utils.write_aggregate_preds_to_file(
-                    output_dir, base_model_name, agg_method, level,
-                    utils.unnormalize(test_inputs.detach().numpy(), test_norm, is_var=False),
-                    test_target,#.detach().numpy(),
-                    pred_mu,#.detach().numpy(),
-                    pred_std,#.detach().numpy()
-                )
-
-                # Aggregate level 1 predictions using current aggregation.
-                base_models_preds[base_model_name][agg_method][level] = [pred_mu, pred_std]
-
-                test_target = test_target#.detach().numpy()
-                pred_mu = pred_mu#.detach().numpy()
-                pred_std = pred_std#.detach().numpy()
-                pred_mu_bottom = base_models_preds[base_model_name][agg_method][1][0]#.detach().numpy()
-                pred_std_bottom = base_models_preds[base_model_name][agg_method][1][1]#.detach().numpy()
-                if level != 1:
-                    if agg_method in ['slope']:
-                        pred_mu_agg = utils.aggregate_seqs_slope(pred_mu_bottom, level, is_var=False)
-                        pred_std_agg = np.sqrt(utils.aggregate_seqs_slope(pred_std_bottom**2, level, is_var=True))
-                    elif agg_method in ['sum']:
-                        pred_mu_agg = utils.aggregate_seqs_sum(pred_mu_bottom, level, is_var=False)
-                        pred_std_agg = np.sqrt(utils.aggregate_seqs_sum(pred_std_bottom**2, level, is_var=True))
-                        #import ipdb
-                        #ipdb.set_trace()
-                else:
-                    pred_mu_agg = pred_mu_bottom
-                    pred_std_agg = pred_std_bottom
-
-                mae_agg = np.mean(np.abs(test_target - pred_mu_agg))
-                mae_base = np.mean(np.abs(test_target - pred_mu))
-                mse_agg = np.mean((test_target - pred_mu_agg)**2)
-                mse_base = np.mean((test_target - pred_mu)**2)
-
-                crps_agg = ps.crps_gaussian(
-                    test_target, mu=pred_mu_agg, sig=pred_std_agg
-                ).mean()
-                crps_base = ps.crps_gaussian(
-                    test_target, mu=pred_mu, sig=pred_std
-                ).mean()
-                nll_agg = scipy.stats.norm(
-                    pred_mu_agg, pred_std_agg
-                ).pdf(test_target).mean()
-                nll_base = scipy.stats.norm(
-                    pred_mu, pred_std
-                ).pdf(test_target).mean()
-
-                if level!=1:
-                    h_t = test_inputs.shape[1]
-                    n_e = test_target.shape[1]
-                    plt_dir = os.path.join(
-                        output_dir, 'plots', agg_method,
-                        'level_'+str(level),
-                    )
-                    os.makedirs(plt_dir, exist_ok=True)
-                    for i in range(0, test_inputs.shape[0]):
-                        plt.plot(
-                            np.arange(1, h_t+n_e+1),
-                            np.concatenate([test_inputs[i,:,0][-h_t:], test_target[i,:,0]]),
-                            'ko-'
-                        )
-                        plt.plot(np.arange(h_t+1, h_t+n_e+1), pred_mu[i,:,0], 'bo-')
-                        plt.plot(np.arange(h_t+1, h_t+n_e+1), pred_mu_agg[i,:,0], 'ro-')
-                        plt.savefig(
-                            os.path.join(plt_dir, str(i)+'.svg'),
-                            format='svg', dpi=1200
-                        )
-                        plt.close()
-
-                mae_base_parts = []
-                mae_agg_parts = []
-                mse_base_parts = []
-                mse_agg_parts = []
-                N = test_target.shape[1]
-                p = max(int(N/4), 1)
-                for i in range(0, N, p):
-                    mae_base_parts.append(
-                        np.mean(
-                            np.abs(test_target[:, i:i+p] - pred_mu[:, i:i+p])
-                        )
-                    )
-                    mae_agg_parts.append(
-                        np.mean(
-                            np.abs(test_target[:, i:i+p] - pred_mu_agg[:, i:i+p])
-                        )
-                    )
-                    mse_base_parts.append(
-                        np.mean(
-                            (test_target[:, i:i+p] - pred_mu[:, i:i+p])**2
-                        )
-                    )
-                    mse_agg_parts.append(
-                        np.mean(
-                            (test_target[:, i:i+p] - pred_mu_agg[:, i:i+p])**2
-                        )
-                    )
-
-
-                print('-------------------------------------------------------')
-                print('{0}, {1}, {2}, mae_base:{3}, mae_agg:{4}'.format(
-                    base_model_name, agg_method, level, mae_base, mae_agg)
-                )
-                print('{0}, {1}, {2}, crps_base:{3}, crps_agg:{4}'.format(
-                    base_model_name, agg_method, level, crps_base, crps_agg)
-                )
-                print('mae_base_parts:', mae_base_parts)
-                print('mae_agg_parts:', mae_agg_parts)
-                print('-------------------------------------------------------')
-                print('{0}, {1}, {2}, mse_base:{3}, mse_agg:{4}'.format(
-                    base_model_name, agg_method, level, mse_base, mse_agg)
-                )
-                print('{0}, {1}, {2}, nll_base:{3}, nll_agg:{4}'.format(
-                    base_model_name, agg_method, level, nll_base, nll_agg)
-                )
-                print('mse_base_parts:', mse_base_parts)
-                print('mse_agg_parts:', mse_agg_parts)
-                print('-------------------------------------------------------')
-
-
 writer.close()
-            #import ipdb
-            #ipdb.set_trace()
 # ----- End: base models training ----- #
 
 # ----- Start: Inference models for bottom level----- #
 print('\n Starting Inference Models')
-
-#import ipdb
-#ipdb.set_trace()
-
 
 def run_inference_model(
     args, inf_model_name, base_models, which_split, opt_normspace, agg_method=None, K=None
@@ -1031,6 +887,14 @@ def run_inference_model(
             K_list, base_models_dict, agg_method, args.lr_inf, device=args.device, opt_normspace=False
         )
 
+    elif inf_model_name in ['trans-nll-ar_jointagg']:
+        base_models_dict = base_models['trans-nll-ar']
+        agg_method = ['sum', 'slope'] if agg_method is None else agg_method
+        K_list = args.K_list if K is None else K
+        inf_net = inf_models.JointAggModel(
+            K_list, base_models_dict, agg_method, args.lr_inf, device=args.device, opt_normspace=False
+        ).to(args.device)
+
     elif inf_model_name in ['trans-nll-ar_covkl-st']:
         base_models_dict = base_models['trans-nll-ar']
         agg_method = ['sum', 'slope'] if agg_method is None else agg_method
@@ -1238,6 +1102,23 @@ def run_inference_model(
 
     if not args.leak_agg_targets:
         inf_test_targets_dict = None
+
+
+    if 'jointagg' in inf_model_name:
+        saved_models_dir = os.path.join(
+            args.saved_models_dir, args.dataset_name+'_'+inf_model_name
+        )
+        os.makedirs(saved_models_dir, exist_ok=True)
+        writer = SummaryWriter(saved_models_dir)
+        saved_models_path = os.path.join(saved_models_dir, 'state_dict_model.pt')
+        print('\n {} {} {}'.format(base_model_name, agg_method, str(level)))
+
+        train_joint_agg_model(
+            args, inf_model_name, inf_net,
+            dataset, saved_models_path, writer, verbose=1
+        )
+        writer.flush()
+        writer.close()
 
     inf_net.eval()
     (

@@ -56,13 +56,13 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1, unnor
                     batch_pred_mu, batch_pred_d, _, _, _ = out
             else:
                 if net.estimate_type in ['point']:
-                    batch_pred_mu = out
+                    batch_pred_mu, _ = out
                 elif net.estimate_type in ['variance']:
-                    batch_pred_mu, batch_pred_d = out
-                elif net.estimate_type in ['covariance']:
-                    batch_pred_mu, batch_pred_d, batch_pred_v = out
-                elif net.estimate_type in ['bivariate']:
                     batch_pred_mu, batch_pred_d, _ = out
+                elif net.estimate_type in ['covariance']:
+                    batch_pred_mu, batch_pred_d, batch_pred_v, _ = out
+                elif net.estimate_type in ['bivariate']:
+                    batch_pred_mu, batch_pred_d, _, _ = out
         batch_pred_mu = batch_pred_mu.cpu()
         if net.estimate_type == 'covariance':
             batch_pred_d = batch_pred_d.cpu()
@@ -606,10 +606,17 @@ def eval_inf_model(args, net, dataset, which_split, gamma, verbose=1):
         inputs[..., 0], ids=mapped_ids
     )
     #import ipdb ; ipdb.set_trace()
-    #if which_split in ['dev']:
-    #    target = dataset['sum'][1][norm_str].unnormalize(
-    #        target[..., 0], ids=mapped_ids
-    #    ).unsqueeze(-1)
+    if which_split in ['test']:
+        #import ipdb ; ipdb.set_trace()
+        #target = dataset['sum'][1][norm_str].normalize(
+        #    target[..., 0], ids=mapped_ids, is_var=False
+        #)
+        pred_mu = dataset['sum'][1][norm_str].unnormalize(
+            pred_mu[..., 0], ids=mapped_ids, is_var=False
+        ).unsqueeze(-1)
+        pred_std = dataset['sum'][1][norm_str].unnormalize(
+            pred_std[..., 0], ids=mapped_ids, is_var=True
+        ).unsqueeze(-1)
 
     # MSE
     loss_mse = criterion(target, pred_mu)

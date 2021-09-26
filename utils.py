@@ -12,6 +12,7 @@ import shutil
 from tsmoothie.smoother import SpectralSmoother, ExponentialSmoother
 from statsmodels.tsa.seasonal import seasonal_decompose
 import time
+from copy import deepcopy
 
 from data.synthetic_dataset import create_synthetic_dataset, create_sin_dataset, SyntheticDataset
 from data.real_dataset import parse_ECG5000, parse_Traffic, parse_Taxi, parse_Traffic911, parse_gc_datasets, parse_weather, parse_bafu, parse_meteo, parse_azure, parse_ett, parse_sin_noisy, parse_Solar, parse_etthourly, parse_m4hourly, parse_m4daily, parse_taxi30min, parse_aggtest, parse_electricity, parse_foodinflation
@@ -143,7 +144,7 @@ class Normalizer(object):
             #import ipdb; ipdb.set_trace()
 
             
-    def normalize(self, data, ids=None, is_var=False):
+    def normalize(self, data, ids=None, is_var=False, device='cpu'):
         if ids is None:
             ids = torch.arange(self.N)
 
@@ -151,9 +152,9 @@ class Normalizer(object):
             data_norm = data
         elif self.norm_type in ['zscore_per_series']:
             if not is_var:
-                data_norm = (data - self.mean[ids]) / self.std[ids]
+                data_norm = (data - self.mean[ids].to(device)) / self.std[ids].to(device)
             else:
-                data_norm = data / self.std[ids]
+                data_norm = data / self.std[ids].to(device)
         elif self.norm_type in ['log']:
             data_norm = torch.log(data)
         elif self.norm_type in ['gaussian_copula']:
@@ -173,7 +174,7 @@ class Normalizer(object):
 
         return data_norm.unsqueeze(-1)
 
-    def unnormalize(self, data, ids=None, is_var=False):
+    def unnormalize(self, data, ids=None, is_var=False, device='cpu'):
         #return data # TODO Watch this
         if ids is None:
             ids = torch.arange(self.N)
@@ -183,9 +184,9 @@ class Normalizer(object):
             data_unnorm = torch.exp(data)
         elif self.norm_type in ['zscore_per_series']:
             if not is_var:
-                data_unnorm = data * self.std[ids] + self.mean[ids]
+                data_unnorm = data * self.std[ids].to(device) + self.mean[ids].to(device)
             else:
-                data_unnorm = data * self.std[ids]
+                data_unnorm = data * self.std[ids].to(device)
         elif self.norm_type in ['gaussian_copula']:
             # CDF in standard normal
             dist = Normal(0., 1.)
@@ -462,7 +463,7 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
     def __init__(
         self, data, enc_len, dec_len, aggregation_type, K,
         feats_info, which_split, tsid_map=None, input_norm=None, target_norm=None,
-        norm_type=None, feats_norms=None, train_obj=None
+        norm_type=None, feats_norms=None, train_obj=None, max_K=None
     ):
         super(TimeSeriesDatasetOfflineAggregate, self).__init__()
 
@@ -483,9 +484,11 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
         self.tsid_map = tsid_map
         self.feats_norms = feats_norms
         #self.train_obj = train_obj
+        self.max_K = max_K
         #self.generate_a()
         self.a = get_a(self.aggregation_type, self.K)
         self.S = 1
+        self.data_base_lvl = deepcopy(data)
 
         # Perform aggregation if level != 1
         st = time.time()
@@ -587,11 +590,16 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
         self.indices = []
         for i in range(0, len(self.data)):
             if which_split in ['train']:
-                j = 0
-                while j < len(self.data[i]['target']):
-                    if j+self.mult*self.base_enc_len+self.base_dec_len <= len(self.data[i]['target']):
+                if self.K == 1:
+                    j = self.base_enc_len
+                else:
+                    j = 0
+                while j < len(self.data_base_lvl[i]['target'])-self.max_K+1:
+                    if j+self.mult*self.base_enc_len+self.base_dec_len <= len(self.data_base_lvl[i]['target'])-self.max_K+1:
                         self.indices.append((i, j))
                     j += 1
+                #print(self.K, len(self.indices))
+                #import ipdb ; ipdb.set_trace()
                 #if self.K>1:
                 #    import ipdb ; ipdb.set_trace()
             elif which_split == 'dev':
@@ -985,6 +993,7 @@ class DataProcessor(object):
             agg_method, K, which_split='train',
             norm_type=args.normalize,
             feats_info=self.feats_info,
+            max_K=max(args.K_list)
         )
         print('Number of chunks in train data:', len(lazy_dataset_train))
         norm = lazy_dataset_train.input_norm
@@ -1033,7 +1042,7 @@ class DataProcessor(object):
         else:
             train_shuffle = True
         trainloader = DataLoader(
-            lazy_dataset_train, batch_size=batch_size, shuffle=True,
+            lazy_dataset_train, batch_size=batch_size, shuffle=False,
             drop_last=False, num_workers=12, pin_memory=True,
             #collate_fn=lazy_dataset_train.collate_fn
         )

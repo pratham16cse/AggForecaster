@@ -90,13 +90,13 @@ class RNNNLLNAR(torch.nn.Module):
                     pred_mu, pred_d, _, _, _ = out
             else:
                 if mdl.estimate_type in ['point']:
-                    pred_mu = out
+                    pred_mu, _ = out
                 elif mdl.estimate_type in ['variance']:
-                    pred_mu, pred_d = out
-                elif mdl.estimate_type in ['covariance']:
-                    pred_mu, pred_d, pred_v = out
-                elif mdl.estimate_type in ['bivariate']:
                     pred_mu, pred_d, _ = out
+                elif mdl.estimate_type in ['covariance']:
+                    pred_mu, pred_d, pred_v, _ = out
+                elif mdl.estimate_type in ['bivariate']:
+                    pred_mu, pred_d, _, _ = out
         pred_mu = pred_mu.cpu()
 
         if mdl.estimate_type in ['covariance']:
@@ -113,16 +113,16 @@ class RNNNLLNAR(torch.nn.Module):
             pred_d = pred_d.cpu()
             pred_std = pred_d
             pred_v = torch.ones_like(pred_mu) * 1e-9
-            if which_split in ['test']:
-                pred_std = norms['sum'][1].unnormalize(pred_std[..., 0], ids=ids, is_var=True).unsqueeze(-1)
-                pred_d = pred_std**2
+            #if which_split in ['test']:
+            #    pred_std = norms['sum'][1].unnormalize(pred_std[..., 0], ids=ids, is_var=True).unsqueeze(-1)
+            #    pred_d = pred_std**2
         else:
             pred_d = torch.ones_like(pred_mu) * 1e-9
             pred_v = torch.ones_like(pred_mu) * 1e-9
             pred_std = torch.ones_like(pred_mu) * 1e-9
 
-        if which_split in ['test']:
-            pred_mu = norms['sum'][1].unnormalize(pred_mu[..., 0], ids=ids, is_var=False).unsqueeze(-1)
+        #if which_split in ['test']:
+        #    pred_mu = norms['sum'][1].unnormalize(pred_mu[..., 0], ids=ids, is_var=False).unsqueeze(-1)
 
         return (pred_mu, pred_d, pred_v, pred_std)
 
@@ -980,22 +980,22 @@ class KLInferenceSGD(torch.nn.Module):
 
                 with torch.no_grad():
                     if model.estimate_type in ['point']:
-                        means, d, v = model(
+                        means, d, v, _ = model(
                             feats_in.to(self.device), inputs.to(self.device),
                             feats_tgt.to(self.device)
                         )
                     elif model.estimate_type in ['variance']:
-                        means, d = model(
+                        means, d, _ = model(
                             feats_in.to(self.device), inputs.to(self.device),
                             feats_tgt.to(self.device)
                         )
                     elif model.estimate_type in ['covariance']:
-                        means, d, v = model(
+                        means, d, v, _ = model(
                             feats_in.to(self.device), inputs.to(self.device),
                             feats_tgt.to(self.device)
                         )
                     elif model.estimate_type in ['bivariate']:
-                        means, d, _ = model(
+                        means, d, _, _ = model(
                             feats_in.to(self.device), inputs.to(self.device),
                             feats_tgt.to(self.device)
                         )
@@ -1281,6 +1281,12 @@ class KLInferenceSGD(torch.nn.Module):
         #    all_preds_std = norms[base_lvl][1].normalize(
         #        all_preds_std[..., 0], ids=ids_dict[base_lvl][1], is_var=True
         #    )
+        all_preds_mu = norms[base_lvl][1].normalize(
+            all_preds_mu[..., 0], ids=ids_dict[base_lvl][1], is_var=False
+        )
+        all_preds_std = norms[base_lvl][1].normalize(
+            all_preds_std[..., 0], ids=ids_dict[base_lvl][1], is_var=True
+        )
 
         # d = params_dict[base_lvl][1][2]
         # v = params_dict[base_lvl][1][3]
@@ -1288,6 +1294,284 @@ class KLInferenceSGD(torch.nn.Module):
         all_preds_v = torch.cat(all_preds_v, dim=0)
 
         #return all_preds_mu, d, v, all_preds_std
+        return all_preds_mu, all_preds_d, all_preds_v, all_preds_std
+
+class JointAggModel(torch.nn.Module):
+    def __init__(
+        self, K_list, base_models_dict, aggregates, lr, device, opt_normspace=False, covariance=False
+    ):
+        '''
+        K: int
+            number of steps to aggregate at each level
+        base_models_dict: dict
+            key: level in the hierarchy
+            value: base model at the level 'key'
+        '''
+        super(JointAggModel, self).__init__()
+        self.K_list = K_list
+        self.base_models_dict = base_models_dict
+        self.aggregates = aggregates
+        self.device = device
+        self.opt_normspace = opt_normspace
+        self.covariance = covariance
+        self.lr = lr
+
+        max_K = max(self.K_list)
+        num_aggs = 0
+        flg = False
+        for agg in self.aggregates:
+            for K in self.K_list:
+                if K>1 or (K==1 and flg == False): # If K=1 present, do not repeat
+                    num_aggs += (max_K/K)
+                    flg = True
+                    #import ipdb ; ipdb.set_trace()
+        base_level = self.aggregates[0]
+        base_last_layer_size = self.base_models_dict[base_level][1].linear_mean[1].in_features
+        input_size = int(base_last_layer_size + num_aggs)
+        #self.linear_layer = nn.Sequential(
+            #nn.Linear(input_size, input_size),
+            #nn.ReLU(),
+            #nn.Linear(input_size, input_size),
+            #nn.ReLU(),
+            #nn.Linear(input_size, 1)
+        #)
+        #input_size = int(num_aggs)
+        #input_size = int(base_last_layer_size)
+        self.linear_layer = nn.Linear(input_size, 1)
+        #import ipdb ; ipdb.set_trace()
+        #self.linear_layer.weight = torch.nn.Parameter(torch.ones(1, input_size))
+        #self.linear_layer.bias = torch.nn.Parameter(torch.zeros(1))
+        #import ipdb ; ipdb.set_trace()
+        #self.linear_layer.weight = self.base_models_dict['sum'][1].linear_mean[1].weight
+        #self.linear_layer.bias = self.base_models_dict['sum'][1].linear_mean[1].bias
+
+        #self.base_models_dict['sum'][1].load_state_dict(base_models_dict['sum'][1].state_dict())
+        #import ipdb ; ipdb.set_trace()
+        #self.add_module(base_models_dict['sum'][1])
+
+
+    def get_a(self, agg_type, K):
+        if agg_type in ['sum']:
+            a = 1./K * torch.ones(K)
+        elif agg_type in ['slope']:
+            x = torch.arange(K, dtype=torch.float)
+            m_x = x.mean()
+            s_xx = ((x-m_x)**2).sum()
+            a = (x - m_x) / s_xx
+        return a
+
+    def get_params_dict(self, dataset, norms, which_split):
+
+        params_dict = {}
+        ids_dict = {}
+        for agg in self.aggregates:
+            params_dict[agg] = {}
+            ids_dict[agg] = {}
+            for level in self.K_list:
+                model = self.base_models_dict[agg][level]
+                inputs = dataset[agg][level][0]
+                feats_in, feats_tgt = dataset[agg][level][2], dataset[agg][level][3]
+                ids = dataset[agg][level][4].to(self.device)#.cpu()
+
+                with torch.no_grad():
+                    if model.estimate_type in ['point']:
+                        means, d, v, dec_state = model(
+                            feats_in.to(self.device), inputs.to(self.device),
+                            feats_tgt.to(self.device)
+                        )
+                    elif model.estimate_type in ['variance']:
+                        means, d, dec_state = model(
+                            feats_in.to(self.device), inputs.to(self.device),
+                            feats_tgt.to(self.device)
+                        )
+                    elif model.estimate_type in ['covariance']:
+                        means, d, v, dec_state = model(
+                            feats_in.to(self.device), inputs.to(self.device),
+                            feats_tgt.to(self.device)
+                        )
+                    elif model.estimate_type in ['bivariate']:
+                        means, d, _, dec_state = model(
+                            feats_in.to(self.device), inputs.to(self.device),
+                            feats_tgt.to(self.device)
+                        )
+
+                #means = means.cpu()
+                if model.estimate_type is 'covariance':
+                    #d = d.cpu()
+                    #v = v.cpu()
+
+                    dist = torch.distributions.lowrank_multivariate_normal.LowRankMultivariateNormal(
+                        means.squeeze(dim=-1), v, d.squeeze(dim=-1)
+                    )
+                    stds = torch.diagonal(dist.covariance_matrix, dim1=-2, dim2=-1).unsqueeze(dim=-1)
+                elif model.estimate_type in ['variance', 'bivariate']:
+                    stds = d#.cpu()
+                    v = torch.ones_like(means) * 1e-9
+                    if not self.opt_normspace:
+                    #if which_split not in ['train', 'dev']:
+                        stds = norms[agg][level].unnormalize(stds[..., 0], ids=ids, is_var=True, device=self.device).unsqueeze(-1)
+                else:
+                    d = torch.ones_like(means) * 1e-9
+                    v = torch.ones_like(means) * 1e-9
+                    stds = torch.ones_like(means) * 1e-9
+
+                if not self.opt_normspace:
+                #if which_split not in ['train', 'dev']:
+                    means = norms[agg][level].unnormalize(means[..., 0], ids=ids, is_var=False, device=self.device).unsqueeze(-1)
+
+                params = [means, stds, d, v, dec_state]
+                params_dict[agg][level] = params
+                ids_dict[agg][level] = ids
+
+        return params_dict, ids_dict
+
+    def get_A(self, agg, K, bs, N, sigma):
+        a = utils.get_a(agg, K)
+
+        A_ = torch.block_diag(*[torch.ones(K)*a]*(N//K)).unsqueeze(dim=0).repeat(bs, 1, 1).to(self.device)
+        sig_ = torch.block_diag(*[torch.ones(K)]*(N//K)).unsqueeze(dim=0).repeat(bs, 1, 1).to(self.device)
+        #print(bs, A_.shape, sig_.shape, sigma.shape)
+        sig_ = sig_ * 1./sigma.repeat(1,1,sig_.shape[-1])
+
+        A_ = A_ * sig_
+
+        return A_
+
+    def solve_base_level_mean(self, params_dict, bs, N):
+        max_K = max(self.K_list)
+        x, rec_coeffs = [], []
+        for i in range(0, N, max_K):
+            A = []
+            flg = False
+            for agg in self.aggregates:
+                for K in self.K_list:
+                    idx_1 = i//K
+                    idx_2 = idx_1 + max_K//K
+                    #print(agg, K, i, i+max_K//K, params_dict[agg][K][1].shape, params_dict[agg][K][1][..., i:i+max_K//K, :].shape)
+                    if K>1 or (K==1 and flg == False): # If K=1 present, do not repeat
+                        #print(agg, K, params_dict[agg][K][1][..., idx_1:idx_2, :].shape)
+                        #if params_dict[agg][K][1][..., idx_1:idx_2, :].shape[0] != bs:
+                        #    import ipdb ; ipdb.set_trace()
+                        A_ = self.get_A(agg, K, bs, max_K, params_dict[agg][K][1][..., idx_1:idx_2, :])
+                        A.append(A_)
+                        flg = True
+                        #import ipdb ; ipdb.set_trace()
+            A = torch.cat(A, dim=1)
+
+            b = []
+            flg = False
+            for agg in self.aggregates:
+                for K in self.K_list:
+                    idx_1 = i//K
+                    idx_2 = idx_1 + max_K//K
+                    if K>1 or (K==1 and flg == False): # If K=1 present, do not repeat
+                        b_ = params_dict[agg][K][0][..., idx_1:idx_2, :] / params_dict[agg][K][1][..., idx_1:idx_2, :]
+                        #b_ = torch.ones_like(b_) * b_.mean(1, keepdims=True)
+                        b.append(b_)
+                        flg = True
+                        #import ipdb ; ipdb.set_trace()
+            b = torch.cat(b, dim=1)
+
+            rc = torch.matmul(
+                torch.inverse(torch.matmul(A.transpose(1, 2), A)), A.transpose(1, 2)
+            )
+            x_ = torch.matmul(rc, b)
+            x.append(x_)
+            #import ipdb ; ipdb.set_trace()
+            rec_coeffs.append(rc*b.transpose(1,2))
+        x = torch.cat(x, dim=1)
+        rec_coeffs = torch.cat(rec_coeffs, dim=1)
+        #import ipdb ; ipdb.set_trace()
+
+        return x, rec_coeffs
+
+    def initialize_params(self, base_mu, base_sigma):
+        #import ipdb ; ipdb.set_trace()
+        self.x_mu = torch.nn.Parameter(torch.clone(base_mu).squeeze(-1))
+        self.x_d = torch.nn.Parameter(torch.clone(base_sigma).squeeze(-1)**2)
+        x_v = torch.ones((base_mu.shape[0], base_mu.shape[1], 4), dtype=torch.float) * 1e-2
+        if self.covariance:
+            self.x_v = torch.nn.Parameter(x_v)
+        else:
+            self.x_v = x_v
+
+    def x_var(self):
+        return self.x_d + (self.x_v**2).sum(dim=-1)
+
+    def forward(self, dataset, norms, which_split):
+
+        #import ipdb ; ipdb.set_trace()
+
+        params_dict, ids_dict = self.get_params_dict(dataset, norms, which_split)
+
+        #import ipdb ; ipdb.set_trace()
+
+        base_lvl = self.aggregates[0]
+        bs, N = params_dict[base_lvl][1][0].shape[0], params_dict[base_lvl][1][0].shape[1]
+
+        # Solve for base level mean
+        #print(params_dict[base_lvl][1][0].shape, params_dict[base_lvl][1][1].shape)
+        base_lvl_mu, base_lvl_rec_coeffs = self.solve_base_level_mean(params_dict, bs, N)
+
+
+        base_lvl_rec_coeffs_norm = []
+        ids = dataset[base_lvl][1][4].cpu()
+        for i in range(base_lvl_rec_coeffs.shape[-1]):
+            base_lvl_rec_coeffs_norm.append(
+                norms[base_lvl][1].normalize(
+                    base_lvl_rec_coeffs[..., i], ids=ids, is_var=False,
+                    device=self.device
+                )
+            )
+        base_lvl_rec_coeffs_norm = torch.cat(base_lvl_rec_coeffs_norm, -1)
+
+        #self.initialize_params(base_lvl_mu, params_dict[base_lvl][1][1])
+
+        all_preds_mu, all_preds_std = [], []
+        all_preds_d, all_preds_v = [], []
+
+        a_dict = {}
+        for agg in self.aggregates:
+            a_dict[agg] = {}
+            for K in self.K_list:
+                a_dict[agg][K] = self.get_a(agg, K)
+
+        linear_in = torch.cat(
+            [params_dict[base_lvl][1][4], base_lvl_rec_coeffs_norm.to(self.device)],
+            -1
+        )
+        #linear_in = base_lvl_rec_coeffs.to(self.device)
+        #linear_in = params_dict[base_lvl][1][4]
+        all_preds_mu = self.linear_layer(linear_in)
+
+        #all_preds_mu = params_dict[base_lvl][1][0].to(self.device)
+        #base_lvl_rec_coeffs_unnorm = []
+        #for i in range(base_lvl_rec_coeffs_norm.shape[-1]):
+        #    base_lvl_rec_coeffs_unnorm.append(
+        #        norms[base_lvl][1].unnormalize(
+        #            base_lvl_rec_coeffs_norm[..., i], ids=ids, is_var=False,
+        #            device=self.device
+        #        ).unsqueeze(-1)
+        #    )
+        #base_lvl_rec_coeffs_unnorm = torch.cat(base_lvl_rec_coeffs_unnorm, -1)
+        #all_preds_mu = base_lvl_rec_coeffs_unnorm.sum(-1, keepdims=True)
+        #all_preds_mu = norms[base_lvl][1].normalize(
+        #    all_preds_mu[..., 0], ids=ids, is_var=False,
+        #    device=self.device
+        #)
+        all_preds_std = params_dict[base_lvl][1][1].to(self.device)
+        all_preds_std = norms[base_lvl][1].normalize(
+            all_preds_std[..., 0], ids=ids, is_var=True,
+            device=self.device
+        )
+        all_preds_d = params_dict[base_lvl][1][2].to(self.device)
+        all_preds_v = params_dict[base_lvl][1][3].to(self.device)
+
+        #if which_split in ['test']:
+        #    import ipdb ; ipdb.set_trace()
+
+        all_preds_mu = all_preds_mu + dataset[base_lvl][1][0].mean(1, keepdims=True).to(self.device)
+
         return all_preds_mu, all_preds_d, all_preds_v, all_preds_std
 
 
