@@ -364,7 +364,7 @@ def train_joint_agg_model(
 
     #import ipdb ; ipdb.set_trace()
 
-    lr = args.learning_rate
+    lr = args.lr_jointagg
     epochs = args.epochs
 
     optimizer, scheduler = get_optimizer(args, lr, net)

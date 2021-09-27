@@ -160,6 +160,8 @@ parser.add_argument('--cv_inf', type=int, default=-1,
 # Learning rate for Inference Model
 parser.add_argument('--lr_inf', type=float, default=-1.,
                     help='Learning rate for SGD-based inference model')
+parser.add_argument('--lr_jointagg', type=float, default=-1.,
+                   help='Learning rate for trainable inference model')
 
 
 
@@ -358,6 +360,7 @@ if args.dataset_name == 'ett':
         args.output_dir = 'Outputs_ett_d192_klnorm_b24_e192_corrshuffle_bs128_seplayers_nodeczeros_nodecconv_t2v_usefeats_t2vglobal_idx_val20'
     if args.normalize is None: args.normalize = 'zscore_per_series'
     if args.learning_rate == -1.: args.learning_rate = 0.00001
+    if args.lr_jointagg == -1.: args.lr_jointagg = 0.0001
     if args.batch_size == -1: args.batch_size = 64
     if args.hidden_size  == -1: args.hidden_size = 128
     if args.num_grulstm_layers == -1: args.num_grulstm_layers = 1
@@ -382,6 +385,7 @@ elif args.dataset_name == 'taxi30min':
         args.output_dir = 'Outputs_taxi30min_d168_klnorm_b48_pefix_e336_corrshuffle_bs128_seplayers_nodeczeros_nodecconv_t2vglobal_mdh_parti'
     if args.normalize is None: args.normalize = 'zscore_per_series'
     if args.learning_rate == -1.: args.learning_rate = 0.0001
+    if args.lr_jointagg == -1.: args.lr_jointagg = 0.0001
     if args.batch_size == -1: args.batch_size = 128
     if args.hidden_size == -1: args.hidden_size = 128
     if args.num_grulstm_layers == -1: args.num_grulstm_layers = 1
@@ -404,6 +408,7 @@ elif args.dataset_name == 'etthourly':
         args.output_dir = 'Outputs_etthourly_noextrafeats_d168_klnorm_b24_pefix_e168_val20_corrshuffle_seplayers_nodeczeros_nodecconv_t2v'
     if args.normalize is None: args.normalize = 'zscore_per_series'
     if args.learning_rate == -1.: args.learning_rate = 0.00001
+    if args.lr_jointagg == -1.: args.lr_jointagg = 0.0001
     if args.batch_size == -1: args.batch_size = 64
     if args.hidden_size == -1: args.hidden_size = 128
     if args.num_grulstm_layers == -1: args.num_grulstm_layers = 1
@@ -428,6 +433,7 @@ elif args.dataset_name == 'azure':
     #args.normalize = 'zscore_per_series'
     if args.normalize is None: args.normalize = 'same'
     if args.learning_rate == -1: args.learning_rate = 0.0001
+    if args.lr_jointagg == -1.: args.lr_jointagg = 0.0001
     if args.batch_size == -1: args.batch_size = 128
     if args.hidden_size == -1: args.hidden_size = 128
     if args.num_grulstm_layers == -1: args.num_grulstm_layers = 1
@@ -450,6 +456,7 @@ elif args.dataset_name == 'Solar':
         args.output_dir = 'Outputs_Solar_d168_normzscore_klnorm_b4_e336_corrshuffle_seplayers_nodeczeros_nodecconv_t2v'
     if args.normalize is None: args.normalize = 'zscore_per_series'
     if args.learning_rate == -1: args.learning_rate = 0.0001
+    if args.lr_jointagg == -1.: args.lr_jointagg = 0.0001
     if args.batch_size == -1: args.batch_size = 64
     if args.hidden_size == -1: args.hidden_size = 128
     if args.num_grulstm_layers == -1: args.num_grulstm_layers = 1
@@ -472,6 +479,7 @@ elif args.dataset_name == 'electricity':
         args.output_dir = 'Outputs_electricity'
     if args.normalize is None: args.normalize = 'zscore_per_series'
     if args.learning_rate == -1: args.learning_rate = 0.0001
+    if args.lr_jointagg == -1.: args.lr_jointagg = 0.0001
     if args.batch_size == -1: args.batch_size = 64
     if args.hidden_size == -1: args.hidden_size = 128
     if args.num_grulstm_layers == -1: args.num_grulstm_layers = 1
@@ -494,6 +502,7 @@ elif args.dataset_name == 'aggtest':
         args.output_dir = 'Outputs_aggtest_test'
     if args.normalize is None: args.normalize = 'same'
     if args.learning_rate == -1.: args.learning_rate = 0.001
+    if args.lr_jointagg == -1.: args.lr_jointagg = 0.001
     if args.batch_size == -1: args.batch_size = 100
     if args.hidden_size == -1: args.hidden_size = 128
     if args.num_grulstm_layers == -1: args.num_grulstm_layers = 1

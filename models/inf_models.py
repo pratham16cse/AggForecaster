@@ -1328,16 +1328,16 @@ class JointAggModel(torch.nn.Module):
         base_level = self.aggregates[0]
         base_last_layer_size = self.base_models_dict[base_level][1].linear_mean[1].in_features
         input_size = int(base_last_layer_size + num_aggs)
-        #self.linear_layer = nn.Sequential(
-            #nn.Linear(input_size, input_size),
-            #nn.ReLU(),
-            #nn.Linear(input_size, input_size),
-            #nn.ReLU(),
-            #nn.Linear(input_size, 1)
-        #)
+        self.linear_layer = nn.Sequential(
+            nn.Linear(input_size, input_size),
+            nn.ReLU(),
+            nn.Linear(input_size, input_size),
+            nn.ReLU(),
+            nn.Linear(input_size, 1)
+        )
         #input_size = int(num_aggs)
         #input_size = int(base_last_layer_size)
-        self.linear_layer = nn.Linear(input_size, 1)
+        #self.linear_layer = nn.Linear(input_size, 1)
         #import ipdb ; ipdb.set_trace()
         #self.linear_layer.weight = torch.nn.Parameter(torch.ones(1, input_size))
         #self.linear_layer.bias = torch.nn.Parameter(torch.zeros(1))
