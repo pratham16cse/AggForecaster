@@ -541,6 +541,7 @@ elif args.dataset_name == 'foodinflation':
         args.output_dir = 'Outputs_foodinflation'
     if args.normalize is None: args.normalize = 'zscore_per_series'
     if args.learning_rate == -1: args.learning_rate = 0.0001
+    if args.lr_jointagg == -1.: args.lr_jointagg = 0.0001
     if args.batch_size == -1: args.batch_size = 64
     if args.hidden_size == -1: args.hidden_size = 128
     if args.num_grulstm_layers == -1: args.num_grulstm_layers = 1
