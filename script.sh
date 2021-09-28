@@ -148,8 +148,8 @@
 
 python main.py foodinflation \
 	--N_input 90 --N_output 30 \
-	--saved_models_dir saved_models_foodinflation \
-	--output_dir Outputs_foodinflation \
+	--saved_models_dir saved_models_foodinflation_dow_tsid \
+	--output_dir Outputs_foodinflation_dow_tsid \
 	--K_list 1 \
 	--cv_inf 0 \
 	--device cuda:1

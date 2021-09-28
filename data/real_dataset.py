@@ -1643,10 +1643,17 @@ def parse_foodinflation(dataset_name, N_input, N_output, t2v_type=None):
     feats_day = np.tile(feats_day, (m, 1, 1))
     feats_month = np.expand_dims(np.expand_dims(cal_date.dt.month.values-1, axis=-1), axis=0)
     feats_month = np.tile(feats_month, (m, 1, 1))
+    feats_dow = np.expand_dims(np.expand_dims(cal_date.dt.dayofweek.values, axis=-1), axis=0)
+    feats_dow = np.tile(feats_dow, (m, 1, 1))
+
+    feats_tsid = np.expand_dims(np.expand_dims(np.arange(m), axis=1), axis=2)
+    feats_tsid = np.tile(feats_tsid, (1, n, 1))
 
     #import ipdb ; ipdb.set_trace()
 
-    feats = np.concatenate([feats_day, feats_month, feats_date], axis=-1)
+    #feats = np.concatenate([feats_day, feats_month, feats_dow, feats_date], axis=-1)
+    feats = np.concatenate([feats_day, feats_dow, feats_tsid, feats_date], axis=-1)
+
 
     data = torch.tensor(data, dtype=torch.float)
     feats = torch.tensor(feats, dtype=torch.float)
@@ -1683,7 +1690,8 @@ def parse_foodinflation(dataset_name, N_input, N_output, t2v_type=None):
     for i in range(len(data_test)):
         data_test[i]['feats'] = feats_test[i]
 
-    feats_info = {0:(31, 16), 1:(12, 6)}
+    #feats_info = {0:(31, 16), 1:(12, 6)}
+    feats_info = {0:(31, 16), 1:(7, 6), 2:(m, 16)}
     i = len(feats_info)
     for j in range(i, data_train[0]['feats'].shape[-1]):
         feats_info[j] = (-1, -1)
