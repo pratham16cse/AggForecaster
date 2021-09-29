@@ -163,6 +163,10 @@ parser.add_argument('--lr_inf', type=float, default=-1.,
 parser.add_argument('--lr_jointagg', type=float, default=-1.,
                    help='Learning rate for trainable inference model')
 
+parser.add_argument('--extra_layers_type', type=str,
+                    choices=['linear-noagg', 'linear-nobase', 'linear',
+                             'deep-noagg', 'deep-nobase', 'deep'],
+                    help='Type of extra layers in the JointAggModel', default=None)
 
 
 args = parser.parse_args()
@@ -371,6 +375,7 @@ if args.dataset_name == 'ett':
     if args.device is None: args.device = 'cuda:2'
     if args.cv_inf == -1: args.cv_inf = 1
     if args.lr_inf == -1: args.lr_inf = 0.01
+    if args.extra_layers_type is None: args.extra_layers_type = 'deep'
     #python main.py ett --epochs 20 --N_input 192 --N_output 192 --K_list 6 --saved_models_dir saved_models_ett_d192 --output_dir Outputs_ett_d192_klnorm --normalize zscore_per_series --learning_rate 0.0001 --batch_size 64 --hidden_size 128 --num_grulstm_layers 1 --device cuda:0
 
 elif args.dataset_name == 'taxi30min':
@@ -395,6 +400,7 @@ elif args.dataset_name == 'taxi30min':
     if args.device is None: args.device = 'cuda:2'
     if args.cv_inf == -1: args.cv_inf = 1
     if args.lr_inf == -1: args.lr_inf = 0.01
+    if args.extra_layers_type is None: args.extra_layers_type = 'deep'
 
 elif args.dataset_name == 'etthourly':
     if args.epochs == -1: args.epochs = 50
@@ -419,6 +425,7 @@ elif args.dataset_name == 'etthourly':
     if args.device is None: args.device = 'cuda:2'
     if args.cv_inf == -1: args.cv_inf = 1
     if args.lr_inf == -1: args.lr_inf = 0.01
+    if args.extra_layers_type is None: args.extra_layers_type = 'deep'
 
 elif args.dataset_name == 'azure':
     if args.epochs == -1: args.epochs = 20
@@ -466,6 +473,7 @@ elif args.dataset_name == 'Solar':
     if args.device is None: args.device = 'cuda:1'
     if args.cv_inf == -1: args.cv_inf = 1
     if args.lr_inf == -1: args.lr_inf = 0.001
+    if args.extra_layers_type is None: args.extra_layers_type = 'deep'
 
 elif args.dataset_name == 'electricity':
     if args.epochs == -1: args.epochs = 20
@@ -489,6 +497,7 @@ elif args.dataset_name == 'electricity':
     if args.device is None: args.device = 'cuda:1'
     if args.cv_inf == -1: args.cv_inf = 1
     if args.lr_inf == -1: args.lr_inf = 0.01
+    if args.extra_layers_type is None: args.extra_layers_type = 'deep'
 
 elif args.dataset_name == 'aggtest':
     if args.epochs == -1: args.epochs = 1
@@ -551,6 +560,7 @@ elif args.dataset_name == 'foodinflation':
     if args.device is None: args.device = 'cuda:1'
     if args.cv_inf == -1: args.cv_inf = 1
     if args.lr_inf == -1: args.lr_inf = 0.01
+    if args.extra_layers_type is None: args.extra_layers_type = 'deep'
 
 if 1 not in args.K_list:
     args.K_list = [1] + args.K_list
@@ -902,7 +912,8 @@ def run_inference_model(
         agg_method = ['sum', 'slope'] if agg_method is None else agg_method
         K_list = args.K_list if K is None else K
         inf_net = inf_models.JointAggModel(
-            K_list, base_models_dict, agg_method, args.lr_inf, device=args.device, opt_normspace=False
+            K_list, base_models_dict, agg_method, args.lr_inf, args.extra_layers_type,
+            device=args.device, opt_normspace=False
         ).to(args.device)
 
     elif inf_model_name in ['trans-nll-ar_covkl-st']:

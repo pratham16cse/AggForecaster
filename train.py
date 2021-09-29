@@ -592,7 +592,7 @@ def train_joint_agg_model(
             if (curr_step % args.print_every == 0):
                 print('curr_epoch ', curr_epoch, \
                       ' epoch_loss ', epoch_loss, \
-                      ' loss shape ',loss_shape.item(), \
+                      #' loss shape ',loss_shape.item(), \
                       ' loss temporal ',loss_temporal.item(), \
                       'learning_rate:', optimizer.param_groups[0]['lr'])
 

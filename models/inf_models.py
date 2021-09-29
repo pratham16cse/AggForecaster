@@ -1298,7 +1298,7 @@ class KLInferenceSGD(torch.nn.Module):
 
 class JointAggModel(torch.nn.Module):
     def __init__(
-        self, K_list, base_models_dict, aggregates, lr, device, opt_normspace=False, covariance=False
+        self, K_list, base_models_dict, aggregates, lr, extra_layers_type, device, opt_normspace=False, covariance=False
     ):
         '''
         K: int
@@ -1315,6 +1315,7 @@ class JointAggModel(torch.nn.Module):
         self.opt_normspace = opt_normspace
         self.covariance = covariance
         self.lr = lr
+        self.extra_layers_type = extra_layers_type
 
         max_K = max(self.K_list)
         num_aggs = 0
@@ -1325,25 +1326,52 @@ class JointAggModel(torch.nn.Module):
                     num_aggs += (max_K/K)
                     flg = True
                     #import ipdb ; ipdb.set_trace()
+        num_aggs = int(num_aggs)
         base_level = self.aggregates[0]
-        base_last_layer_size = self.base_models_dict[base_level][1].linear_mean[1].in_features
-        input_size = int(base_last_layer_size + num_aggs)
-        self.linear_layer = nn.Sequential(
-            nn.Linear(input_size, input_size),
-            nn.ReLU(),
-            nn.Linear(input_size, input_size),
-            nn.ReLU(),
-            nn.Linear(input_size, 1)
-        )
-        #input_size = int(num_aggs)
-        #input_size = int(base_last_layer_size)
-        #self.linear_layer = nn.Linear(input_size, 1)
+        base_last_layer_size = int(self.base_models_dict[base_level][1].linear_mean[1].in_features)
+
+        def get_deep_net(input_size):
+            return nn.Sequential(
+                nn.Linear(input_size, input_size),
+                nn.ReLU(),
+                nn.Linear(input_size, input_size),
+                nn.ReLU(),
+                nn.Linear(input_size, 1)
+            )
+
+        if 'deep' in self.extra_layers_type:
+            if self.extra_layers_type in ['deep-noagg']:
+                input_size = base_last_layer_size
+                self.linear_layer = get_deep_net(input_size)
+            elif self.extra_layers_type in ['deep-nobase']:
+                input_size = num_aggs
+                self.linear_layer = get_deep_net(input_size)
+            elif self.extra_layers_type in ['deep']:
+                input_size = base_last_layer_size + num_aggs
+                self.linear_layer = get_deep_net(input_size)
+        elif 'linear' in self.extra_layers_type:
+            if self.extra_layers_type in ['linear-noagg']:
+                input_size = base_last_layer_size
+                self.linear_layer = nn.Linear(input_size, 1)
+                self.linear_layer.weight = self.base_models_dict['sum'][1].linear_mean[1].weight
+                self.linear_layer.bias = self.base_models_dict['sum'][1].linear_mean[1].bias
+            elif self.extra_layers_type in ['linear-nobase']:
+                input_size = num_aggs
+                self.linear_layer = nn.Linear(input_size, 1)
+                self.linear_layer.weight = torch.nn.Parameter(torch.ones(1, input_size))
+                self.linear_layer.bias = torch.nn.Parameter(torch.zeros(1))
+            elif self.extra_layers_type in ['linear']:
+                input_size = base_last_layer_size + num_aggs
+                self.linear_layer = nn.Linear(input_size, 1)
+                w_base = self.base_models_dict['sum'][1].linear_mean[1].weight.to(self.device)
+                b_base = self.base_models_dict['sum'][1].linear_mean[1].bias.to(self.device)
+                w_agg = torch.nn.Parameter(torch.zeros(1, num_aggs)).to(self.device)
+                b_agg = torch.nn.Parameter(torch.zeros(1)).to(self.device)
+                #import ipdb ; ipdb.set_trace()
+                self.linear_layer.weight = torch.nn.Parameter(torch.cat([w_base, w_agg], dim=1))
+                self.linear_layer.bias = torch.nn.Parameter(b_base)
         #import ipdb ; ipdb.set_trace()
-        #self.linear_layer.weight = torch.nn.Parameter(torch.ones(1, input_size))
-        #self.linear_layer.bias = torch.nn.Parameter(torch.zeros(1))
         #import ipdb ; ipdb.set_trace()
-        #self.linear_layer.weight = self.base_models_dict['sum'][1].linear_mean[1].weight
-        #self.linear_layer.bias = self.base_models_dict['sum'][1].linear_mean[1].bias
 
         #self.base_models_dict['sum'][1].load_state_dict(base_models_dict['sum'][1].state_dict())
         #import ipdb ; ipdb.set_trace()
@@ -1536,12 +1564,25 @@ class JointAggModel(torch.nn.Module):
             for K in self.K_list:
                 a_dict[agg][K] = self.get_a(agg, K)
 
-        linear_in = torch.cat(
-            [params_dict[base_lvl][1][4], base_lvl_rec_coeffs_norm.to(self.device)],
-            -1
-        )
-        #linear_in = base_lvl_rec_coeffs.to(self.device)
-        #linear_in = params_dict[base_lvl][1][4]
+        if 'deep' in self.extra_layers_type:
+
+            if self.extra_layers_type in ['deep-noagg']:
+                linear_in = params_dict[base_lvl][1][4]
+            elif self.extra_layers_type in ['deep-nobase']:
+                linear_in = base_lvl_rec_coeffs_norm.to(self.device)
+            elif self.extra_layers_type in ['deep']:
+                linear_in = torch.cat(
+                    [params_dict[base_lvl][1][4], base_lvl_rec_coeffs_norm.to(self.device)], -1
+                )
+        elif 'linear' in self.extra_layers_type:
+            if self.extra_layers_type in ['linear-noagg']:
+                linear_in = params_dict[base_lvl][1][4]
+            elif self.extra_layers_type in ['linear-nobase']:
+                linear_in = base_lvl_rec_coeffs.to(self.device)
+            elif self.extra_layers_type in ['linear']:
+                linear_in = torch.cat(
+                    [params_dict[base_lvl][1][4], base_lvl_rec_coeffs_norm.to(self.device)], -1
+                )
         all_preds_mu = self.linear_layer(linear_in)
 
         #all_preds_mu = params_dict[base_lvl][1][0].to(self.device)
