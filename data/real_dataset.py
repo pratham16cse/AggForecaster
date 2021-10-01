@@ -1618,7 +1618,7 @@ def parse_foodinflation(dataset_name, N_input, N_output, t2v_type=None):
     #units = n//N_output
     #dev_len = int(0.2*units) * N_output
     #test_len = int(0.2*units) * N_output
-    test_len = 30*12
+    test_len = 30*3
     dev_len = 30*12
     train_len = n - dev_len - test_len
 
