@@ -1652,7 +1652,8 @@ def parse_foodinflation(dataset_name, N_input, N_output, t2v_type=None):
     #import ipdb ; ipdb.set_trace()
 
     #feats = np.concatenate([feats_day, feats_month, feats_dow, feats_date], axis=-1)
-    feats = np.concatenate([feats_day, feats_dow, feats_tsid, feats_date], axis=-1)
+    #feats = np.concatenate([feats_day, feats_dow, feats_tsid, feats_date], axis=-1)
+    feats = np.concatenate([feats_day, feats_dow, feats_date], axis=-1)
 
 
     data = torch.tensor(data, dtype=torch.float)
@@ -1690,8 +1691,8 @@ def parse_foodinflation(dataset_name, N_input, N_output, t2v_type=None):
     for i in range(len(data_test)):
         data_test[i]['feats'] = feats_test[i]
 
-    #feats_info = {0:(31, 16), 1:(12, 6)}
-    feats_info = {0:(31, 16), 1:(7, 6), 2:(m, 16)}
+    feats_info = {0:(31, 16), 1:(12, 6)}
+    #feats_info = {0:(31, 16), 1:(7, 6), 2:(m, 16)}
     i = len(feats_info)
     for j in range(i, data_train[0]['feats'].shape[-1]):
         feats_info[j] = (-1, -1)

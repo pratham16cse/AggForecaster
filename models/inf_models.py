@@ -69,7 +69,7 @@ class RNNNLLNAR(torch.nn.Module):
         feats_in = dataset['sum'][1][2].to(self.device)
         inputs = dataset['sum'][1][0].to(self.device)
         feats_tgt = dataset['sum'][1][3].to(self.device)
-        target = dataset['sum'][1][1].to(self.device)
+        #target = dataset['sum'][1][1].to(self.device)
         #if self.is_oracle:
         #    target = dataset['sum'][1][1].to(self.device)
         #else:
@@ -78,7 +78,7 @@ class RNNNLLNAR(torch.nn.Module):
 
         mdl = self.base_models_dict['sum'][1]
         with torch.no_grad():
-            out = mdl(feats_in, inputs, feats_tgt, target)
+            out = mdl(feats_in, inputs, feats_tgt)
             if mdl.is_signature:
                 if mdl.estimate_type in ['point']:
                     pred_mu, _, _ = out

@@ -1404,35 +1404,38 @@ class RNNNARModel(nn.Module):
 
 class RNNARModel(nn.Module):
     def __init__(
-            self, dec_len, num_rnn_layers, feats_info, coeffs_info, hidden_size, batch_size,
-            estimate_type, use_coeffs, use_time_features, v_dim, device
+            self, dec_len, feats_info, estimate_type, use_feats, t2v_type,
+            v_dim, num_rnn_layers, hidden_size, batch_size, device, is_signature=False
         ):
         super(RNNARModel, self).__init__()
 
         self.dec_len = dec_len
-        self.num_rnn_layers = num_rnn_layers
         self.feats_info = feats_info
-        self.coeffs_info = coeffs_info
+        self.estimate_type = estimate_type
+        self.use_feats = use_feats
+        self.t2v_type = t2v_type
+        self.v_dim = v_dim
+        self.num_rnn_layers = num_rnn_layers
         self.hidden_size = hidden_size
         self.batch_size = batch_size
-        self.estimate_type = estimate_type
         self.device = device
-        self.use_coeffs = use_coeffs
-        self.v_dim = v_dim
+        self.is_signature = is_signature
 
-        self.embed_feat_layers = []
-        for idx, (card, emb_size) in self.feats_info.items():
-            if card is not 0:
-                self.embed_feat_layers.append(nn.Embedding(card, emb_size))
-            else:
-                self.embed_feat_layers.append(nn.Linear(1, 1, bias=False))
-        self.embed_feat_layers = nn.ModuleList(self.embed_feat_layers)
+        if self.use_feats:
+            self.embed_feat_layers = []
+            for idx, (card, emb_size) in self.feats_info.items():
+                if card is not -1:
+                    if card is not 0:
+                        self.embed_feat_layers.append(nn.Embedding(card, emb_size))
+                    else:
+                        self.embed_feat_layers.append(nn.Linear(1, 1, bias=False))
+            self.embed_feat_layers = nn.ModuleList(self.embed_feat_layers)
 
-        feats_embed_dim = sum([s for (_, s) in self.feats_info.values()])
-        num_coeffs = len(self.coeffs_info)
-        enc_input_size = 1 + feats_embed_dim
-        if self.use_coeffs:
-            enc_input_size += num_coeffs
+            feats_embed_dim = sum([s for (_, s) in self.feats_info.values() if s is not -1])
+            enc_input_size = 1 + feats_embed_dim
+        else:
+            enc_input_size = 1
+
         self.encoder = nn.LSTM(enc_input_size, self.hidden_size, batch_first=True)
 
         self.decoder_lstm = nn.LSTM(enc_input_size, self.hidden_size,  batch_first=True)
@@ -1447,39 +1450,41 @@ class RNNARModel(nn.Module):
             torch.zeros(self.num_rnn_layers, batch_size, self.hidden_size, device=self.device)
         )
 
-    def forward(self, feats_in, X_in, coeffs_in, feats_out, X_out=None, coeffs_out=None, teacher_force=True):
+    def forward(self, feats_in, X_in, feats_out, X_out=None, teacher_force=True):
 
-        feats_in_merged, feats_out_merged = [], []
-        for i in range(feats_in.shape[-1]):
-            card = self.feats_info[i][0]
-            if card is not 0:
-                feats_in_ = feats_in[..., i].type(torch.LongTensor).to(self.device)
-            else:
-                feats_in_ = feats_in[..., i:i+1]
-            feats_in_merged.append(
-                self.embed_feat_layers[i](feats_in_)
-            )
-        feats_in_merged = torch.cat(feats_in_merged, dim=2)
-        for i in range(feats_out.shape[-1]):
-            card = self.feats_info[i][0]
-            if card is not 0:
-                feats_out_ = feats_out[..., i].type(torch.LongTensor).to(self.device)
-            else:
-                feats_out_ = feats_out[..., i:i+1]
-            feats_out_merged.append(
-                self.embed_feat_layers[i](feats_out_)
-            )
-        feats_out_merged = torch.cat(feats_out_merged, dim=2)
-
+        if self.use_feats:
+            feats_in_merged = []
+            for i in range(len(self.feats_info)):
+                card = self.feats_info[i][0]
+                if card is not -1:
+                    if card is not 0:
+                        feats_in_ = feats_in[..., i].type(torch.LongTensor).to(self.device)
+                    else:
+                        feats_in_ = feats_in[..., i:i+1]
+                    feats_in_merged.append(
+                        self.embed_feat_layers[i](feats_in_)
+                    )
+            feats_in_merged = torch.cat(feats_in_merged, dim=2)
         feats_in_embed = feats_in_merged
-        feats_out_embed = feats_out_merged
 
         enc_input = torch.cat([feats_in_embed, X_in], dim=-1)
-        if self.use_coeffs:
-            enc_input = torch.cat([enc_input, coeffs_in], dim=-1)
-
         enc_hidden = self.init_hidden(X_in.shape[0])
         enc_output, enc_state = self.encoder(enc_input, enc_hidden)
+
+        if self.use_feats:
+            feats_out_merged = []
+            for i in range(len(self.feats_info)):
+                card = self.feats_info[i][0]
+                if card is not -1:
+                    if card is not 0:
+                        feats_out_ = feats_out[..., i].type(torch.LongTensor).to(self.device)
+                    else:
+                        feats_out_ = feats_out[..., i:i+1]
+                    feats_out_merged.append(
+                        self.embed_feat_layers[i](feats_out_)
+                    )
+            feats_out_merged = torch.cat(feats_out_merged, dim=2)
+        feats_out_embed = feats_out_merged
 
         dec_state = enc_state
         if X_out is not None:
@@ -1488,8 +1493,10 @@ class RNNARModel(nn.Module):
             dec_input = torch.cat([feats_prev, X_prev], dim=-1)
             dec_output, dec_state = self.decoder_lstm(dec_input, dec_state)
             means = self.decoder_mean(dec_output)
-            stds = self.decoder_std(dec_output)
-            v = self.decoder_v(dec_output)
+            if self.estimate_type in ['covariance', 'variance']:
+                stds = self.decoder_std(dec_output)
+                if self.estimate_type in ['covariance']:
+                    v = self.decoder_v(dec_output)
         else:
             X_prev = X_in[..., -1:, :]
             feats_prev = feats_in_embed[..., -1:, :]
@@ -1498,24 +1505,28 @@ class RNNARModel(nn.Module):
                 dec_input = torch.cat([feats_prev, X_prev], dim=-1)
                 dec_output, dec_state = self.decoder_lstm(dec_input, dec_state)
                 step_pred_mu = self.decoder_mean(dec_output)
-                step_pred_std = self.decoder_std(dec_output)
-                step_pred_v = self.decoder_v(dec_output)
                 means.append(step_pred_mu)
-                stds.append(step_pred_std)
-                v.append(step_pred_v)
+                if self.estimate_type in ['covariance', 'variance']:
+                    step_pred_std = self.decoder_std(dec_output)
+                    stds.append(step_pred_std)
+                    if self.estimate_type in ['covariance']:
+                        step_pred_v = self.decoder_v(dec_output)
+                        v.append(step_pred_v)
                 X_prev = step_pred_mu
                 feats_prev = feats_out_embed[..., i:i+1, :]
 
             means = torch.cat(means, dim=1)
-            stds = torch.cat(stds, dim=1)
-            v = torch.cat(v, dim=1)
+            if self.estimate_type in ['covariance', 'variance']:
+                stds = torch.cat(stds, dim=1)
+                if self.estimate_type in ['covariance']:
+                    v = torch.cat(v, dim=1)
 
-        if self.estimate_type is 'point':
-            stds, v = None, None
-        elif self.estimate_type is 'variance':
-            v = None
-
-        return means, stds, v
+        if self.estimate_type in ['point']:
+            return means
+        elif self.estimate_type in ['variance']:
+            return means, stds
+        elif self.estimate_type in ['covariance']:
+            return means, stds, v
 
 class ConvModelNonAR(torch.nn.Module):
     """docstring for ConvModel non autoregressive"""
@@ -2199,14 +2210,14 @@ def get_base_model(
     elif base_model_name in ['rnn-mse-ar', 'rnn-nll-ar', 'rnn-fnll-ar']:
         net_gru = RNNARModel(
             dec_len=N_output,
+            feats_info=feats_info,
+            estimate_type=estimate_type,
+            use_feats=args.use_feats,
+            t2v_type=args.t2v_type,
+            v_dim=args.v_dim,
             num_rnn_layers=args.num_grulstm_layers,
-            feats_info=feats_info, coeffs_info=coeffs_info,
             hidden_size=hidden_size,
             batch_size=args.batch_size,
-            estimate_type=estimate_type,
-            use_coeffs=args.use_coeffs,
-            use_time_features=args.use_time_features,
-            v_dim=args.v_dim,
             device=args.device
         ).to(args.device)
     elif base_model_name in ['trans-mse-ar', 'trans-nll-ar', 'trans-fnll-ar', 'trans-bvnll-ar']:

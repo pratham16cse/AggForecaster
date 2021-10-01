@@ -181,9 +181,9 @@ args.base_model_names = [
 #    'trans-q-nar',
 #    'nbeats-mse-nar',
 #    'nbeatsd-mse-nar'
-#    'rnn-mse-ar',
+    'rnn-mse-ar',
 #    'rnn-nll-ar',
-#    'trans-mse-ar',
+    'trans-mse-ar',
     'trans-nll-ar',
 #    'trans-bvnll-ar',
 #    'trans-nll-atr',
@@ -295,8 +295,8 @@ if 'trans-nll-ar' in args.base_model_names:
     #args.inference_model_names.append('trans-nll-ar_opt-slope')
     #args.inference_model_names.append('trans-nll-ar_opt-st')
     #args.inference_model_names.append('trans-nll-ar_kl-sum')
-    args.inference_model_names.append('trans-nll-ar_kl-st')
-    args.inference_model_names.append('trans-nll-ar_covkl-st')
+    #args.inference_model_names.append('trans-nll-ar_kl-st')
+    #args.inference_model_names.append('trans-nll-ar_covkl-st')
 if 'trans-bvnll-ar' in args.base_model_names:
     args.inference_model_names.append('TRANS-BVNLL-AR')
     #args.inference_model_names.append('trans-bvnll-ar_opt-sum')
@@ -520,7 +520,7 @@ elif args.dataset_name == 'Traffic911':
     args.device = 'cuda:0'
 
 elif args.dataset_name == 'foodinflation':
-    if args.epochs == -1: args.epochs = 20
+    if args.epochs == -1: args.epochs = 50
     if args.N_input == -1: args.N_input = 90
     if args.N_output == -1: args.N_output = 30
     #args.K_list = [12]
@@ -1171,8 +1171,8 @@ def run_inference_model(
         raise NotImplementedError
 
     elif inf_model_name in ['RNN-MSE-AR']:
-        base_models_dict = base_models['rnn-mse-ar']['sum']
-        raise NotImplementedError
+        base_models_dict = base_models['rnn-mse-ar']
+        inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device)
 
     elif inf_model_name in ['RNN-Q-AR']:
         base_models_dict = base_models['rnn-q-ar']['sum']

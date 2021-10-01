@@ -29,21 +29,12 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1, unnor
         loss_mse, loss_dtw, loss_tdi, loss_mae, losses_nll, losses_ql = torch.tensor(0), torch.tensor(0), torch.tensor(0), torch.tensor(0), torch.tensor(0), torch.tensor(0)
         # get the inputs
         batch_inputs, batch_target, feats_in, feats_tgt, ids, _, = data
-        #inputs = torch.tensor(inputs, dtype=torch.float32).to(args.device)
-        #batch_target = torch.tensor(batch_target, dtype=torch.float32).to(args.device)
-        #feats_in = torch.tensor(feats_in, dtype=torch.float32).to(args.device)
-        #feats_tgt = torch.tensor(feats_tgt, dtype=torch.float32).to(args.device)
-        #norm = torch.tensor(norm, dtype=torch.float32).to(args.device)
-        batch_size, N_output = batch_target.shape[0:2]
-        #if N_output == 24:
-        #    import ipdb
-        #    ipdb.set_trace()
+        batch_size, N_output = batch_inputs.shape[0:2]
         # DO NOT PASS TARGET during forward pass
         #import ipdb ; ipdb.set_trace()
         with torch.no_grad():
             out = net(
-                feats_in.to(args.device), batch_inputs.to(args.device), feats_tgt.to(args.device),
-                batch_target.to(args.device)
+                feats_in.to(args.device), batch_inputs.to(args.device), feats_tgt.to(args.device)
             )
             if net.is_signature:
                 if net.estimate_type in ['point']:
