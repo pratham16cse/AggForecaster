@@ -161,6 +161,9 @@ parser.add_argument('--cv_inf', type=int, default=-1,
 parser.add_argument('--lr_inf', type=float, default=-1.,
                     help='Learning rate for SGD-based inference model')
 
+parser.add_argument('--initialization', type=float, default=-1.,
+                    help='=1 for training median prediction model')
+
 
 
 args = parser.parse_args()
@@ -562,6 +565,7 @@ elif args.dataset_name == 'telemetry':
     if args.device is None: args.device = 'cuda:1'
     if args.cv_inf == -1: args.cv_inf = 1
     if args.lr_inf == -1: args.lr_inf = 0.01
+    if args.initialization == -1: args.initialization = 1.
 
 if 1 not in args.K_list:
     args.K_list = [1] + args.K_list

@@ -29,6 +29,10 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1, unnor
         loss_mse, loss_dtw, loss_tdi, loss_mae, losses_nll, losses_ql = torch.tensor(0), torch.tensor(0), torch.tensor(0), torch.tensor(0), torch.tensor(0), torch.tensor(0)
         # get the inputs
         batch_inputs, batch_target, feats_in, feats_tgt, ids, _, = data
+        
+        if args.initialization:
+            batch_target = utils.get_inputs_median(batch_inputs, batch_target)
+
         #inputs = torch.tensor(inputs, dtype=torch.float32).to(args.device)
         #batch_target = torch.tensor(batch_target, dtype=torch.float32).to(args.device)
         #feats_in = torch.tensor(feats_in, dtype=torch.float32).to(args.device)
@@ -610,6 +614,9 @@ def eval_inf_model(args, net, dataset, which_split, gamma, verbose=1):
     #    target = dataset['sum'][1][norm_str].unnormalize(
     #        target[..., 0], ids=mapped_ids
     #    ).unsqueeze(-1)
+
+    if args.initialization:
+        target = utils.get_inputs_median(inputs.unsqueeze(-1), target)
 
     # MSE
     loss_mse = criterion(target, pred_mu)

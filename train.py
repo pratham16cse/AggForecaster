@@ -6,7 +6,7 @@ from loss.dilate_loss import dilate_loss
 from eval import eval_base_model, eval_index_model
 import time
 from models.base_models import get_base_model
-from utils import DataProcessor
+from utils import DataProcessor, get_inputs_median
 import random
 from torch.distributions.normal import Normal
 
@@ -90,6 +90,10 @@ def train_model(
             inputs, target, feats_in, feats_tgt, _, _ = data
             target = target.to(args.device)
             batch_size, N_output = target.shape[0:2]
+
+            #import ipdb ; ipdb.set_trace()
+            if args.initialization:
+                target = get_inputs_median(inputs, target).to(args.device)
 
             # forward + backward + optimize
             teacher_forcing_ratio = args.teacher_forcing_ratio

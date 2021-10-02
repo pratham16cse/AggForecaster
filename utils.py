@@ -31,6 +31,9 @@ def clean_trial_checkpoints(result):
         for path, _ in trl_paths:
             shutil.rmtree(path)
 
+def get_inputs_median(inputs, target):
+    return inputs.median(dim=1, keepdims=True)[0].repeat(1, target.shape[1], 1)
+
 def add_metrics_to_dict(
     metrics_dict, model_name, metric_mse, metric_dtw, metric_tdi, metric_crps, metric_mae,
         metric_smape
