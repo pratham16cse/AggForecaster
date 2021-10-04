@@ -94,7 +94,7 @@ def train_model(
             # forward + backward + optimize
             teacher_forcing_ratio = args.teacher_forcing_ratio
             #teacher_force = True if random.random() <= teacher_forcing_ratio else False
-            if model_name in ['trans-nll-atr', 'rnn-mse-ar']:
+            if model_name in ['trans-nll-atr', 'rnn-mse-ar', 'rnn-nll-ar']:
                 teacher_force = True
             else:
                 teacher_force = False

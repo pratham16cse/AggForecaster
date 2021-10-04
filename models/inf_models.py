@@ -987,7 +987,7 @@ class KLInferenceSGD(torch.nn.Module):
 
                 with torch.no_grad():
                     if model.estimate_type in ['point']:
-                        means, d, v = model(
+                        means = model(
                             feats_in.to(self.device), inputs.to(self.device),
                             feats_tgt.to(self.device)
                         )

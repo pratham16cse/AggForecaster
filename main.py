@@ -249,6 +249,7 @@ if 'rnn-q-nar' in args.base_model_names:
     args.inference_model_names.append('RNN-Q-NAR')
 if 'rnn-mse-ar' in args.base_model_names:
     args.inference_model_names.append('RNN-MSE-AR')
+    args.inference_model_names.append('rnn-mse-ar_opt-st')
 if 'rnn-q-ar' in args.base_model_names:
     args.inference_model_names.append('RNN-Q-AR')
 if 'trans-mse-nar' in args.base_model_names:
@@ -281,7 +282,8 @@ if 'rnn-nll-ar' in args.base_model_names:
     #args.inference_model_names.append('rnn-nll-ar_opt-sum')
     #args.inference_model_names.append('rnn-nll-ar_opt-slope')
     #args.inference_model_names.append('rnn-nll-ar_opt-st')
-    args.inference_model_names.append('rnn-nll-ar_kl-sum')
+    #args.inference_model_names.append('rnn-nll-ar_kl-sum')
+    args.inference_model_names.append('rnn-nll-ar_opt-st')
     args.inference_model_names.append('rnn-nll-ar_kl-st')
 if 'trans-mse-ar' in args.base_model_names:
     args.inference_model_names.append('TRANS-MSE-AR')
@@ -933,7 +935,10 @@ def run_inference_model(
         base_models_dict = base_models['rnn-nll-ar']
         agg_method = ['sum', 'slope'] if agg_method is None else agg_method
         K_list = args.K_list if K is None else K
-        inf_net = inf_models.DualTPP(K_list, base_models_dict, agg_method, device=args.device)
+        inf_net = inf_models.KLInferenceSGD(
+            K_list, base_models_dict, agg_method, args.lr_inf, device=args.device,
+            solve_mean=True, solve_std=False, opt_normspace=False,
+        )
 
     elif inf_model_name in ['rnn-nll-ar_kl-sum']:
         base_models_dict = base_models['rnn-nll-ar']
@@ -947,8 +952,9 @@ def run_inference_model(
         base_models_dict = base_models['rnn-nll-ar']
         agg_method = ['sum', 'slope'] if agg_method is None else agg_method
         K_list = args.K_list if K is None else K
-        inf_net = inf_models.KLInference(
-            K_list, base_models_dict, agg_method, device=args.device, opt_normspace=opt_normspace
+        inf_net = inf_models.KLInferenceSGD(
+            K_list, base_models_dict, agg_method, args.lr_inf, device=args.device,
+            solve_mean=True, solve_std=True, opt_normspace=False,
         )
 
     elif inf_model_name in ['TRANS-MSE-AR']:
@@ -1178,6 +1184,16 @@ def run_inference_model(
     elif inf_model_name in ['RNN-MSE-AR']:
         base_models_dict = base_models['rnn-mse-ar']
         inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device)
+
+    elif inf_model_name in ['rnn-mse-ar_opt-st']:
+        base_models_dict = base_models['rnn-mse-ar']
+        agg_method = ['sum', 'slope'] if agg_method is None else agg_method
+        K_list = args.K_list if K is None else K
+        #inf_net = inf_models.DualTPP(K_list, base_models_dict, agg_method, device=args.device)
+        inf_net = inf_models.KLInferenceSGD(
+            K_list, base_models_dict, agg_method, args.lr_inf, device=args.device,
+            solve_mean=True, solve_std=False, opt_normspace=False,
+        )
 
     elif inf_model_name in ['RNN-Q-AR']:
         base_models_dict = base_models['rnn-q-ar']['sum']
