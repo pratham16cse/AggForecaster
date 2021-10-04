@@ -181,9 +181,9 @@ args.base_model_names = [
 #    'trans-q-nar',
 #    'nbeats-mse-nar',
 #    'nbeatsd-mse-nar'
-    'rnn-mse-ar',
+#    'rnn-mse-ar',
 #    'rnn-nll-ar',
-    'trans-mse-ar',
+#    'trans-mse-ar',
     'trans-nll-ar',
 #    'trans-bvnll-ar',
 #    'trans-nll-atr',
@@ -293,9 +293,9 @@ if 'trans-nll-ar' in args.base_model_names:
     #args.inference_model_names.append('trans-nll-ar_optcf-haar')
     #args.inference_model_names.append('trans-nll-ar_optcf-st')
     #args.inference_model_names.append('trans-nll-ar_opt-slope')
-    #args.inference_model_names.append('trans-nll-ar_opt-st')
+    args.inference_model_names.append('trans-nll-ar_opt-st')
     #args.inference_model_names.append('trans-nll-ar_kl-sum')
-    #args.inference_model_names.append('trans-nll-ar_kl-st')
+    args.inference_model_names.append('trans-nll-ar_kl-st')
     #args.inference_model_names.append('trans-nll-ar_covkl-st')
 if 'trans-bvnll-ar' in args.base_model_names:
     args.inference_model_names.append('TRANS-BVNLL-AR')
@@ -1007,7 +1007,11 @@ def run_inference_model(
         base_models_dict = base_models['trans-nll-ar']
         agg_method = ['sum', 'slope'] if agg_method is None else agg_method
         K_list = args.K_list if K is None else K
-        inf_net = inf_models.DualTPP(K_list, base_models_dict, agg_method, device=args.device)
+        #inf_net = inf_models.DualTPP(K_list, base_models_dict, agg_method, device=args.device)
+        inf_net = inf_models.KLInferenceSGD(
+            K_list, base_models_dict, agg_method, args.lr_inf, device=args.device,
+            solve_mean=True, solve_std=False, opt_normspace=False,
+        )
 
     elif inf_model_name in ['trans-nll-ar_kl-sum']:
         base_models_dict = base_models['trans-nll-ar']
@@ -1028,7 +1032,8 @@ def run_inference_model(
         #    K_list, base_models_dict, agg_method, device=args.device, opt_normspace=opt_normspace
         #)
         inf_net = inf_models.KLInferenceSGD(
-            K_list, base_models_dict, agg_method, args.lr_inf, device=args.device, opt_normspace=False
+            K_list, base_models_dict, agg_method, args.lr_inf, device=args.device,
+            solve_mean=True, solve_std=True, opt_normspace=False, kldirection='qp'
         )
 
     elif inf_model_name in ['trans-nll-ar_covkl-st']:

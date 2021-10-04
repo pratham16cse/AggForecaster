@@ -900,7 +900,11 @@ class KLInference(torch.nn.Module):
 
 class KLInferenceSGD(torch.nn.Module):
     """docstring for DualTPP"""
-    def __init__(self, K_list, base_models_dict, aggregates, lr, device, opt_normspace=False, covariance=False):
+    def __init__(
+        self, K_list, base_models_dict, aggregates, lr, device,
+        solve_mean, solve_std, opt_normspace=False, kldirection='qp',
+        covariance=False
+    ):
         '''
         K: int
             number of steps to aggregate at each level
@@ -913,7 +917,10 @@ class KLInferenceSGD(torch.nn.Module):
         self.base_models_dict = base_models_dict
         self.aggregates = aggregates
         self.device = device
+        self.solve_mean = solve_mean
+        self.solve_std = solve_std
         self.opt_normspace = opt_normspace
+        self.kldirection = kldirection
         self.covariance = covariance
         self.lr = lr
 
@@ -1124,7 +1131,10 @@ class KLInferenceSGD(torch.nn.Module):
         #return cp.sum(cp.log(std) + (x_var + (mu-x_mu)**2)/(2*std**2) - 0.5)
         #kl = torch.log(std) - torch.log(x_var)/2. + (x_var + (mu-x_mu)**2)/(2*std**2) - 0.5
         #return torch.sum(torch.log(kl + 1e-4))
-        return torch.sum(torch.log(std) - torch.log(x_var)/2. + (x_var)/(2*std**2) - 0.5)
+        if self.kldirection == 'qp':
+            return torch.mean(torch.log(std) - torch.log(x_var)/2. + (x_var)/(2*std**2) - 0.5)
+        elif self.kldirection == 'pq':
+            return torch.mean(torch.log(x_var)/2. - torch.log(std) + (std**2)/(2*x_var) - 0.5)
 
     #def forward(self, feats_in_dict, inputs_dict, feats_tgt_dict, norm_dict, targets_dict=None):
     def forward(self, dataset, norms, which_split):
@@ -1139,11 +1149,15 @@ class KLInferenceSGD(torch.nn.Module):
         bs, N = params_dict[base_lvl][1][0].shape[0], params_dict[base_lvl][1][0].shape[1]
 
         # Solve for base level mean
-        base_lvl_mu = self.solve_base_level_mean(params_dict, bs, N)
-        #base_lvl_mu = params_dict[base_lvl][1][0]
+        if self.solve_mean:
+            base_lvl_mu = self.solve_base_level_mean(params_dict, bs, N)
+        else:
+            base_lvl_mu = params_dict[base_lvl][1][0]
+
+        base_lvl_std = params_dict[base_lvl][1][1]
 
         #self.initialize_params(params_dict[base_lvl][1][0], params_dict[base_lvl][1][1])
-        self.initialize_params(base_lvl_mu, params_dict[base_lvl][1][1])
+        self.initialize_params(base_lvl_mu, base_lvl_std)
 
         all_preds_mu, all_preds_std = [], []
         all_preds_d, all_preds_v = [], []
@@ -1156,117 +1170,125 @@ class KLInferenceSGD(torch.nn.Module):
         for agg in self.aggregates:
             a_dict[agg] = {}
             for K in self.K_list:
-                a_dict[agg][K] = self.get_a(agg, K)
+                a_dict[agg][K] = utils.get_a(agg, K)
 
-        opt_bs = bs
-        # Minimize the KL_loss
-        for bch in range(0, bs, opt_bs):
-            #for s in range(4000):
-            s, opt_loss_prev, opt_grad_prev = 0, 10000000., 10000000.
-            while True:
-                x_mu_dict, x_var_dict = {}, {}
-                opt_loss = 0.
-                #print('Example:', bch)
-                for agg in self.aggregates:
-                    x_mu_dict[agg], x_var_dict[agg] = {}, {}
-                    for lvl in self.K_list:
+        if self.solve_std:
+            opt_bs = bs
+            # Minimize the KL_loss
+            for bch in range(0, bs, opt_bs):
+                #for s in range(4000):
+                s, opt_loss_prev, opt_grad_prev = 0, 10000000., 10000000.
+                while True:
+                    x_mu_dict, x_var_dict = {}, {}
+                    opt_loss = 0.
+                    #print('Example:', bch)
+                    for agg in self.aggregates:
+                        x_mu_dict[agg], x_var_dict[agg] = {}, {}
+                        for lvl in self.K_list:
 
-                        base_lvl_present = False
-                        if lvl==1: # If lvl=1 present in other aggregates, ignore it
-                            #import ipdb ; ipdb.set_trace()
-                            other_aggs = set(self.aggregates) - {agg}
-                            for other_agg in other_aggs:
-                                if x_mu_dict.get(other_agg, -1) is not -1:
-                                    base_lvl_present = True
+                            base_lvl_present = False
+                            if lvl==1: # If lvl=1 present in other aggregates, ignore it
+                                #import ipdb ; ipdb.set_trace()
+                                other_aggs = set(self.aggregates) - {agg}
+                                for other_agg in other_aggs:
+                                    if x_mu_dict.get(other_agg, -1) is not -1:
+                                        base_lvl_present = True
 
-                        if not base_lvl_present:
-                            #x_mu_dict[agg][lvl], x_var_dict[agg][lvl] = {}, {}
-                            #print(s, agg, lvl)
-                            lvl_x_mu, lvl_x_var = [], []
-                            if lvl != 1:
-                                for i in range(0, N, lvl):
-                                    lvl_x_mu.append(
-                                        utils.aggregate_window(
-                                            self.x_mu[bch:bch+opt_bs, i:i+lvl],
-                                            a_dict[agg][lvl], False,
+                            if not base_lvl_present:
+                                #x_mu_dict[agg][lvl], x_var_dict[agg][lvl] = {}, {}
+                                #print(s, agg, lvl)
+                                lvl_x_mu, lvl_x_var = [], []
+                                if lvl != 1:
+                                    for i in range(0, N, lvl):
+                                        lvl_x_mu.append(
+                                            utils.aggregate_window(
+                                                self.x_mu[bch:bch+opt_bs, i:i+lvl],
+                                                a_dict[agg][lvl], False,
+                                            )
                                         )
-                                    )
-                                    if self.covariance:
-                                        v_for_agg = self.x_v[bch:bch+opt_bs, i:i+lvl]
-                                    else:
-                                        v_for_agg = None
-                                    lvl_x_var.append(
-                                        utils.aggregate_window(
-                                            self.x_d[bch:bch+opt_bs, i:i+lvl],
-                                            a_dict[agg][lvl], True, 
-                                            v_for_agg,
+                                        if self.covariance:
+                                            v_for_agg = self.x_v[bch:bch+opt_bs, i:i+lvl]
+                                        else:
+                                            v_for_agg = None
+                                        lvl_x_var.append(
+                                            utils.aggregate_window(
+                                                self.x_d[bch:bch+opt_bs, i:i+lvl],
+                                                a_dict[agg][lvl], True, 
+                                                v_for_agg,
+                                            )
                                         )
-                                    )
-                                x_mu_dict[agg][lvl] = lvl_x_mu
-                                x_var_dict[agg][lvl] = lvl_x_var
+                                    x_mu_dict[agg][lvl] = lvl_x_mu
+                                    x_var_dict[agg][lvl] = lvl_x_var
 
-                        #for lvl, params in params_dict[agg].items():
-                            params = params_dict[agg][lvl]
-                            #import ipdb ; ipdb.set_trace()
-                            if lvl==1:
-                                opt_loss += self.KL_loss(
-                                    self.x_mu[bch:bch+opt_bs],
-                                    self.x_var()[bch:bch+opt_bs],
-                                    params[0][bch:bch+opt_bs, ..., 0].detach(),
-                                    params[1][bch:bch+opt_bs, ..., 0].detach()
-                                )
-                            else:
-                                for idx, _ in enumerate(range(0, N, lvl)):
+                            #for lvl, params in params_dict[agg].items():
+                                params = params_dict[agg][lvl]
+                                #import ipdb ; ipdb.set_trace()
+                                if lvl==1:
                                     opt_loss += self.KL_loss(
-                                        x_mu_dict[agg][lvl][idx],
-                                        x_var_dict[agg][lvl][idx],
-                                        params[0][bch:bch+opt_bs, idx:idx+1, 0].detach(),
-                                        params[1][bch:bch+opt_bs, idx:idx+1, 0].detach()
+                                        self.x_mu[bch:bch+opt_bs],
+                                        self.x_var()[bch:bch+opt_bs],
+                                        params[0][bch:bch+opt_bs, ..., 0].detach(),
+                                        params[1][bch:bch+opt_bs, ..., 0].detach()
                                     )
-                #import ipdb ; ipdb.set_trace() 
-                optimizer.zero_grad()
-                opt_loss.backward()
-                optimizer.step()
-                s += 1
+                                else:
+                                    for idx, _ in enumerate(range(0, N, lvl)):
+                                        opt_loss += self.KL_loss(
+                                            x_mu_dict[agg][lvl][idx],
+                                            x_var_dict[agg][lvl][idx],
+                                            params[0][bch:bch+opt_bs, idx:idx+1, 0].detach(),
+                                            params[1][bch:bch+opt_bs, idx:idx+1, 0].detach()
+                                        )
+                    #import ipdb ; ipdb.set_trace() 
+                    optimizer.zero_grad()
+                    opt_loss.backward()
+                    optimizer.step()
+                    s += 1
 
-                if s % 100 == 0:
-                #if True:
+                    if s % 100 == 0:
+                    #if True:
+                        if self.covariance:
+                            print('opt_loss:', opt_loss, 'grad:', self.x_d.grad.norm(), self.x_v.grad.norm(), self.x_d.grad.norm()+self.x_v.grad.norm())
+                        else:
+                            print('opt_loss:', opt_loss, 'grad:', self.x_d.grad.norm())
+                    #import ipdb ; ipdb.set_trace()
+
+                    #if (torch.abs(opt_loss_prev - opt_loss)/opt_loss_prev).item() <= 1e-3:
+                    #if (self.x_d.grad.norm()) <= 1e-2:
                     if self.covariance:
-                        print('opt_loss:', opt_loss, 'grad:', self.x_d.grad.norm(), self.x_v.grad.norm(), self.x_d.grad.norm()+self.x_v.grad.norm())
+                        opt_grad = self.x_d.grad.norm()+self.x_v.grad.norm()
                     else:
-                        print('opt_loss:', opt_loss, 'grad:', self.x_d.grad.norm())
+                        opt_grad = self.x_d.grad.norm()
+                    condition = (
+                        opt_grad<=1e-2 \
+                        #or (torch.abs(opt_loss_prev - opt_loss)/opt_loss_prev).item() <= 1e-2 \
+                        or (torch.abs(opt_grad_prev - opt_grad)).item() <= 1e-2
+                    )
+                    #condition = opt_grad<=1e-2 or (torch.abs(opt_loss_prev - opt_loss)/opt_loss_prev).item() <= 1e-2
+                    if condition:
+                        print('Stopping after {} steps'.format(s))
+                        break
+                    else:
+                        opt_loss_prev = opt_loss
+                        opt_grad_prev = opt_grad
+
                 #import ipdb ; ipdb.set_trace()
-
-                #if (torch.abs(opt_loss_prev - opt_loss)/opt_loss_prev).item() <= 1e-3:
-                #if (self.x_d.grad.norm()) <= 1e-2:
-                if self.covariance:
-                    opt_grad = self.x_d.grad.norm()+self.x_v.grad.norm()
-                else:
-                    opt_grad = self.x_d.grad.norm()
-                condition = (
-                    opt_grad<=1e-2 \
-                    #or (torch.abs(opt_loss_prev - opt_loss)/opt_loss_prev).item() <= 1e-2 \
-                    or (torch.abs(opt_grad_prev - opt_grad)).item() <= 1e-2
-                )
-                #condition = opt_grad<=1e-2 or (torch.abs(opt_loss_prev - opt_loss)/opt_loss_prev).item() <= 1e-2
-                if condition:
-                    print('Stopping after {} steps'.format(s))
-                    break
-                else:
-                    opt_loss_prev = opt_loss
-                    opt_grad_prev = opt_grad
-
-            #import ipdb ; ipdb.set_trace()
-            all_preds_mu.append(self.x_mu.unsqueeze(dim=-1))
-            #all_preds_std.append(torch.sqrt(self.x_d.unsqueeze(dim=-1)))
-            all_preds_std.append(torch.sqrt(self.x_var().unsqueeze(dim=-1)))
-            all_preds_d.append(self.x_d.unsqueeze(dim=-1))
-            all_preds_v.append(self.x_v)
+                all_preds_mu.append(self.x_mu.unsqueeze(dim=-1))
+                #all_preds_std.append(torch.sqrt(self.x_d.unsqueeze(dim=-1)))
+                all_preds_std.append(torch.sqrt(self.x_var().unsqueeze(dim=-1)))
+                all_preds_d.append(self.x_d.unsqueeze(dim=-1))
+                all_preds_v.append(self.x_v)
 
         #all_preds_mu = torch.FloatTensor(x_mu.value).unsqueeze(dim=-1)
         #all_preds_std = torch.sqrt(torch.FloatTensor(x_var.value).unsqueeze(dim=-1))
-        all_preds_mu = torch.cat(all_preds_mu, dim=0)
-        all_preds_std = torch.cat(all_preds_std, dim=0)
+        all_preds_mu = base_lvl_mu
+        if self.solve_std:
+            all_preds_std = torch.cat(all_preds_std, dim=0)
+            all_preds_d = torch.cat(all_preds_d, dim=0)
+            all_preds_v = torch.cat(all_preds_v, dim=0)
+        else:
+            all_preds_std = base_lvl_std
+            all_preds_d = params_dict[base_lvl][1][2]
+            all_preds_v = params_dict[base_lvl][1][3]
         #if which_split in ['test'] and self.opt_normspace:
         #    all_preds_mu = norms[base_lvl][1].unnormalize(
         #        all_preds_mu[..., 0], ids=ids_dict[base_lvl][1], is_var=False
@@ -1282,10 +1304,6 @@ class KLInferenceSGD(torch.nn.Module):
         #        all_preds_std[..., 0], ids=ids_dict[base_lvl][1], is_var=True
         #    )
 
-        # d = params_dict[base_lvl][1][2]
-        # v = params_dict[base_lvl][1][3]
-        all_preds_d = torch.cat(all_preds_d, dim=0)
-        all_preds_v = torch.cat(all_preds_v, dim=0)
 
         #return all_preds_mu, d, v, all_preds_std
         return all_preds_mu, all_preds_d, all_preds_v, all_preds_std
