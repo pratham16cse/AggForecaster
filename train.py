@@ -63,7 +63,7 @@ def train_model(
 
     if (not args.ignore_ckpt) and os.path.isfile(saved_models_path):
         print('Loading from saved model')
-        checkpoint = torch.load(saved_models_path)
+        checkpoint = torch.load(saved_models_path, map_location=args.device)
         net.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         best_epoch = checkpoint['epoch']
@@ -337,7 +337,7 @@ def train_model(
 
     print('Best model found at epoch', best_epoch)
     #net.load_state_dict(torch.load(saved_models_path))
-    checkpoint = torch.load(saved_models_path)
+    checkpoint = torch.load(saved_models_path, map_location=args.device)
     net.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     net.eval()
