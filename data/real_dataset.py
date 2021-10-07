@@ -1706,3 +1706,108 @@ def parse_foodinflation(dataset_name, N_input, N_output, t2v_type=None):
     return (
         data_train, data_dev, data_test, dev_tsid_map, test_tsid_map, feats_info
     )
+
+def parse_foodinflationmonthly(dataset_name, N_input, N_output, t2v_type=None):
+    #df = pd.read_csv('data/electricity_load_forecasting_panama/continuous_dataset.csv')
+    df = pd.read_csv(
+        os.path.join(DATA_DIRS, 'data', 'foodinflation', 'train_data.csv')
+    )
+    
+    df['date'] = pd.to_datetime(df['date'])
+    df_monthly = df.set_index(df['date'])
+    del df_monthly['date']
+    agg_dict = {}
+    for food in df.columns[1:]:
+        agg_dict[food] = 'mean'
+    df_monthly = df_monthly.groupby(pd.Grouper(freq='M')).agg(agg_dict)
+    df_monthly.insert(0, 'date', df_monthly.index)
+    df_monthly = df_monthly.set_index(np.arange(df_monthly.shape[0]))
+    #print(df_monthly)
+    df = df_monthly
+    
+    #df['date'] = pd.to_datetime(df['date'])
+    data = df[df.columns[1:]].to_numpy().T
+
+    m, n = data.shape[0], data.shape[1]
+
+    #units = n//N_output
+    #dev_len = int(0.2*units) * N_output
+    #test_len = int(0.2*units) * N_output
+    test_len = 3
+    dev_len = 6
+    train_len = n - dev_len - test_len
+
+    #import ipdb ; ipdb.set_trace()
+
+    cal_date = pd.to_datetime(df['date'])
+    feats_date = np.expand_dims(np.arange(0,n), axis=-1) / n * 10.
+    feats_date = np.tile(np.expand_dims(feats_date, axis=0), (m, 1, 1))
+
+    feats_day = np.expand_dims(np.expand_dims(cal_date.dt.day.values-1, axis=-1), axis=0)
+    feats_day = np.tile(feats_day, (m, 1, 1))
+    feats_month = np.expand_dims(np.expand_dims(cal_date.dt.month.values-1, axis=-1), axis=0)
+    feats_month = np.tile(feats_month, (m, 1, 1))
+    feats_dow = np.expand_dims(np.expand_dims(cal_date.dt.dayofweek.values, axis=-1), axis=0)
+    feats_dow = np.tile(feats_dow, (m, 1, 1))
+
+    feats_tsid = np.expand_dims(np.expand_dims(np.arange(m), axis=1), axis=2)
+    feats_tsid = np.tile(feats_tsid, (1, n, 1))
+
+    #import ipdb ; ipdb.set_trace()
+
+    #feats = np.concatenate([feats_day, feats_month, feats_dow, feats_date], axis=-1)
+    #feats = np.concatenate([feats_day, feats_dow, feats_tsid, feats_date], axis=-1)
+    feats = np.concatenate([feats_month, feats_date], axis=-1)
+
+
+    data = torch.tensor(data, dtype=torch.float)
+    feats = torch.tensor(feats, dtype=torch.float)
+
+    data_train = data[:, :train_len]
+    feats_train = feats[:, :train_len]
+
+    #import ipdb ; ipdb.set_trace()
+
+    data_dev, data_test = [], []
+    feats_dev, feats_test = [], []
+    dev_tsid_map, test_tsid_map = [], []
+    for i in range(data.shape[0]):
+        for j in range(train_len+N_output, train_len+dev_len+1, N_output):
+            if j <= n:
+                data_dev.append(data[i, :j])
+                feats_dev.append(feats[i, :j])
+                dev_tsid_map.append(i)
+    for i in range(data.shape[0]):
+        for j in range(train_len+dev_len+N_output, n+1, N_output):
+            if j <= n:
+                data_test.append(data[i, :j])
+                feats_test.append(feats[i, :j])
+                test_tsid_map.append(i)
+
+    data_train = get_list_of_dict_format(data_train)
+    data_dev = get_list_of_dict_format(data_dev)
+    data_test = get_list_of_dict_format(data_test)
+
+    for i in range(len(data_train)):
+        data_train[i]['feats'] = feats_train[i]
+    for i in range(len(data_dev)):
+        data_dev[i]['feats'] = feats_dev[i]
+    for i in range(len(data_test)):
+        data_test[i]['feats'] = feats_test[i]
+
+    #feats_info = {0:(31, 16), 1:(12, 6)}
+    #feats_info = {0:(31, 16), 1:(7, 6), 2:(m, 16)}
+    feats_info = {0:(31, 16)}
+    i = len(feats_info)
+    for j in range(i, data_train[0]['feats'].shape[-1]):
+        feats_info[j] = (-1, -1)
+
+    seq_len = 2*N_input+N_output
+    data_dev = prune_dev_test_sequence(data_dev, seq_len)
+    data_test = prune_dev_test_sequence(data_test, seq_len)
+
+    #import ipdb ; ipdb.set_trace()
+
+    return (
+        data_train, data_dev, data_test, dev_tsid_map, test_tsid_map, feats_info
+    )
