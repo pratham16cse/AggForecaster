@@ -154,13 +154,13 @@
 #	--cv_inf 0 \
 #	--device cuda:1
 
-python main.py telemetry \
+python3 main.py telemetry \
 	--N_input 90 --N_output 30 \
 	--saved_models_dir saved_models_telemetry \
 	--output_dir Outputs_telemetry \
 	--K_list 1 \
 	--cv_inf 0 \
-	--device cuda:1
+	--device cpu
 
 # Commands for Oracle and SimRetrieval
 #python main.py ett \

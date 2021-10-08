@@ -585,7 +585,8 @@ for name in args.inference_model_names:
     inference_models[name] = {}
 
 
-DUMP_PATH = '/mnt/infonas/data/pratham/Forecasting/DILATE'
+# DUMP_PATH = '/mnt/infonas/data/pratham/Forecasting/DILATE'
+DUMP_PATH = '.'
 args.output_dir = os.path.join(DUMP_PATH, args.output_dir)
 args.saved_models_dir = os.path.join(DUMP_PATH, args.saved_models_dir)
 os.makedirs(args.output_dir, exist_ok=True)

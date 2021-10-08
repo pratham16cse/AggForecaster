@@ -56,7 +56,7 @@ class CNNRNN(torch.nn.Module):
             feats_tgt_dict[1].to(self.device)
         )
 
-class RNNNLLNAR(torch.nn.Module):
+class RNNNLLNAR(torch.nn.Module): # this is currently being used in the transformer 
     """docstring for NLL"""
     def __init__(self, base_models_dict, device, is_oracle=False, covariance=False):
         super(RNNNLLNAR, self).__init__()
