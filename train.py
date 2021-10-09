@@ -94,7 +94,10 @@ def train_model(
             # forward + backward + optimize
             teacher_forcing_ratio = args.teacher_forcing_ratio
             #teacher_force = True if random.random() <= teacher_forcing_ratio else False
-            if model_name in ['trans-nll-atr', 'rnn-mse-ar', 'rnn-nll-ar']:
+            if model_name in [
+                'trans-nll-atr', 'rnn-mse-ar', 'rnn-nll-ar',
+                'gpt-nll-ar', 'gpt-mse-ar'
+            ]:
                 teacher_force = True
             else:
                 teacher_force = False
@@ -136,6 +139,8 @@ def train_model(
             if model_name in [
                     'seq2seqnll', 'convnll', 'rnn-nll-nar', 'rnn-nll-ar',
                     'trans-mse-ar', 'trans-nll-ar',
+                    'gpt-nll-ar', 'gpt-mse-ar',
+                    'gpt-nll-nar', 'gpt-mse-nar',
                     'trans-fnll-ar', 'rnn-fnll-nar',
                     'transm-nll-nar', 'transm-fnll-nar',
                     'transda-nll-nar', 'transda-fnll-nar',

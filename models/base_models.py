@@ -529,6 +529,239 @@ class ARTransformerModel(nn.Module):
             elif self.estimate_type in ['bivariate']:
                 return (mean_out[..., -self.dec_len:, :], std_out[..., -self.dec_len:, :], rho_out)
 
+class GPTTransformerModel(nn.Module):
+    def __init__(
+            self, dec_len, feats_info, estimate_type, use_feats, t2v_type,
+            v_dim, kernel_size, nkernel, is_nar, device, is_signature=False
+        ):
+        super(GPTTransformerModel, self).__init__()
+
+        self.dec_len = dec_len
+        self.feats_info = feats_info
+        self.estimate_type = estimate_type
+        self.use_feats = use_feats
+        self.t2v_type = t2v_type
+        self.v_dim = v_dim
+        self.device = device
+        self.is_signature = is_signature
+        self.d_transform_typ = 'conv'
+        self.f_transform_typ = 'conv'
+        self.is_nar = is_nar
+
+        self.kernel_size = kernel_size
+        self.nkernel = nkernel
+
+        self.positional = PositionalEncoding(d_model=nkernel)
+        if self.is_nar:
+            self.warm_start = self.dec_len - self.kernel_size
+        else:
+            self.warm_start = 0
+
+        if self.use_feats:
+            self.embed_feat_layers = {}
+            for idx, (card, emb_size) in self.feats_info.items():
+                if card != -1 and card != 0:
+                    self.embed_feat_layers[str(idx)] = nn.Embedding(card, emb_size)
+            self.embed_feat_layers = nn.ModuleDict(self.embed_feat_layers)
+            feats_dim = sum([s for (_, s) in self.feats_info.values() if s!=-1])
+
+            if self.f_transform_typ in ['linear']:
+                self.f_transform_lyr = nn.Linear(feats_dim, feats_dim)
+            elif self.f_transform_typ in ['conv']:
+                self.f_transform_lyr = nn.Conv1d(
+                    kernel_size=self.kernel_size, stride=1,
+                    in_channels=feats_dim, out_channels=feats_dim,
+                )
+
+            self.linear_map = nn.Linear(feats_dim+self.nkernel, self.nkernel)
+
+        if self.d_transform_typ in ['linear']:
+            self.d_transform_lyr = nn.Linear(1, nkernel)
+        elif self.d_transform_typ in ['conv']:
+            self.d_transform_lyr = nn.Conv1d(
+                kernel_size=self.kernel_size, stride=1, in_channels=1, out_channels=nkernel,
+            )
+
+        enc_input_size = nkernel
+        self.encoder_layer = nn.TransformerEncoderLayer(
+            d_model=enc_input_size, nhead=4, dropout=0, dim_feedforward=512
+        )
+        self.encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=2)
+
+        dec_input_size = nkernel
+        self.decoder_layer = nn.TransformerDecoderLayer(
+            d_model=dec_input_size, nhead=4, dropout=0, dim_feedforward=512
+        )
+        self.decoder_mean = nn.TransformerDecoder(self.decoder_layer, num_layers=2)
+        if self.estimate_type in ['variance', 'covariance', 'bivariate']:
+            self.decoder_std = nn.TransformerDecoder(self.decoder_layer, num_layers=2)
+        if self.estimate_type in ['bivariate']:
+            self.decoder_bv = nn.TransformerDecoder(self.decoder_layer, num_layers=2)
+
+        self.linear_mean = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, 1))
+        if self.estimate_type in ['variance', 'covariance', 'bivariate']:
+            self.linear_std = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, 1))
+        if self.estimate_type in ['covariance']:
+            self.linear_v = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, self.v_dim))
+        if self.estimate_type in ['bivariate']:
+            self.rho_layer = nn.Linear(nkernel, 2)
+
+    def merge_feats(self, feats):
+        feats_merged = []
+        for idx, efl in self.embed_feat_layers.items():
+            feats_i = feats[..., int(idx)].type(torch.LongTensor).to(self.device)
+            feats_merged.append(efl(feats_i))
+        for idx, (card, emb_size) in self.feats_info.items():
+            if card == 0:
+                feats_merged.append(feats[..., idx:idx+1])
+        feats_merged = torch.cat(feats_merged, dim=2)
+        return feats_merged
+
+    def pad_for_conv(self, x, trf_type):
+        if trf_type in ['conv']:
+            x_padded = torch.cat(
+                [
+                    torch.zeros(
+                        (x.shape[0], self.kernel_size-1, x.shape[2]),
+                        dtype=torch.float, device=self.device
+                    ),
+                    x
+                ],
+                dim=1
+            )
+        elif trf_type in ['linear']:
+            x_padded = x
+        return x_padded
+
+    def d_transform(self, x):
+        if self.d_transform_typ in ['linear']:
+            x_transform = self.d_transform_lyr(x)
+        elif self.d_transform_typ in ['conv']:
+            x_transform = self.d_transform_lyr(x.transpose(1,2)).transpose(1,2)
+
+        return x_transform
+
+    def f_transform(self, x):
+        if self.f_transform_typ in ['linear']:
+            x_transform = self.f_transform_lyr(x)
+        elif self.f_transform_typ in ['conv']:
+            x_transform = self.f_transform_lyr(x.transpose(1,2)).transpose(1,2)
+
+        return x_transform
+
+    def forward(
+        self, feats_in, X_in, feats_out, X_out=None, teacher_force=None
+    ):
+
+        mean = X_in.mean(dim=1, keepdim=True)
+        X_in = (X_in - mean)
+
+        X_in_transformed = self.d_transform(self.pad_for_conv(X_in, self.d_transform_typ))
+        if self.use_feats:
+            feats_in_merged = self.merge_feats(feats_in)
+            feats_in_transformed = self.f_transform(
+                self.pad_for_conv(feats_in_merged, self.f_transform_typ)
+            )
+            enc_input = self.linear_map(torch.cat([feats_in_transformed, X_in_transformed], dim=-1))
+        else:
+            enc_input = X_in_transformed
+        encoder_output = self.encoder(self.positional(enc_input.transpose(0,1)))
+
+        #import ipdb ; ipdb.set_trace()
+        if self.d_transform_typ in ['linear']: ps = 1 + self.warm_start
+        elif self.d_transform_typ in ['conv']: ps = self.kernel_size + self.warm_start
+        lps = X_in.shape[1] - ps + int(self.is_nar)
+        if self.use_feats:
+            if self.f_transform_typ in ['linear']: f_ps = 1 + self.warm_start
+            elif self.f_transform_typ in ['conv']: f_ps = self.kernel_size + self.warm_start
+            lf_ps = X_in.shape[1] - f_ps + int(self.is_nar)
+
+        if self.is_nar: out_len = self.dec_len
+        else: out_len = self.dec_len - 1
+
+        #if X_out is not None:
+        if self.is_nar==True or X_out is not None:
+            if self.is_nar==True:
+                X_out = torch.zeros(
+                    (X_in.shape[0], self.dec_len, X_in.shape[2]),
+                    dtype=torch.float, device=self.device
+                )
+            X_out_padded = torch.cat([X_in[..., lps:, :], X_out[..., :out_len, :]], dim=1)
+            X_out_transformed = self.d_transform(X_out_padded)
+            if self.use_feats:
+                feats_out_padded = torch.cat(
+                    [feats_in[..., lf_ps:, :], feats_out[..., :out_len, :]],
+                    dim=1
+                )
+                feats_out_merged = self.merge_feats(feats_out_padded)
+                feats_out_transformed = self.f_transform(feats_out_merged)
+                #import ipdb ; ipdb.set_trace()
+                dec_input = self.linear_map(
+                    torch.cat([feats_out_transformed, X_out_transformed], dim=-1)
+                )
+            else:
+                dec_input = X_out_transformed
+            #dec_input = torch.cat([enc_input[..., ps:, :], dec_input[..., :out_len, :]], dim=1)
+            #dec_input = dec_input[..., :, :]
+            dec_input = self.positional(dec_input.transpose(0,1))
+            #import ipdb ; ipdb.set_trace()
+
+            decoder_output = self.decoder_mean(dec_input, encoder_output)#.clamp(min=0)
+            decoder_output = decoder_output.transpose(0,1)
+            mean_out = self.linear_mean(decoder_output)
+
+            if self.estimate_type in ['variance', 'covariance', 'bivariate']:
+                X_pred = self.decoder_std(dec_input, encoder_output)#.clamp(min=0)
+                X_pred = X_pred.transpose(0,1)
+                std_out = F.softplus(self.linear_std(X_pred))
+
+        else:
+            std_out = []
+            #import ipdb ; ipdb.set_trace()
+            mean_out = list(torch.split(X_in[..., -ps:, :], 1, dim=1))
+            if self.use_feats:
+                f_padded = torch.cat([feats_in[..., -f_ps:, :], feats_out[..., :out_len, :]], dim=1)
+            for i in range(0, self.dec_len):
+                x_i = torch.cat(mean_out[-ps:], dim=1)
+                x_i_transformed = self.d_transform(x_i)
+                if self.use_feats:
+                    f_i = f_padded[..., i:i+ps, :]
+                    f_i_merged = self.merge_feats(f_i)
+                    f_i_transformed = self.f_transform(f_i_merged)
+                    dec_input = self.linear_map(torch.cat([f_i_transformed, x_i_transformed], dim=-1))
+                else:
+                    dec_input = x_i_transformed
+                dec_input = self.positional(dec_input.transpose(0,1), start_idx=i)
+                #import ipdb ; ipdb.set_trace()
+
+                decoder_output = self.decoder_mean(dec_input, encoder_output)#.clamp(min=0)
+                decoder_output = decoder_output.transpose(0,1)
+                mean_out_ = self.linear_mean(decoder_output)
+
+                if self.estimate_type in ['variance', 'covariance', 'bivariate']:
+                    X_pred = self.decoder_std(dec_input, encoder_output)#.clamp(min=0)
+                    X_pred = X_pred.transpose(0,1)
+                    std_out_ = F.softplus(self.linear_std(X_pred))
+
+                mean_out.append(mean_out_)
+                if self.estimate_type in ['variance']:
+                    std_out.append(std_out_)
+
+            #import ipdb ; ipdb.set_trace()
+            mean_out = torch.cat(mean_out, 1)
+            if self.estimate_type in ['variance']:
+                std_out = torch.cat(std_out, 1)
+
+        mean_out = mean_out + mean
+
+        mean_out = mean_out[..., -self.dec_len:, :]
+        if self.estimate_type in ['variance']:
+            std_out = std_out[..., -self.dec_len:, :]
+
+        if self.estimate_type in ['point']:
+            return mean_out
+        elif self.estimate_type in ['variance']:
+            return (mean_out, std_out)
 
 class ATRTransformerModel(nn.Module):
     def __init__(
@@ -2225,6 +2458,18 @@ def get_base_model(
                 N_output, feats_info, estimate_type, args.use_feats,
                 args.t2v_type, args.v_dim,
                 kernel_size=10, nkernel=32, device=args.device
+            ).to(args.device)
+    elif base_model_name in ['gpt-nll-ar', 'gpt-mse-ar']:
+            net_gru = GPTTransformerModel(
+                N_output, feats_info, estimate_type, args.use_feats,
+                args.t2v_type, args.v_dim,
+                kernel_size=10, nkernel=32, is_nar=False, device=args.device
+            ).to(args.device)
+    elif base_model_name in ['gpt-nll-nar', 'gpt-mse-nar']:
+            net_gru = GPTTransformerModel(
+                N_output, feats_info, estimate_type, args.use_feats,
+                args.t2v_type, args.v_dim,
+                kernel_size=10, nkernel=32, is_nar=True, device=args.device
             ).to(args.device)
     elif base_model_name in ['trans-nll-atr']:
             net_gru = ATRTransformerModel(

@@ -1510,7 +1510,7 @@ def parse_aggtest(dataset_name, N_input, N_output, t2v_type=None):
 
     feats_info = {0:(24, 16)}
     i = len(feats_info)
-    for j in range(i, i+feats_date[0,0].shape[0]):
+    for j in range(i, data_train[0]['feats'].shape[-1]):
         feats_info[j] = (-1, -1)
 
     return (

@@ -135,7 +135,7 @@ parser.add_argument('--device', type=str,
 # parameters for ablation study
 parser.add_argument('--leak_agg_targets', action='store_true', default=False,
                     help='If True, aggregate targets are leaked to inference models')
-parser.add_argument('--patience', type=int, default=50,
+parser.add_argument('--patience', type=int, default=20,
                     help='Stop the training if no improvement shown for these many \
                           consecutive steps.')
 #parser.add_argument('--seed', type=int,
@@ -184,7 +184,11 @@ args.base_model_names = [
 #    'rnn-mse-ar',
 #    'rnn-nll-ar',
 #    'trans-mse-ar',
-    'trans-nll-ar',
+#    'trans-nll-ar',
+    'gpt-nll-ar',
+#    'gpt-mse-ar',
+    'gpt-nll-nar',
+#    'gpt-mse-nar',
 #    'trans-bvnll-ar',
 #    'trans-nll-atr',
 #    'trans-fnll-ar',
@@ -299,6 +303,14 @@ if 'trans-nll-ar' in args.base_model_names:
     #args.inference_model_names.append('trans-nll-ar_kl-sum')
     args.inference_model_names.append('trans-nll-ar_kl-st')
     #args.inference_model_names.append('trans-nll-ar_covkl-st')
+if 'gpt-nll-ar' in args.base_model_names:
+    args.inference_model_names.append('GPT-NLL-AR')
+if 'gpt-mse-ar' in args.base_model_names:
+    args.inference_model_names.append('GPT-MSE-AR')
+if 'gpt-nll-nar' in args.base_model_names:
+    args.inference_model_names.append('GPT-NLL-NAR')
+if 'gpt-mse-nar' in args.base_model_names:
+    args.inference_model_names.append('GPT-MSE-NAR')
 if 'trans-bvnll-ar' in args.base_model_names:
     args.inference_model_names.append('TRANS-BVNLL-AR')
     #args.inference_model_names.append('trans-bvnll-ar_opt-sum')
@@ -484,7 +496,7 @@ elif args.dataset_name == 'electricity':
     if args.lr_inf == -1: args.lr_inf = 0.01
 
 elif args.dataset_name == 'aggtest':
-    if args.epochs == -1: args.epochs = 1
+    if args.epochs == -1: args.epochs = 20
     if args.N_input == -1: args.N_input = 20
     if args.N_output == -1: args.N_output = 10
     #args.K_list = [12]
@@ -493,16 +505,17 @@ elif args.dataset_name == 'aggtest':
         args.saved_models_dir = 'saved_models_aggtest_test'
     if args.output_dir is None:
         args.output_dir = 'Outputs_aggtest_test'
-    if args.normalize is None: args.normalize = 'same'
-    if args.learning_rate == -1.: args.learning_rate = 0.001
-    if args.batch_size == -1: args.batch_size = 100
-    if args.hidden_size == -1: args.hidden_size = 128
+    if args.normalize is None: args.normalize = 'zscore_per_series'
+    if args.learning_rate == -1.: args.learning_rate = 0.005
+    if args.batch_size == -1: args.batch_size = 10
+    if args.hidden_size == -1: args.hidden_size = 32
     if args.num_grulstm_layers == -1: args.num_grulstm_layers = 1
     if args.v_dim == -1: args.v_dim = 4
     if args.b == -1: args.b = args.N_output
     if args.use_feats == -1: args.use_feats = 1
     if args.device is None: args.device = 'cuda:2'
     if args.cv_inf == -1: args.cv_inf = 1
+    if args.lr_inf == -1: args.lr_inf = 0.01
 
 
 elif args.dataset_name == 'Traffic911':
@@ -620,13 +633,15 @@ for base_model_name in args.base_model_names:
 
             if base_model_name in [
                 'seq2seqmse', 'seq2seqdilate', 'convmse', 'convmsenonar',
-                'rnn-mse-nar', 'rnn-mse-ar', 'trans-mse-nar', 'nbeats-mse-nar',
+                'rnn-mse-nar', 'rnn-mse-ar', 'trans-mse-nar',
+                'gpt-mse-ar', 'gpt-mse-nar', 'nbeats-mse-nar',
                 'nbeatsd-mse-nar', 'trans-mse-ar', 'oracle', 'oracleforecast',
             ]:
                 estimate_type = 'point'
             elif base_model_name in [
                 'seq2seqnll', 'convnll', 'trans-q-nar', 'rnn-q-nar', 'rnn-q-ar',
                 'rnn-nll-nar', 'rnn-nll-ar', 'rnn-aggnll-nar', 'trans-nll-ar',
+                'gpt-nll-ar', 'gpt-nll-nar',
                 'transm-nll-nar', 'transda-nll-nar', 'transsig-nll-nar', 'trans-nll-atr'
             ]:
                 estimate_type = 'variance'
@@ -1053,6 +1068,22 @@ def run_inference_model(
             K_list, base_models_dict, agg_method, args.lr_inf, device=args.device, opt_normspace=False,
             covariance=True
         )
+
+    elif inf_model_name in ['GPT-NLL-AR']:
+        base_models_dict = base_models['gpt-nll-ar']
+        inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device)
+
+    elif inf_model_name in ['GPT-MSE-AR']:
+        base_models_dict = base_models['gpt-mse-ar']
+        inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device)
+
+    elif inf_model_name in ['GPT-NLL-NAR']:
+        base_models_dict = base_models['gpt-nll-nar']
+        inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device)
+
+    elif inf_model_name in ['GPT-MSE-NAR']:
+        base_models_dict = base_models['gpt-mse-nar']
+        inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device)
 
     elif inf_model_name in ['TRANS-BVNLL-AR']:
         base_models_dict = base_models['trans-bvnll-ar']
