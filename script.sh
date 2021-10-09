@@ -116,8 +116,8 @@
 
 #python main.py ett \
 #	--N_input 384 --N_output 192 \
-#	--saved_models_dir aaai_saved_models_ett_e384_d192_chunkfix_3_lr1e5_prunelastday_rp \
-#	--output_dir aaai_Outputs_ett_e384_d192_chunkfix_3_lr1e5_prunelastday_rp \
+#	--saved_models_dir aaai_saved_models_ett_e384_d192_gpt \
+#	--output_dir aaai_Outputs_ett_e384_d192_gpt \
 #	--K_list 1 4 6 12 \
 #	--cv_inf 0 \
 #	--device cuda:2
@@ -132,16 +132,16 @@
 
 #python main.py etthourly \
 #	--N_input 168 --N_output 168 \
-#	--saved_models_dir aaai_saved_models_etthourly_e168_d168_9_lr1e5_prunelastday_rp \
-#	--output_dir aaai_Outputs_etthourly_e168_d168_9_lr1e5_prunelastday_rp \
+#	--saved_models_dir aaai_saved_models_etthourly_e168_d168_gpt \
+#	--output_dir aaai_Outputs_etthourly_e168_d168_gpt \
 #	--K_list 1 2 6 \
 #	--cv_inf 0 \
 #	--device cuda:1
 #
 #python main.py electricity \
 #	--N_input 336 --N_output 168 \
-#	--saved_models_dir aaai_saved_models_electricity_e336_d168_testprune_2_rp \
-#	--output_dir aaai_Outputs_electricity_e336_d168_testprune_2_rp \
+#	--saved_models_dir aaai_saved_models_electricity_e336_d168_gpt_conv_feats_nar_warmst \
+#	--output_dir aaai_Outputs_electricity_e336_d168_gpt_conv_feats_nar_warmst \
 #	--K_list 1 2 6 12 \
 #	--cv_inf 0 \
 #	--device cuda:1
@@ -153,6 +153,14 @@ python main.py foodinflation \
 	--K_list 1 \
 	--cv_inf 0 \
 	--device cuda:0
+
+#python main.py aggtest \
+#	--N_input 20 --N_output 20 \
+#	--saved_models_dir aaai_saved_models_aggtest_e20_d20_gpt_conv_feats_nar \
+#	--output_dir aaai_Outputs_aggtest_e20_d20_gpt_conv_feats_nar \
+#	--K_list 1 \
+#	--cv_inf 0 \
+#	--device cuda:0
 
 # Commands for Oracle and SimRetrieval
 #python main.py ett \
