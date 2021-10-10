@@ -558,12 +558,17 @@ class GPTTransformerModel(nn.Module):
             self.warm_start = 0
 
         if self.use_feats:
+            self.use_local_weights = False
             self.embed_feat_layers = {}
             for idx, (card, emb_size) in self.feats_info.items():
-                if card != -1 and card != 0:
+                if card != -1 and card != 0 and emb_size > 0:
                     self.embed_feat_layers[str(idx)] = nn.Embedding(card, emb_size)
+                elif emb_size == -2:
+                    self.use_local_weights = True
+                    self.tsid_idx = idx
+                    self.num_local_weights = card
             self.embed_feat_layers = nn.ModuleDict(self.embed_feat_layers)
-            feats_dim = sum([s for (_, s) in self.feats_info.values() if s!=-1])
+            feats_dim = sum([s for (_, s) in self.feats_info.values() if s>-1])
 
             if self.f_transform_typ in ['linear']:
                 self.f_transform_lyr = nn.Linear(feats_dim, feats_dim)
@@ -598,9 +603,23 @@ class GPTTransformerModel(nn.Module):
         if self.estimate_type in ['bivariate']:
             self.decoder_bv = nn.TransformerDecoder(self.decoder_layer, num_layers=2)
 
-        self.linear_mean = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, 1))
+        if self.use_local_weights:
+            #self.linear_mean = []
+            #for i in range(self.num_local_weights):
+            #    self.linear_mean.append(nn.Sequential(nn.ReLU(), nn.Linear(nkernel, 1)))
+            #self.linear_mean = nn.ModuleList(self.linear_mean)
+            self.linear_mean = nn.Embedding(self.num_local_weights, nkernel)
+        else:
+            self.linear_mean = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, 1))
         if self.estimate_type in ['variance', 'covariance', 'bivariate']:
-            self.linear_std = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, 1))
+            if self.use_local_weights:
+                #self.linear_std = []
+                #for i in range(self.num_local_weights):
+                #    self.linear_std.append(nn.Sequential(nn.ReLU(), nn.Linear(nkernel, 1)))
+                #self.linear_std = nn.ModuleList(self.linear_std)
+                self.linear_std = nn.Embedding(self.num_local_weights, nkernel)
+            else:
+                self.linear_std = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, 1))
         if self.estimate_type in ['covariance']:
             self.linear_v = nn.Sequential(nn.ReLU(), nn.Linear(nkernel, self.v_dim))
         if self.estimate_type in ['bivariate']:
@@ -654,6 +673,7 @@ class GPTTransformerModel(nn.Module):
     ):
 
         mean = X_in.mean(dim=1, keepdim=True)
+        #mean, _ = X_in.min(dim=1, keepdim=True)
         X_in = (X_in - mean)
 
         X_in_transformed = self.d_transform(self.pad_for_conv(X_in, self.d_transform_typ))
@@ -708,12 +728,28 @@ class GPTTransformerModel(nn.Module):
 
             decoder_output = self.decoder_mean(dec_input, encoder_output)#.clamp(min=0)
             decoder_output = decoder_output.transpose(0,1)
-            mean_out = self.linear_mean(decoder_output)
+            if self.use_local_weights:
+                local_indices = feats_out[..., self.tsid_idx].type(torch.LongTensor).to(self.device)
+                local_weights = self.linear_mean(local_indices)
+                decoder_output = decoder_output[..., -self.dec_len:, :]
+                #import ipdb ; ipdb.set_trace()
+                mean_out = (decoder_output * local_weights).sum(-1, keepdims=True)
+                #mean_out = torch.einsum('ijk,ilk->ij', (local_weights, decoder_output)).unsqueeze(-1)
+            else:
+                mean_out = self.linear_mean(decoder_output)
 
             if self.estimate_type in ['variance', 'covariance', 'bivariate']:
                 X_pred = self.decoder_std(dec_input, encoder_output)#.clamp(min=0)
                 X_pred = X_pred.transpose(0,1)
-                std_out = F.softplus(self.linear_std(X_pred))
+                if self.use_local_weights:
+                    local_indices = feats_out[..., self.tsid_idx].type(torch.LongTensor).to(self.device)
+                    local_weights = self.linear_std(local_indices)
+                    X_pred = X_pred[..., -self.dec_len:, :]
+                    std_out = (X_pred * local_weights).sum(-1, keepdims=True)
+                    #std_out = torch.einsum('ijk,ilk->ij', (local_weights, X_pred)).unsqueeze(-1)
+                    std_out = F.softplus(std_out)
+                else:
+                    std_out = F.softplus(self.linear_std(X_pred))
 
         else:
             std_out = []
@@ -725,7 +761,7 @@ class GPTTransformerModel(nn.Module):
                 x_i = torch.cat(mean_out[-ps:], dim=1)
                 x_i_transformed = self.d_transform(x_i)
                 if self.use_feats:
-                    f_i = f_padded[..., i:i+ps, :]
+                    f_i = f_padded[..., i:i+f_ps, :]
                     f_i_merged = self.merge_feats(f_i)
                     f_i_transformed = self.f_transform(f_i_merged)
                     dec_input = self.linear_map(torch.cat([f_i_transformed, x_i_transformed], dim=-1))
@@ -736,12 +772,25 @@ class GPTTransformerModel(nn.Module):
 
                 decoder_output = self.decoder_mean(dec_input, encoder_output)#.clamp(min=0)
                 decoder_output = decoder_output.transpose(0,1)
-                mean_out_ = self.linear_mean(decoder_output)
+                if self.use_local_weights:
+                    local_indices = f_padded[..., f_ps+i:f_ps+i+1, self.tsid_idx].type(torch.LongTensor).to(self.device)
+                    local_weights = self.linear_mean(local_indices)
+                    decoder_output = decoder_output[..., -self.dec_len:, :]
+                    mean_out_ = (decoder_output * local_weights).sum(-1, keepdims=True)
+                else:
+                    mean_out_ = self.linear_mean(decoder_output)
 
                 if self.estimate_type in ['variance', 'covariance', 'bivariate']:
                     X_pred = self.decoder_std(dec_input, encoder_output)#.clamp(min=0)
                     X_pred = X_pred.transpose(0,1)
-                    std_out_ = F.softplus(self.linear_std(X_pred))
+                    if self.use_local_weights:
+                        local_indices = f_padded[..., f_ps+i:f_ps+i+1, self.tsid_idx].type(torch.LongTensor).to(self.device)
+                        local_weights = self.linear_std(local_indices)
+                        X_pred = X_pred[..., -self.dec_len:, :]
+                        std_out_ = (X_pred * local_weights).sum(-1, keepdims=True)
+                        std_out_ = F.softplus(std_out_)
+                    else:
+                        std_out_ = F.softplus(self.linear_std(X_pred))
 
                 mean_out.append(mean_out_)
                 if self.estimate_type in ['variance']:
@@ -2463,13 +2512,13 @@ def get_base_model(
             net_gru = GPTTransformerModel(
                 N_output, feats_info, estimate_type, args.use_feats,
                 args.t2v_type, args.v_dim,
-                kernel_size=10, nkernel=32, is_nar=False, device=args.device
+                kernel_size=args.kernel_size, nkernel=args.nkernel, is_nar=False, device=args.device
             ).to(args.device)
     elif base_model_name in ['gpt-nll-nar', 'gpt-mse-nar']:
             net_gru = GPTTransformerModel(
                 N_output, feats_info, estimate_type, args.use_feats,
                 args.t2v_type, args.v_dim,
-                kernel_size=10, nkernel=32, is_nar=True, device=args.device
+                kernel_size=args.kernel_size, nkernel=args.nkernel, is_nar=True, device=args.device
             ).to(args.device)
     elif base_model_name in ['trans-nll-atr']:
             net_gru = ATRTransformerModel(

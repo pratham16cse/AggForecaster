@@ -116,43 +116,51 @@
 
 #python main.py ett \
 #	--N_input 384 --N_output 192 \
-#	--saved_models_dir aaai_saved_models_ett_e384_d192_gpt \
-#	--output_dir aaai_Outputs_ett_e384_d192_gpt \
+#	--saved_models_dir aaai_saved_models_ett_e384_d192_gpt_normmin \
+#	--output_dir aaai_Outputs_ett_e384_d192_gpt_normmin \
 #	--K_list 1 4 6 12 \
 #	--cv_inf 0 \
-#	--device cuda:2
+#	--device cuda:0
 
 #python main.py Solar \
 #	--N_input 336 --N_output 168 \
-#	--saved_models_dir aaai_saved_models_Solar_e336_d168_2_rp \
-#	--output_dir aaai_Outputs_Solar_e336_d168_2_rp \
+#	--saved_models_dir aaai_saved_models_Solar_e336_d168_gpt_normmin \
+#	--output_dir aaai_Outputs_Solar_e336_d168_gpt_normmin \
 #	--K_list 1 2 6 12 \
 #	--cv_inf 0 \
-#	--device cuda:2
+#	--device cuda:1
 
 #python main.py etthourly \
 #	--N_input 168 --N_output 168 \
-#	--saved_models_dir aaai_saved_models_etthourly_e168_d168_gpt \
-#	--output_dir aaai_Outputs_etthourly_e168_d168_gpt \
+#	--saved_models_dir aaai_saved_models_etthourly_e168_d168_gpt_normmin \
+#	--output_dir aaai_Outputs_etthourly_e168_d168_gpt_normmin \
 #	--K_list 1 2 6 \
 #	--cv_inf 0 \
 #	--device cuda:1
 #
 #python main.py electricity \
 #	--N_input 336 --N_output 168 \
-#	--saved_models_dir aaai_saved_models_electricity_e336_d168_gpt_conv_feats_nar_warmst \
-#	--output_dir aaai_Outputs_electricity_e336_d168_gpt_conv_feats_nar_warmst \
+#	--saved_models_dir aaai_saved_models_electricity_e336_d168_gpt_normmin \
+#	--output_dir aaai_Outputs_electricity_e336_d168_gpt_normmin \
 #	--K_list 1 2 6 12 \
 #	--cv_inf 0 \
 #	--device cuda:1
 
-python main.py foodinflation \
-	--N_input 90 --N_output 30 \
-	--saved_models_dir saved_models_foodinflation_dow \
-	--output_dir Outputs_foodinflation_dow \
-	--K_list 1 \
-	--cv_inf 0 \
-	--device cuda:0
+#python main.py foodinflation \
+#	--N_input 90 --N_output 30 \
+#	--saved_models_dir saved_models_foodinflation_gpt_small_normzs_shiftmin \
+#	--output_dir Outputs_foodinflation_gpt_small_normzs_shiftmin \
+#	--K_list 1 \
+#	--cv_inf 0 \
+#	--device cuda:1
+
+#python main.py foodinflationmonthly \
+#	--N_input 12 --N_output 3 \
+#	--saved_models_dir saved_models_foodinflationmonthly_gpt_small_normzs_shiftmin \
+#	--output_dir Outputs_foodinflationmonthly_gpt_small_normzs_shiftmin \
+#	--K_list 1 \
+#	--cv_inf 0 \
+#	--device cuda:1
 
 #python main.py aggtest \
 #	--N_input 20 --N_output 20 \

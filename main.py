@@ -52,7 +52,9 @@ parser.add_argument('--ignore_ckpt', action='store_true', default=False,
                     help='Start the training without loading the checkpoint')
 
 parser.add_argument('--normalize', type=str, default=None,
-                    choices=['same', 'zscore_per_series', 'gaussian_copula', 'log'],
+                    choices=[
+                        'same', 'zscore_per_series', 'gaussian_copula', 'log', 'zeroshift_per_series'
+                    ],
                     help='Normalization type (avg, avg_per_series, quantile90, std)')
 parser.add_argument('--epochs', type=int, default=-1,
                     help='number of training epochs')
@@ -143,10 +145,11 @@ parser.add_argument('--patience', type=int, default=20,
 #                    default=42)
 
 # Parameters for ARTransformerModel
-parser.add_argument('--kernel_size', type=int, default=10,
+parser.add_argument('--kernel_size', type=int, default=-1,
                     help='Kernel Size of Conv (in ARTransformerModel)')
-parser.add_argument('--nkernel', type=int, default=32,
+parser.add_argument('--nkernel', type=int, default=-1,
                     help='Number of kernels of Conv (in ARTransformerModel)')
+
 parser.add_argument('--dim_ff', type=int, default=512,
                     help='Dimension of Feedforward (in ARTransformerModel)')
 parser.add_argument('--nhead', type=int, default=4,
@@ -184,7 +187,7 @@ args.base_model_names = [
 #    'rnn-mse-ar',
 #    'rnn-nll-ar',
 #    'trans-mse-ar',
-#    'trans-nll-ar',
+    'trans-nll-ar',
     'gpt-nll-ar',
 #    'gpt-mse-ar',
     'gpt-nll-nar',
@@ -305,10 +308,14 @@ if 'trans-nll-ar' in args.base_model_names:
     #args.inference_model_names.append('trans-nll-ar_covkl-st')
 if 'gpt-nll-ar' in args.base_model_names:
     args.inference_model_names.append('GPT-NLL-AR')
+    args.inference_model_names.append('gpt-nll-ar_opt-st')
+    args.inference_model_names.append('gpt-nll-ar_kl-st')
 if 'gpt-mse-ar' in args.base_model_names:
     args.inference_model_names.append('GPT-MSE-AR')
 if 'gpt-nll-nar' in args.base_model_names:
     args.inference_model_names.append('GPT-NLL-NAR')
+    args.inference_model_names.append('gpt-nll-nar_opt-st')
+    args.inference_model_names.append('gpt-nll-nar_kl-st')
 if 'gpt-mse-nar' in args.base_model_names:
     args.inference_model_names.append('GPT-MSE-NAR')
 if 'trans-bvnll-ar' in args.base_model_names:
@@ -369,7 +376,8 @@ if args.dataset_name == 'ett':
         args.saved_models_dir = 'saved_models_ett_d192_b24_e192_corrshuffle_bs128_seplayers_nodeczeros_nodecconv_t2v_usefeats_t2vglobal_idx_val20'
     if args.output_dir is None:
         args.output_dir = 'Outputs_ett_d192_klnorm_b24_e192_corrshuffle_bs128_seplayers_nodeczeros_nodecconv_t2v_usefeats_t2vglobal_idx_val20'
-    if args.normalize is None: args.normalize = 'zscore_per_series'
+    #if args.normalize is None: args.normalize = 'zscore_per_series'
+    if args.normalize is None: args.normalize = 'min_per_series'
     if args.learning_rate == -1.: args.learning_rate = 0.00001
     if args.batch_size == -1: args.batch_size = 64
     if args.hidden_size  == -1: args.hidden_size = 128
@@ -381,6 +389,8 @@ if args.dataset_name == 'ett':
     if args.device is None: args.device = 'cuda:2'
     if args.cv_inf == -1: args.cv_inf = 1
     if args.lr_inf == -1: args.lr_inf = 0.01
+    if args.kernel_size == -1: args.kernel_size = 10
+    if args.nkernel == -1: args.nkernel = 32
     #python main.py ett --epochs 20 --N_input 192 --N_output 192 --K_list 6 --saved_models_dir saved_models_ett_d192 --output_dir Outputs_ett_d192_klnorm --normalize zscore_per_series --learning_rate 0.0001 --batch_size 64 --hidden_size 128 --num_grulstm_layers 1 --device cuda:0
 
 elif args.dataset_name == 'taxi30min':
@@ -404,6 +414,8 @@ elif args.dataset_name == 'taxi30min':
     if args.device is None: args.device = 'cuda:2'
     if args.cv_inf == -1: args.cv_inf = 1
     if args.lr_inf == -1: args.lr_inf = 0.01
+    if args.kernel_size == -1: args.kernel_size = 10
+    if args.nkernel == -1: args.nkernel = 32
 
 elif args.dataset_name == 'etthourly':
     if args.epochs == -1: args.epochs = 50
@@ -415,7 +427,8 @@ elif args.dataset_name == 'etthourly':
         args.saved_models_dir = 'saved_models_etthourly_noextrafeats_d168_b24_pefix_e168_val20_corrshuffle_seplayers_nodeczeros_nodecconv_t2v'
     if args.output_dir is None:
         args.output_dir = 'Outputs_etthourly_noextrafeats_d168_klnorm_b24_pefix_e168_val20_corrshuffle_seplayers_nodeczeros_nodecconv_t2v'
-    if args.normalize is None: args.normalize = 'zscore_per_series'
+    #if args.normalize is None: args.normalize = 'zscore_per_series'
+    if args.normalize is None: args.normalize = 'min_per_series'
     if args.learning_rate == -1.: args.learning_rate = 0.00001
     if args.batch_size == -1: args.batch_size = 64
     if args.hidden_size == -1: args.hidden_size = 128
@@ -427,6 +440,8 @@ elif args.dataset_name == 'etthourly':
     if args.device is None: args.device = 'cuda:2'
     if args.cv_inf == -1: args.cv_inf = 1
     if args.lr_inf == -1: args.lr_inf = 0.01
+    if args.kernel_size == -1: args.kernel_size = 10
+    if args.nkernel == -1: args.nkernel = 32
 
 elif args.dataset_name == 'azure':
     if args.epochs == -1: args.epochs = 20
@@ -450,6 +465,8 @@ elif args.dataset_name == 'azure':
     #args.t2v_type = None
     if args.device is None: args.device = 'cuda:0'
     if args.cv_inf == -1: args.cv_inf = 1
+    if args.kernel_size == -1: args.kernel_size = 10
+    if args.nkernel == -1: args.nkernel = 32
 
 elif args.dataset_name == 'Solar':
     if args.epochs == -1: args.epochs = 20
@@ -461,7 +478,8 @@ elif args.dataset_name == 'Solar':
         args.saved_models_dir = 'saved_models_Solar_d168_b4_e336_corrshuffle_seplayers_nodeczeros_nodecconv_t2v'
     if args.output_dir is None:
         args.output_dir = 'Outputs_Solar_d168_normzscore_klnorm_b4_e336_corrshuffle_seplayers_nodeczeros_nodecconv_t2v'
-    if args.normalize is None: args.normalize = 'zscore_per_series'
+    #if args.normalize is None: args.normalize = 'zscore_per_series'
+    if args.normalize is None: args.normalize = 'min_per_series'
     if args.learning_rate == -1: args.learning_rate = 0.0001
     if args.batch_size == -1: args.batch_size = 64
     if args.hidden_size == -1: args.hidden_size = 128
@@ -472,6 +490,8 @@ elif args.dataset_name == 'Solar':
     if args.device is None: args.device = 'cuda:1'
     if args.cv_inf == -1: args.cv_inf = 1
     if args.lr_inf == -1: args.lr_inf = 0.001
+    if args.kernel_size == -1: args.kernel_size = 10
+    if args.nkernel == -1: args.nkernel = 32
 
 elif args.dataset_name == 'electricity':
     if args.epochs == -1: args.epochs = 20
@@ -483,7 +503,8 @@ elif args.dataset_name == 'electricity':
         args.saved_models_dir = 'saved_models_electricity'
     if args.output_dir is None:
         args.output_dir = 'Outputs_electricity'
-    if args.normalize is None: args.normalize = 'zscore_per_series'
+    #if args.normalize is None: args.normalize = 'zscore_per_series'
+    if args.normalize is None: args.normalize = 'min_per_series'
     if args.learning_rate == -1: args.learning_rate = 0.0001
     if args.batch_size == -1: args.batch_size = 64
     if args.hidden_size == -1: args.hidden_size = 128
@@ -494,6 +515,8 @@ elif args.dataset_name == 'electricity':
     if args.device is None: args.device = 'cuda:1'
     if args.cv_inf == -1: args.cv_inf = 1
     if args.lr_inf == -1: args.lr_inf = 0.01
+    if args.kernel_size == -1: args.kernel_size = 10
+    if args.nkernel == -1: args.nkernel = 32
 
 elif args.dataset_name == 'aggtest':
     if args.epochs == -1: args.epochs = 20
@@ -516,6 +539,8 @@ elif args.dataset_name == 'aggtest':
     if args.device is None: args.device = 'cuda:2'
     if args.cv_inf == -1: args.cv_inf = 1
     if args.lr_inf == -1: args.lr_inf = 0.01
+    if args.kernel_size == -1: args.kernel_size = 10
+    if args.nkernel == -1: args.nkernel = 32
 
 
 elif args.dataset_name == 'Traffic911':
@@ -544,7 +569,7 @@ elif args.dataset_name == 'foodinflation':
         args.saved_models_dir = 'saved_models_foodinflation'
     if args.output_dir is None:
         args.output_dir = 'Outputs_foodinflation'
-    if args.normalize is None: args.normalize = 'zscore_per_series'
+    if args.normalize is None: args.normalize = 'zeroshift_per_series'
     if args.learning_rate == -1: args.learning_rate = 0.0001
     if args.batch_size == -1: args.batch_size = 64
     if args.hidden_size == -1: args.hidden_size = 128
@@ -555,6 +580,33 @@ elif args.dataset_name == 'foodinflation':
     if args.device is None: args.device = 'cuda:1'
     if args.cv_inf == -1: args.cv_inf = 1
     if args.lr_inf == -1: args.lr_inf = 0.01
+    if args.kernel_size == -1: args.kernel_size = 10
+    if args.nkernel == -1: args.nkernel = 32
+
+elif args.dataset_name == 'foodinflationmonthly':
+    if args.epochs == -1: args.epochs = 100
+    if args.N_input == -1: args.N_input = 90
+    if args.N_output == -1: args.N_output = 30
+    #args.K_list = [12]
+    if args.K_list == []: args.K_list = []
+    if args.saved_models_dir is None:
+        args.saved_models_dir = 'saved_models_foodinflation'
+    if args.output_dir is None:
+        args.output_dir = 'Outputs_foodinflation'
+    if args.normalize is None: args.normalize = 'zeroshift_per_series'
+    if args.learning_rate == -1: args.learning_rate = 0.0001
+    if args.batch_size == -1: args.batch_size = 64
+    if args.hidden_size == -1: args.hidden_size = 32
+    if args.num_grulstm_layers == -1: args.num_grulstm_layers = 1
+    if args.v_dim == -1: args.v_dim = 4
+    if args.b == -1: args.b = 4
+    if args.use_feats == -1: args.use_feats = 1
+    if args.device is None: args.device = 'cuda:1'
+    if args.cv_inf == -1: args.cv_inf = 1
+    if args.lr_inf == -1: args.lr_inf = 0.01    
+    if args.kernel_size == -1: args.kernel_size = 2
+    if args.nkernel == -1: args.nkernel = 32
+
 
 if 1 not in args.K_list:
     args.K_list = [1] + args.K_list
@@ -1077,9 +1129,46 @@ def run_inference_model(
         base_models_dict = base_models['gpt-mse-ar']
         inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device)
 
+    elif inf_model_name in ['gpt-nll-ar_opt-st']:
+        base_models_dict = base_models['gpt-nll-ar']
+        agg_method = ['sum', 'slope'] if agg_method is None else agg_method
+        K_list = args.K_list if K is None else K
+        inf_net = inf_models.KLInferenceSGD(
+            K_list, base_models_dict, agg_method, args.lr_inf, device=args.device,
+            solve_mean=True, solve_std=False, opt_normspace=False,
+        )
+
+    elif inf_model_name in ['gpt-nll-ar_kl-st']:
+        base_models_dict = base_models['gpt-nll-ar']
+        agg_method = ['sum', 'slope'] if agg_method is None else agg_method
+        K_list = args.K_list if K is None else K
+        inf_net = inf_models.KLInferenceSGD(
+            K_list, base_models_dict, agg_method, args.lr_inf, device=args.device,
+            solve_mean=True, solve_std=True, opt_normspace=False, kldirection='qp'
+        )
+
+
     elif inf_model_name in ['GPT-NLL-NAR']:
         base_models_dict = base_models['gpt-nll-nar']
         inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device)
+
+    elif inf_model_name in ['gpt-nll-nar_opt-st']:
+        base_models_dict = base_models['gpt-nll-nar']
+        agg_method = ['sum', 'slope'] if agg_method is None else agg_method
+        K_list = args.K_list if K is None else K
+        inf_net = inf_models.KLInferenceSGD(
+            K_list, base_models_dict, agg_method, args.lr_inf, device=args.device,
+            solve_mean=True, solve_std=False, opt_normspace=False,
+        )
+
+    elif inf_model_name in ['gpt-nll-nar_kl-st']:
+        base_models_dict = base_models['gpt-nll-nar']
+        agg_method = ['sum', 'slope'] if agg_method is None else agg_method
+        K_list = args.K_list if K is None else K
+        inf_net = inf_models.KLInferenceSGD(
+            K_list, base_models_dict, agg_method, args.lr_inf, device=args.device,
+            solve_mean=True, solve_std=True, opt_normspace=False, kldirection='qp'
+        )
 
     elif inf_model_name in ['GPT-MSE-NAR']:
         base_models_dict = base_models['gpt-mse-nar']

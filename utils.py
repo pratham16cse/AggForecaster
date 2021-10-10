@@ -14,7 +14,7 @@ from statsmodels.tsa.seasonal import seasonal_decompose
 import time
 
 from data.synthetic_dataset import create_synthetic_dataset, create_sin_dataset, SyntheticDataset
-from data.real_dataset import parse_ECG5000, parse_Traffic, parse_Taxi, parse_Traffic911, parse_gc_datasets, parse_weather, parse_bafu, parse_meteo, parse_azure, parse_ett, parse_sin_noisy, parse_Solar, parse_etthourly, parse_m4hourly, parse_m4daily, parse_taxi30min, parse_aggtest, parse_electricity, parse_foodinflation
+from data.real_dataset import parse_ECG5000, parse_Traffic, parse_Taxi, parse_Traffic911, parse_gc_datasets, parse_weather, parse_bafu, parse_meteo, parse_azure, parse_ett, parse_sin_noisy, parse_Solar, parse_etthourly, parse_m4hourly, parse_m4daily, parse_taxi30min, parse_aggtest, parse_electricity, parse_foodinflation, parse_foodinflationmonthly
 
 
 to_float_tensor = lambda x: torch.FloatTensor(x.copy())
@@ -119,6 +119,20 @@ class Normalizer(object):
             self.mean = torch.stack(list(self.mean), dim=0)
             self.std = torch.stack(list(self.std), dim=0)
             self.std = self.std.clamp(min=1., max=None)
+        elif norm_type in ['zeroshift_per_series']:
+            self.first = map(lambda x: x[0:1], data) #data.mean(1, keepdims=True)
+            self.std = map(lambda x: x.std(0, keepdims=True), data)
+            #import ipdb ; ipdb.set_trace()
+            self.first = torch.stack(list(self.first), dim=0)
+            self.std = torch.stack(list(self.std), dim=0)
+            self.std = self.std.clamp(min=1., max=None)
+        elif norm_type in ['min_per_series']:
+            self.first = map(lambda x: x.min(0, keepdims=True)[0], data)
+            self.std = map(lambda x: x.std(0, keepdims=True), data)
+            #import ipdb ; ipdb.set_trace()
+            self.first = torch.stack(list(self.first), dim=0)
+            self.std = torch.stack(list(self.std), dim=0)
+            self.std = self.std.clamp(min=1., max=None)
         elif norm_type in ['log']:
             pass
         elif norm_type in ['gaussian_copula']:
@@ -154,6 +168,11 @@ class Normalizer(object):
                 data_norm = (data - self.mean[ids]) / self.std[ids]
             else:
                 data_norm = data / self.std[ids]
+        elif self.norm_type in ['zeroshift_per_series', 'min_per_series']:
+            if not is_var:
+                data_norm = (data - self.first[ids]) / self.std[ids]
+            else:
+                data_norm = data / self.std[ids]
         elif self.norm_type in ['log']:
             data_norm = torch.log(data)
         elif self.norm_type in ['gaussian_copula']:
@@ -184,6 +203,11 @@ class Normalizer(object):
         elif self.norm_type in ['zscore_per_series']:
             if not is_var:
                 data_unnorm = data * self.std[ids] + self.mean[ids]
+            else:
+                data_unnorm = data * self.std[ids]
+        elif self.norm_type in ['zeroshift_per_series', 'min_per_series']:
+            if not is_var:
+                data_unnorm = data * self.std[ids] + self.first[ids] 
             else:
                 data_unnorm = data * self.std[ids]
         elif self.norm_type in ['gaussian_copula']:
@@ -953,6 +977,12 @@ class DataProcessor(object):
                 dev_tsid_map, test_tsid_map,
                 feats_info
             ) = parse_foodinflation(args.dataset_name, args.N_input, args.N_output, t2v_type=args.t2v_type)
+        elif args.dataset_name in ['foodinflationmonthly']:
+            (
+                data_train, data_dev, data_test,
+                dev_tsid_map, test_tsid_map,
+                feats_info
+            ) = parse_foodinflationmonthly(args.dataset_name, args.N_input, args.N_output, t2v_type=args.t2v_type)
 
 
         if args.use_feats:
