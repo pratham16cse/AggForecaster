@@ -141,6 +141,7 @@ def train_model(
                     'trans-mse-ar', 'trans-nll-ar',
                     'gpt-nll-ar', 'gpt-mse-ar',
                     'gpt-nll-nar', 'gpt-mse-nar',
+                    'informer-mse-nar',
                     'trans-fnll-ar', 'rnn-fnll-nar',
                     'transm-nll-nar', 'transm-fnll-nar',
                     'transda-nll-nar', 'transda-fnll-nar',

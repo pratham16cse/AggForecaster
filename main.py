@@ -188,10 +188,11 @@ args.base_model_names = [
 #    'rnn-nll-ar',
 #    'trans-mse-ar',
     'trans-nll-ar',
-    'gpt-nll-ar',
+#    'gpt-nll-ar',
 #    'gpt-mse-ar',
-    'gpt-nll-nar',
+#    'gpt-nll-nar',
 #    'gpt-mse-nar',
+#    'informer-mse-nar',
 #    'trans-bvnll-ar',
 #    'trans-nll-atr',
 #    'trans-fnll-ar',
@@ -318,6 +319,8 @@ if 'gpt-nll-nar' in args.base_model_names:
     args.inference_model_names.append('gpt-nll-nar_kl-st')
 if 'gpt-mse-nar' in args.base_model_names:
     args.inference_model_names.append('GPT-MSE-NAR')
+if 'informer-mse-nar' in args.base_model_names:
+    args.inference_model_names.append('INFORMER-MSE-NAR')
 if 'trans-bvnll-ar' in args.base_model_names:
     args.inference_model_names.append('TRANS-BVNLL-AR')
     #args.inference_model_names.append('trans-bvnll-ar_opt-sum')
@@ -392,6 +395,7 @@ if args.dataset_name == 'ett':
     if args.kernel_size == -1: args.kernel_size = 10
     if args.nkernel == -1: args.nkernel = 32
     #python main.py ett --epochs 20 --N_input 192 --N_output 192 --K_list 6 --saved_models_dir saved_models_ett_d192 --output_dir Outputs_ett_d192_klnorm --normalize zscore_per_series --learning_rate 0.0001 --batch_size 64 --hidden_size 128 --num_grulstm_layers 1 --device cuda:0
+    args.freq = '15min'
 
 elif args.dataset_name == 'taxi30min':
     if args.epochs == -1: args.epochs = 20
@@ -442,6 +446,7 @@ elif args.dataset_name == 'etthourly':
     if args.lr_inf == -1: args.lr_inf = 0.01
     if args.kernel_size == -1: args.kernel_size = 10
     if args.nkernel == -1: args.nkernel = 32
+    args.freq = 'h'
 
 elif args.dataset_name == 'azure':
     if args.epochs == -1: args.epochs = 20
@@ -478,8 +483,8 @@ elif args.dataset_name == 'Solar':
         args.saved_models_dir = 'saved_models_Solar_d168_b4_e336_corrshuffle_seplayers_nodeczeros_nodecconv_t2v'
     if args.output_dir is None:
         args.output_dir = 'Outputs_Solar_d168_normzscore_klnorm_b4_e336_corrshuffle_seplayers_nodeczeros_nodecconv_t2v'
-    #if args.normalize is None: args.normalize = 'zscore_per_series'
-    if args.normalize is None: args.normalize = 'min_per_series'
+    if args.normalize is None: args.normalize = 'zscore_per_series'
+    #if args.normalize is None: args.normalize = 'min_per_series'
     if args.learning_rate == -1: args.learning_rate = 0.0001
     if args.batch_size == -1: args.batch_size = 64
     if args.hidden_size == -1: args.hidden_size = 128
@@ -492,6 +497,7 @@ elif args.dataset_name == 'Solar':
     if args.lr_inf == -1: args.lr_inf = 0.001
     if args.kernel_size == -1: args.kernel_size = 10
     if args.nkernel == -1: args.nkernel = 32
+    args.freq = 'h'
 
 elif args.dataset_name == 'electricity':
     if args.epochs == -1: args.epochs = 20
@@ -503,8 +509,8 @@ elif args.dataset_name == 'electricity':
         args.saved_models_dir = 'saved_models_electricity'
     if args.output_dir is None:
         args.output_dir = 'Outputs_electricity'
-    #if args.normalize is None: args.normalize = 'zscore_per_series'
-    if args.normalize is None: args.normalize = 'min_per_series'
+    if args.normalize is None: args.normalize = 'zscore_per_series'
+    #if args.normalize is None: args.normalize = 'min_per_series'
     if args.learning_rate == -1: args.learning_rate = 0.0001
     if args.batch_size == -1: args.batch_size = 64
     if args.hidden_size == -1: args.hidden_size = 128
@@ -517,6 +523,7 @@ elif args.dataset_name == 'electricity':
     if args.lr_inf == -1: args.lr_inf = 0.01
     if args.kernel_size == -1: args.kernel_size = 10
     if args.nkernel == -1: args.nkernel = 32
+    args.freq = 'h'
 
 elif args.dataset_name == 'aggtest':
     if args.epochs == -1: args.epochs = 20
@@ -686,7 +693,9 @@ for base_model_name in args.base_model_names:
             if base_model_name in [
                 'seq2seqmse', 'seq2seqdilate', 'convmse', 'convmsenonar',
                 'rnn-mse-nar', 'rnn-mse-ar', 'trans-mse-nar',
-                'gpt-mse-ar', 'gpt-mse-nar', 'nbeats-mse-nar',
+                'gpt-mse-ar', 'gpt-mse-nar',
+                'informer-mse-nar',
+                'nbeats-mse-nar',
                 'nbeatsd-mse-nar', 'trans-mse-ar', 'oracle', 'oracleforecast',
             ]:
                 estimate_type = 'point'
@@ -1172,6 +1181,10 @@ def run_inference_model(
 
     elif inf_model_name in ['GPT-MSE-NAR']:
         base_models_dict = base_models['gpt-mse-nar']
+        inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device)
+
+    elif inf_model_name in ['INFORMER-MSE-NAR']:
+        base_models_dict = base_models['informer-mse-nar']
         inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device)
 
     elif inf_model_name in ['TRANS-BVNLL-AR']:

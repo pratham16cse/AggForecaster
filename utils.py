@@ -443,7 +443,7 @@ def get_a(agg_type, K):
     elif agg_type in ['diff']:
         l = K // 2
         a_ = torch.ones(K)
-        a = torch.cat([-1.*a_[:l], a_[l:]], dim=0)
+        a = 1./K * torch.cat([-1.*a_[:l], a_[l:]], dim=0)
     return a
 
 def aggregate_window(y, a, is_var, v=None):

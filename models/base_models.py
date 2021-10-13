@@ -8,6 +8,7 @@ from torch.distributions.normal import Normal
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 
 from models import transformer_manual_attn, transformer_dual_attn
+from models import informer
 
 class NBEATS_D(nn.Module):
     def __init__(
@@ -2519,6 +2520,31 @@ def get_base_model(
                 N_output, feats_info, estimate_type, args.use_feats,
                 args.t2v_type, args.v_dim,
                 kernel_size=args.kernel_size, nkernel=args.nkernel, is_nar=True, device=args.device
+            ).to(args.device)
+    elif base_model_name in ['informer-mse-nar']:
+            net_gru = informer.Informer(
+                enc_in=1,
+                dec_in=1,
+                c_out=1,
+                seq_len=N_input,
+                label_len=N_output,
+                out_len=N_output,
+                factor=5,
+                d_model=512,
+                n_heads=8,
+                e_layers=2,
+                d_layers=1,
+                d_ff=2048,
+                dropout=0.05,
+                attn='prob',
+                embed='fixed',
+                freq=args.freq,
+                activation='gelu',
+                output_attention=False,
+                distil=True,
+                mix=True,
+                feats_info=feats_info,
+                device=args.device
             ).to(args.device)
     elif base_model_name in ['trans-nll-atr']:
             net_gru = ATRTransformerModel(
