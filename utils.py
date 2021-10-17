@@ -452,7 +452,11 @@ def aggregate_window(y, a, is_var, v=None):
     else:
         w_d = (a**2*y).sum(dim=1, keepdims=True)
         if v is not None:
-            w_v = (((a.unsqueeze(-1)*v).sum(-1)**2)).sum(dim=1, keepdims=True)
+            #w_v = (((a.unsqueeze(-1)*v).sum(-1)**2)).sum(dim=1, keepdims=True)
+            #av = a.unsqueeze(-1)*v
+            #av = torch.matmul(av, av.transpose(-2,-1))
+            #w_v = (((av).sum(-1)**2)).sum(dim=1, keepdims=True)
+            w_v = (((a.unsqueeze(-1)*v)**2).sum(-1)).sum(dim=1, keepdims=True)
             y_a = w_d + w_v
         else:
             y_a = w_d

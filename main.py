@@ -297,16 +297,17 @@ if 'trans-mse-ar' in args.base_model_names:
     args.inference_model_names.append('TRANS-MSE-AR')
 if 'trans-nll-ar' in args.base_model_names:
     args.inference_model_names.append('TRANS-NLL-AR')
-    #args.inference_model_names.append('trans-nll-ar_opt-sum')
+    args.inference_model_names.append('trans-nll-ar_opt-sum')
     #args.inference_model_names.append('trans-nll-ar_optcf-sum')
     #args.inference_model_names.append('trans-nll-ar_optcf-slope')
     #args.inference_model_names.append('trans-nll-ar_optcf-haar')
     #args.inference_model_names.append('trans-nll-ar_optcf-st')
     #args.inference_model_names.append('trans-nll-ar_opt-slope')
     args.inference_model_names.append('trans-nll-ar_opt-st')
-    #args.inference_model_names.append('trans-nll-ar_kl-sum')
+    args.inference_model_names.append('trans-nll-ar_kl-sum')
     args.inference_model_names.append('trans-nll-ar_kl-st')
-    #args.inference_model_names.append('trans-nll-ar_covkl-st')
+    args.inference_model_names.append('trans-nll-ar_covkl-sum')
+    args.inference_model_names.append('trans-nll-ar_covkl-st')
 if 'gpt-nll-ar' in args.base_model_names:
     args.inference_model_names.append('GPT-NLL-AR')
     args.inference_model_names.append('gpt-nll-ar_opt-st')
@@ -494,7 +495,7 @@ elif args.dataset_name == 'Solar':
     if args.use_feats == -1: args.use_feats = 1
     if args.device is None: args.device = 'cuda:1'
     if args.cv_inf == -1: args.cv_inf = 1
-    if args.lr_inf == -1: args.lr_inf = 0.001
+    if args.lr_inf == -1: args.lr_inf = 0.0005
     if args.kernel_size == -1: args.kernel_size = 10
     if args.nkernel == -1: args.nkernel = 32
     args.freq = 'h'
@@ -1042,10 +1043,14 @@ def run_inference_model(
         inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device)
 
     elif inf_model_name in ['trans-nll-ar_opt-sum']:
-        agg_method = ['sum'] if agg_method is None else agg_method
         base_models_dict = base_models['trans-nll-ar']
+        agg_method = ['sum'] if agg_method is None else agg_method
         K_list = args.K_list if K is None else K
-        inf_net = inf_models.DualTPP(K_list, base_models_dict, agg_method, device=args.device)
+        inf_net = inf_models.KLInferenceSGD(
+            K_list, base_models_dict, agg_method, args.lr_inf, device=args.device,
+            solve_mean=True, solve_std=False, opt_normspace=False,
+        )
+
 
     elif inf_model_name in ['trans-nll-ar_optcf-sum']:
         base_models_dict = base_models['trans-nll-ar']
@@ -1099,23 +1104,28 @@ def run_inference_model(
         base_models_dict = base_models['trans-nll-ar']
         agg_method = ['sum'] if agg_method is None else agg_method
         K_list = args.K_list if K is None else K
-        #inf_net = inf_models.KLInference(
-        #    K_list, base_models_dict, agg_method, device=args.device, opt_normspace=opt_normspace
-        #)
         inf_net = inf_models.KLInferenceSGD(
-            K_list, base_models_dict, agg_method, args.lr_inf, device=args.device, opt_normspace=False
+            K_list, base_models_dict, agg_method, args.lr_inf, device=args.device,
+            solve_mean=True, solve_std=True, opt_normspace=False, kldirection='qp'
         )
 
     elif inf_model_name in ['trans-nll-ar_kl-st']:
         base_models_dict = base_models['trans-nll-ar']
         agg_method = ['sum', 'slope'] if agg_method is None else agg_method
         K_list = args.K_list if K is None else K
-        #inf_net = inf_models.KLInference(
-        #    K_list, base_models_dict, agg_method, device=args.device, opt_normspace=opt_normspace
-        #)
         inf_net = inf_models.KLInferenceSGD(
             K_list, base_models_dict, agg_method, args.lr_inf, device=args.device,
             solve_mean=True, solve_std=True, opt_normspace=False, kldirection='qp'
+        )
+
+    elif inf_model_name in ['trans-nll-ar_covkl-sum']:
+        base_models_dict = base_models['trans-nll-ar']
+        agg_method = ['sum'] if agg_method is None else agg_method
+        K_list = args.K_list if K is None else K
+        inf_net = inf_models.KLInferenceSGD(
+            K_list, base_models_dict, agg_method, args.lr_inf, device=args.device,
+            solve_mean=True, solve_std=True, opt_normspace=False, kldirection='qp',
+            covariance=True
         )
 
     elif inf_model_name in ['trans-nll-ar_covkl-st']:
@@ -1126,7 +1136,8 @@ def run_inference_model(
         #    K_list, base_models_dict, agg_method, device=args.device, opt_normspace=opt_normspace
         #)
         inf_net = inf_models.KLInferenceSGD(
-            K_list, base_models_dict, agg_method, args.lr_inf, device=args.device, opt_normspace=False,
+            K_list, base_models_dict, agg_method, args.lr_inf, device=args.device,
+            solve_mean=True, solve_std=True, opt_normspace=False, kldirection='qp',
             covariance=True
         )
 
@@ -1542,7 +1553,7 @@ for base_model_name in args.base_model_names:
             (
                 test_inputs, test_target, pred_mu, pred_std,
                 metric_dilate, metric_mse, metric_dtw, metric_tdi,
-                metric_crps, metric_mae, metric_crps_part, metric_nll, metric_ql
+                metric_crps, metric_mae, metric_crps_part, metric_nll
             ) = eval_base_model(
                 args, base_model_name, base_models[base_model_name][agg_method][K],
                 loader, norm, args.gamma, verbose=1, unnorm=True

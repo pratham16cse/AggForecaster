@@ -83,39 +83,45 @@ class RNNNLLNAR(torch.nn.Module):
                 if mdl.estimate_type in ['point']:
                     pred_mu, _, _ = out
                 elif mdl.estimate_type in ['variance']:
-                    pred_mu, pred_d, _, _ = out
+                    pred_mu, pred_std, _, _ = out
                 elif mdl.estimate_type in ['covariance']:
-                    pred_mu, pred_d, pred_v, _, _ = out
+                    pred_mu, pred_std, pred_v, _, _ = out
                 elif mdl.estimate_type in ['bivariate']:
-                    pred_mu, pred_d, _, _, _ = out
+                    pred_mu, pred_std, _, _, _ = out
             else:
                 if mdl.estimate_type in ['point']:
                     pred_mu = out
                 elif mdl.estimate_type in ['variance']:
-                    pred_mu, pred_d = out
+                    pred_mu, pred_std = out
                 elif mdl.estimate_type in ['covariance']:
-                    pred_mu, pred_d, pred_v = out
+                    pred_mu, pred_std, pred_v = out
                 elif mdl.estimate_type in ['bivariate']:
-                    pred_mu, pred_d, _ = out
+                    pred_mu, pred_std, _ = out
         pred_mu = pred_mu.cpu()
 
         if mdl.estimate_type in ['covariance']:
-            pred_d = pred_d.cpu()
+            pred_std = pred_std.cpu()
+            pred_d = pred_std**2
             pred_v = pred_v.cpu()
 
             dist = torch.distributions.lowrank_multivariate_normal.LowRankMultivariateNormal(
                 torch.squeeze(pred_mu, dim=-1), pred_v, torch.squeeze(pred_d, dim=-1)
             )
-            pred_std = torch.diagonal(dist.covariance_matrix, dim1=-2, dim2=-1).unsqueeze(dim=-1)
+            pred_std = torch.sqrt(
+                torch.diagonal(dist.covariance_matrix, dim1=-2, dim2=-1).unsqueeze(dim=-1)
+            )
             if which_split in ['test']:
+                raise NotImplementedError
                 pred_std = norms['sum'][1].unnormalize(pred_std[..., 0], ids=ids, is_var=True).unsqueeze(-1)
         elif mdl.estimate_type in ['variance', 'bivariate']:
-            pred_d = pred_d.cpu()
-            pred_std = pred_d
+            pred_std = pred_std.cpu()
+            pred_d = pred_std**2
             pred_v = torch.ones_like(pred_mu) * 1e-9
             if which_split in ['test']:
-                pred_std = norms['sum'][1].unnormalize(pred_std[..., 0], ids=ids, is_var=True).unsqueeze(-1)
-                pred_d = pred_std**2
+                pred_std = torch.sqrt(
+                    norms['sum'][1].unnormalize(pred_d[..., 0], ids=ids, is_var=True).unsqueeze(-1)
+                )
+                pred_d = norms['sum'][1].unnormalize(pred_d[..., 0], ids=ids, is_var=True).unsqueeze(-1)
         else:
             pred_d = torch.ones_like(pred_mu) * 1e-9
             pred_v = torch.ones_like(pred_mu) * 1e-9
@@ -123,6 +129,8 @@ class RNNNLLNAR(torch.nn.Module):
 
         if which_split in ['test']:
             pred_mu = norms['sum'][1].unnormalize(pred_mu[..., 0], ids=ids, is_var=False).unsqueeze(-1)
+
+        #import ipdb ; ipdb.set_trace()
 
         return (pred_mu, pred_d, pred_v, pred_std)
 
@@ -992,35 +1000,42 @@ class KLInferenceSGD(torch.nn.Module):
                             feats_tgt.to(self.device)
                         )
                     elif model.estimate_type in ['variance']:
-                        means, d = model(
+                        means, stds = model(
                             feats_in.to(self.device), inputs.to(self.device),
                             feats_tgt.to(self.device)
                         )
                     elif model.estimate_type in ['covariance']:
-                        means, d, v = model(
+                        means, stds, v = model(
                             feats_in.to(self.device), inputs.to(self.device),
                             feats_tgt.to(self.device)
                         )
                     elif model.estimate_type in ['bivariate']:
-                        means, d, _ = model(
+                        means, stds, _ = model(
                             feats_in.to(self.device), inputs.to(self.device),
                             feats_tgt.to(self.device)
                         )
 
                 means = means.cpu()
                 if model.estimate_type is 'covariance':
-                    d = d.cpu()
+                    stds = stds.cpu()
+                    d = stds**2
                     v = v.cpu()
 
                     dist = torch.distributions.lowrank_multivariate_normal.LowRankMultivariateNormal(
                         means.squeeze(dim=-1), v, d.squeeze(dim=-1)
                     )
-                    stds = torch.diagonal(dist.covariance_matrix, dim1=-2, dim2=-1).unsqueeze(dim=-1)
+                    stds = torch.sqrt(
+                        torch.diagonal(dist.covariance_matrix, dim1=-2, dim2=-1).unsqueeze(dim=-1)
+                    )
                 elif model.estimate_type in ['variance', 'bivariate']:
-                    stds = d.cpu()
+                    stds = stds.cpu()
+                    d = stds**2
                     v = torch.ones_like(means) * 1e-9
                     if not self.opt_normspace:
-                        stds = norms[agg][level].unnormalize(stds[..., 0], ids=ids, is_var=True).unsqueeze(-1)
+                        stds = torch.sqrt(
+                            norms[agg][level].unnormalize(d[..., 0], ids=ids, is_var=True).unsqueeze(-1)
+                        )
+                        d = norms['sum'][1].unnormalize(d[..., 0], ids=ids, is_var=True).unsqueeze(-1)
                 else:
                     d = torch.ones_like(means) * 1e-9
                     v = torch.ones_like(means) * 1e-9
@@ -1123,8 +1138,11 @@ class KLInferenceSGD(torch.nn.Module):
         else:
             self.x_v = x_v
 
+    def x_dc(self):
+        return self.x_d.clamp(min=1e-4)
+
     def x_var(self):
-        return self.x_d + (self.x_v**2).sum(dim=-1)
+        return self.x_dc() + (self.x_v**2).sum(dim=-1)
 
     def KL_loss(self, x_mu, x_var, mu, std):
         #import ipdb ; ipdb.set_trace()
@@ -1186,6 +1204,8 @@ class KLInferenceSGD(torch.nn.Module):
                         x_mu_dict[agg], x_var_dict[agg] = {}, {}
                         for lvl in self.K_list:
 
+                            params = params_dict[agg][lvl]
+
                             base_lvl_present = False
                             if lvl==1: # If lvl=1 present in other aggregates, ignore it
                                 #import ipdb ; ipdb.set_trace()
@@ -1194,50 +1214,45 @@ class KLInferenceSGD(torch.nn.Module):
                                     if x_mu_dict.get(other_agg, -1) is not -1:
                                         base_lvl_present = True
 
-                            if not base_lvl_present:
-                                #x_mu_dict[agg][lvl], x_var_dict[agg][lvl] = {}, {}
-                                #print(s, agg, lvl)
-                                lvl_x_mu, lvl_x_var = [], []
-                                if lvl != 1:
-                                    for i in range(0, N, lvl):
-                                        lvl_x_mu.append(
-                                            utils.aggregate_window(
-                                                self.x_mu[bch:bch+opt_bs, i:i+lvl],
-                                                a_dict[agg][lvl], False,
-                                            )
-                                        )
-                                        if self.covariance:
-                                            v_for_agg = self.x_v[bch:bch+opt_bs, i:i+lvl]
-                                        else:
-                                            v_for_agg = None
-                                        lvl_x_var.append(
-                                            utils.aggregate_window(
-                                                self.x_d[bch:bch+opt_bs, i:i+lvl],
-                                                a_dict[agg][lvl], True, 
-                                                v_for_agg,
-                                            )
-                                        )
-                                    x_mu_dict[agg][lvl] = lvl_x_mu
-                                    x_var_dict[agg][lvl] = lvl_x_var
-
-                            #for lvl, params in params_dict[agg].items():
-                                params = params_dict[agg][lvl]
-                                #import ipdb ; ipdb.set_trace()
-                                if lvl==1:
+                            if not base_lvl_present and lvl==1:
                                     opt_loss += self.KL_loss(
                                         self.x_mu[bch:bch+opt_bs],
                                         self.x_var()[bch:bch+opt_bs],
                                         params[0][bch:bch+opt_bs, ..., 0].detach(),
                                         params[1][bch:bch+opt_bs, ..., 0].detach()
                                     )
-                                else:
-                                    for idx, _ in enumerate(range(0, N, lvl)):
-                                        opt_loss += self.KL_loss(
-                                            x_mu_dict[agg][lvl][idx],
-                                            x_var_dict[agg][lvl][idx],
-                                            params[0][bch:bch+opt_bs, idx:idx+1, 0].detach(),
-                                            params[1][bch:bch+opt_bs, idx:idx+1, 0].detach()
+
+                            lvl_x_mu, lvl_x_var = [], []
+                            if lvl != 1:
+                                for i in range(0, N, lvl):
+                                    lvl_x_mu.append(
+                                        utils.aggregate_window(
+                                            self.x_mu[bch:bch+opt_bs, i:i+lvl],
+                                            a_dict[agg][lvl], False,
                                         )
+                                    )
+                                    if self.covariance:
+                                        v_for_agg = self.x_v[bch:bch+opt_bs, i:i+lvl]
+                                    else:
+                                        v_for_agg = None
+                                    lvl_x_var.append(
+                                        utils.aggregate_window(
+                                            self.x_dc()[bch:bch+opt_bs, i:i+lvl],
+                                            a_dict[agg][lvl], True, 
+                                            v_for_agg,
+                                        )
+                                    )
+                                x_mu_dict[agg][lvl] = lvl_x_mu
+                                x_var_dict[agg][lvl] = lvl_x_var
+
+                                #import ipdb ; ipdb.set_trace()
+                                for idx, _ in enumerate(range(0, N, lvl)):
+                                    opt_loss += self.KL_loss(
+                                        x_mu_dict[agg][lvl][idx],
+                                        x_var_dict[agg][lvl][idx],
+                                        params[0][bch:bch+opt_bs, idx:idx+1, 0].detach(),
+                                        params[1][bch:bch+opt_bs, idx:idx+1, 0].detach()
+                                    )
                     #import ipdb ; ipdb.set_trace() 
                     optimizer.zero_grad()
                     opt_loss.backward()
@@ -1261,7 +1276,8 @@ class KLInferenceSGD(torch.nn.Module):
                     condition = (
                         opt_grad<=1e-2 \
                         #or (torch.abs(opt_loss_prev - opt_loss)/opt_loss_prev).item() <= 1e-2 \
-                        or (torch.abs(opt_grad_prev - opt_grad)).item() <= 1e-2
+                        #or (torch.abs(opt_grad_prev - opt_grad)).item() <= 1e-2
+                        or (s>=10000)
                     )
                     #condition = opt_grad<=1e-2 or (torch.abs(opt_loss_prev - opt_loss)/opt_loss_prev).item() <= 1e-2
                     if condition:
@@ -1275,7 +1291,7 @@ class KLInferenceSGD(torch.nn.Module):
                 all_preds_mu.append(self.x_mu.unsqueeze(dim=-1))
                 #all_preds_std.append(torch.sqrt(self.x_d.unsqueeze(dim=-1)))
                 all_preds_std.append(torch.sqrt(self.x_var().unsqueeze(dim=-1)))
-                all_preds_d.append(self.x_d.unsqueeze(dim=-1))
+                all_preds_d.append(self.x_dc().unsqueeze(dim=-1))
                 all_preds_v.append(self.x_v)
 
         #all_preds_mu = torch.FloatTensor(x_mu.value).unsqueeze(dim=-1)
@@ -1303,6 +1319,9 @@ class KLInferenceSGD(torch.nn.Module):
         #    all_preds_std = norms[base_lvl][1].normalize(
         #        all_preds_std[..., 0], ids=ids_dict[base_lvl][1], is_var=True
         #    )
+
+        #if self.covariance:
+        #    import ipdb ; ipdb.set_trace()
 
 
         #return all_preds_mu, d, v, all_preds_std

@@ -120,7 +120,7 @@
 #	--N_input 384 --N_output 192 \
 #	--saved_models_dir aaai_saved_models_ett_e384_d192_gpt_normmin \
 #	--output_dir aaai_Outputs_ett_e384_d192_gpt_normmin \
-#	--K_list 1 4 6 12 \
+#	--K_list 1 6 12 \
 #	--cv_inf 0 \
 #	--device cuda:0
 #done
@@ -131,7 +131,7 @@
 #	--N_input 336 --N_output 168 \
 #	--saved_models_dir aaai_saved_models_Solar_e336_d168_2_rp \
 #	--output_dir aaai_Outputs_Solar_e336_d168_2_rp \
-#	--K_list 1 2 6 12 \
+#	--K_list 1 6 \
 #	--cv_inf 0 \
 #	--device cuda:1
 #done
@@ -142,7 +142,7 @@
 #	--N_input 168 --N_output 168 \
 #	--saved_models_dir aaai_saved_models_etthourly_e168_d168_gpt_normmin \
 #	--output_dir aaai_Outputs_etthourly_e168_d168_gpt_normmin \
-#	--K_list 1 2 6 \
+#	--K_list 1 6 \
 #	--cv_inf 0 \
 #	--device cuda:2
 #done
@@ -153,7 +153,7 @@
 #	--N_input 336 --N_output 168 \
 #	--saved_models_dir aaai_saved_models_electricity_e336_d168_testprune_2_rp \
 #	--output_dir aaai_Outputs_electricity_e336_d168_testprune_2_rp \
-#	--K_list 1 2 6 12 \
+#	--K_list 1 6 12 \
 #	--cv_inf 0 \
 #	--device cuda:1
 #done

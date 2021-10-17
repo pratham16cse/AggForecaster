@@ -7,9 +7,6 @@ from loss.dilate_loss import dilate_loss
 import properscoring as ps
 import time
 
-import train
-
-
 def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1, unnorm=False):
 
     inputs, target, pred_mu, pred_std, pred_d, pred_v = [], [], [], [], [], []
@@ -184,16 +181,6 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1, unnor
         dist = torch.distributions.normal.Normal(pred_mu, pred_std)
         loss_nll = -torch.mean(dist.log_prob(target)).item()
 
-    quantiles = torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9], dtype=torch.float)
-    #quantiles = torch.tensor([0.1, 0.5, 0.9], dtype=torch.float)
-    #quantiles = torch.tensor([0.45, 0.5, 0.55], dtype=torch.float)
-    quantile_weights = torch.ones_like(quantiles, dtype=torch.float)
-    #quantile_weights = torch.tensor([1., 1., 1.], dtype=torch.float)
-    loss_ql = train.QuantileLoss(
-        quantiles, quantile_weights
-    )(target, pred_mu, pred_std).item()
-
-
     metric_dilate = loss_dilate
     metric_mse = loss_mse
     metric_mae = loss_mae
@@ -202,17 +189,16 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1, unnor
     metric_crps = loss_crps
     metric_crps_part = loss_crps_part
     metric_nll = loss_nll
-    metric_ql = loss_ql
 
     print('Eval dilateloss= ', metric_dilate, \
         'mse= ', metric_mse, ' dtw= ', metric_dtw, ' tdi= ', metric_tdi,
         'crps=', metric_crps, 'crps_parts=', metric_crps_part,
-        'nll=', metric_nll, 'ql=', metric_ql)
+        'nll=', metric_nll)
 
     return (
         inputs, target, pred_mu, pred_std,
         metric_dilate, metric_mse, metric_dtw, metric_tdi,
-        metric_crps, metric_mae, metric_crps_part, metric_nll, metric_ql
+        metric_crps, metric_mae, metric_crps_part, metric_nll
     )
 
 def eval_index_model(args, model_name, net, loader, norm, gamma, N_input, N_output, verbose=1):
