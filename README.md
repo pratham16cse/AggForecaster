@@ -1,21 +1,23 @@
-# DILATE: DIstortion Loss with shApe and tImE
-[Vincent Le Guen](https://www.linkedin.com/in/vincentleguen/),  [Nicolas Thome](http://cedric.cnam.fr/~thomen/)
+## How to work with Command Line Arguments?
+- If an optional argument is not passed, it's value will be extracted from configuration specified in the file `main.py` (based on `dataset_name`, `model_name`).
+- If a valid argument value is passed through command line arguments, the code will use it further. That is, it will ignore the value assigned in the configuration.
 
-Code for our NeurIPS 2019 paper "Shape and Time Distortion Loss for Training Deep Time Series Forecasting Models"
+## Command Line Arguments Information
+| Argument name | Type | Valid Assignments | Default |
+| --------------| ---- | ----------------- | ------- |
+| dataset_name  | str  | azure, ett, etthourly, Solar, taxi30min, Traffic911 | positional argument|
+| saved_models_dir       | str  | -                | None      |
+| output_dir       | str  | -                | None      |
+| N_input       | int  | >0                | -1      |
+| N_output      | int  | >0                | -1      |
+| epochs        | int  | >0                | -1      |
+| normalize      | str  | same, zscore_per_series, gaussian_copula, log | None |
+| learning_rate        | float  | >0                | -1.0      |
+| hidden_size        | int  | >0                | -1      |
+| num_grulstm_layers        | int  | >0                | -1      |
+| batch_size        | int  | >0                | -1      |
+| v_dim        | int  | >0                | -1      |
+| t2v_type        | str  | local, idx, mdh_lincomb, mdh_parti | None      |
+| K_list        | \[int,...,int \]  | \[>0,...,>0 \]               | \[\]      |
+| device        | str  | -                | None      |
 
-![](https://github.com/vincent-leguen/DILATE/blob/master/fig2.png)
-
-If you find this code useful for your research, please cite our [paper](https://papers.nips.cc/paper/8672-shape-and-time-distortion-loss-for-training-deep-time-series-forecasting-models):
-
-```
-@incollection{leguen19dilate,
-title = {Shape and Time Distortion Loss for Training Deep Time Series Forecasting Models},
-author = {Le Guen, Vincent and Thome, Nicolas},
-booktitle = {Advances in Neural Information Processing Systems},
-pages = {4191--4203},
-year = {2019}
-}
-```
-
-## Abstract
-This paper addresses the problem of time series forecasting for non-stationary signals and multiple future steps prediction. To handle this challenging task, we introduce DILATE (DIstortion Loss including shApe and TimE), a new objective function for training deep neural networks. DILATE aims at accurately predicting sudden changes, and explicitly incorporates two terms supporting precise shape and temporal change detection. We introduce a differentiable loss function suitable for training deep neural nets, and provide a custom back-prop implementation for speeding up optimization. We also introduce a variant of DILATE, which provides a smooth generalization of temporally-constrained Dynamic Time Warping (DTW). Experiments carried out on various non-stationary datasets reveal the very good behaviour of DILATE compared to models trained with the standard Mean Squared Error (MSE) loss function, and also to DTW and variants. DILATE is also agnostic to the choice of the model, and we highlight its benefit for training fully connected networks as well as specialized recurrent architectures, showing its capacity to improve over state-of-the-art trajectory forecasting approaches.
