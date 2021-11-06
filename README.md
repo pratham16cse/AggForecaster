@@ -25,3 +25,13 @@
 All the datasets can be found [here](https://drive.google.com/drive/folders/1b6xheczhJ1IwkTS5fqRf9_NkEkPf9beM?usp=sharing).
 
 Add the dataset files/directories in `data` directory before running the code.
+
+## Output files 
+Following output files are stored in the `<output_dir>/<dataset_name>/` directory.
+
+| File name | Description |
+| --------- | ----------- |
+| `<model_name>`\_pred\_mu.npy | Mean forecast values. The size of the matrix is `number of time-series x number of time-steps` |
+| `<model_name>`\_pred\_std.npy | Standard-deviation of forecast values. The size of the matrix is `number of time-series x number of time-steps` |
+
+
