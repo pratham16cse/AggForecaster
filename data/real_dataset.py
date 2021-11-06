@@ -7,7 +7,10 @@ import json
 from torch.utils.data import Dataset, DataLoader
 from statsmodels.tsa.seasonal import seasonal_decompose, STL
 
-DATA_DIRS = '/mnt/infonas/data/pratham/Forecasting/DILATE'
+if os.path.exists('bee'):
+    DATA_DIRS = '/mnt/infonas/data/pratham/Forecasting/DILATE'
+else:
+    DATA_DIRS = '.'
 
 def generate_train_dev_test_data(data, N_input):
     train_per = 0.6
