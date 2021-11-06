@@ -590,7 +590,7 @@ def parse_azure(dataset_name, N_input, N_output, t2v_type=None):
     )
 
 def parse_ett(dataset_name, N_input, N_output, t2v_type=None):
-    df = pd.read_csv('/mnt/infonas/data/pbansal/ETTm1.csv')
+    df = pd.read_csv(os.path.join(DATA_DIRS, 'data', 'ETT', 'ETTm1.csv'))
     # Remove incomplete data from last day
     df = df[:-80]
 
@@ -911,7 +911,7 @@ def parse_etthourly(dataset_name, N_input, N_output, t2v_type=None):
 #    n = train_len + dev_len + test_len
 #    df = pd.read_csv('../Informer2020/data/ETT/ETTh1.csv').iloc[:n]
 
-    df = pd.read_csv('../Informer2020/data/ETT/ETTh1.csv')
+    df = pd.read_csv(os.path.join(DATA_DIRS, 'data', 'ETT', 'ETTh1.csv'))
     # Remove incomplete data from last day
     df = df[:-20]
 
