@@ -27,6 +27,8 @@ All the datasets can be found [here](https://drive.google.com/drive/folders/1b6x
 Add the dataset files/directories in `data` directory before running the code.
 
 ## Output files 
+
+### Targets and Forecasts
 Following output files are stored in the `<output_dir>/<dataset_name>/` directory.
 
 | File name | Description |
@@ -36,4 +38,32 @@ Following output files are stored in the `<output_dir>/<dataset_name>/` director
 | `<model_name>`\_pred\_mu.npy | Mean forecast values. The size of the matrix is `number of time-series x number of time-steps` |
 | `<model_name>`\_pred\_std.npy | Standard-deviation of forecast values. The size of the matrix is `number of time-series x number of time-steps` |
 
+### Metrics
+All the evaluation metrics on test data are stored in `<output_dir>/results_<dataset_name>.json` in the following format:
 
+```yaml
+{
+  <model_name1>: 
+    {
+      'crps':<crps>,
+      'mae':<mae>,
+      'mse':<mse>,
+      'smape':<smape>,
+      'dtw':<dtw>,
+      'tdi':<tdi>,
+    }
+  <model_name2>: 
+    {
+      'crps':<crps>,
+      'mae':<mae>,
+      'mse':<mse>,
+      'smape':<smape>,
+      'dtw':<dtw>,
+      'tdi':<tdi>,
+    }
+    .
+    .
+    .
+}
+```
+Here `<model_name1>, <model_name2>, ...` are different models under consideration.
