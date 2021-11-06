@@ -31,6 +31,8 @@ Following output files are stored in the `<output_dir>/<dataset_name>/` director
 
 | File name | Description |
 | --------- | ----------- |
+| inputs.npy | Test input values, size: `number of time-series x N_input` |
+| targets.npy | Test target/ground-truth values, size: `number of time-series x N_output` |
 | `<model_name>`\_pred\_mu.npy | Mean forecast values. The size of the matrix is `number of time-series x number of time-steps` |
 | `<model_name>`\_pred\_std.npy | Standard-deviation of forecast values. The size of the matrix is `number of time-series x number of time-steps` |
 
