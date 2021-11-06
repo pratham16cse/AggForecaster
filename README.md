@@ -21,3 +21,7 @@
 | K_list        | \[int,...,int \]  | \[>0,...,>0 \]               | \[\]      |
 | device        | str  | -                | None      |
 
+## Datasets
+All the datasets can be found [here](https://drive.google.com/drive/folders/1b6xheczhJ1IwkTS5fqRf9_NkEkPf9beM?usp=sharing).
+
+Add the dataset files/directories in `data` directory before running the code.
