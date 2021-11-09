@@ -1,3 +1,10 @@
+# Long Range Probabilistic Forecasting in Time-Series using High Order Statistics
+This is the code produced as part of the paper _Long Range Probabilistic Forecasting in Time-Series using High Order Statistics_ 
+
+> Long Range Probabilistic Forecasting in Time-Series using High Order Statistics.
+> 
+> Prathamesh Deshpande and Sunita Sarawagi. [arXiv:2111.03394v1](https://arxiv.org/pdf/2111.03394v1).
+
 ## How to work with Command Line Arguments?
 - If an optional argument is not passed, it's value will be extracted from configuration specified in the file `main.py` (based on `dataset_name`, `model_name`).
 - If a valid argument value is passed through command line arguments, the code will use it further. That is, it will ignore the value assigned in the configuration.
