@@ -8,7 +8,7 @@ from torch.utils.data import Dataset, DataLoader
 from statsmodels.tsa.seasonal import seasonal_decompose, STL
 
 if os.path.exists('bee'):
-    DATA_DIRS = '/mnt/infonas/data/pratham/Forecasting/DILATE'
+    DATA_DIRS = './infonas/data/pratham/Forecasting/DILATE'
 else:
     DATA_DIRS = '.'
 
@@ -22,6 +22,7 @@ def generate_train_dev_test_data(data, N_input):
     data_test = data[int((train_per+dev_per)*N)-N_input:]
 
     return  (data_train, data_dev, data_test)
+
 
 def create_forecast_io_seqs(data, enc_len, dec_len, stride):
 
@@ -59,9 +60,11 @@ def process_start_string(start_string, freq):
         timestamp.floor(timestamp.freq), freq=timestamp.freq
     )
 
+
 def shift_timestamp(ts, offset):
     result = ts + offset * ts.freq
     return pd.Timestamp(result, freq=ts.freq)
+
 
 def get_date_range(start_string, freq, seq_len):
     start = process_start_string(start_string, freq)
@@ -77,6 +80,7 @@ def get_list_of_dict_format(data):
         entry_dict['target'] = entry
         data_new.append(entry_dict)
     return data_new
+
 
 def prune_dev_test_sequence(data, seq_len):
     for i in range(len(data)):
@@ -166,6 +170,7 @@ def parse_Traffic(N_input, N_output):
         data_train, data_dev, data_test, dev_tsid_map, test_tsid_map
     )
 
+
 def parse_ECG5000(N_input, N_output):
     with open(os.path.join(DATA_DIRS, 'data/ECG5000/ECG5000_TRAIN.tsv'), 'r') as f:
         data = []
@@ -203,6 +208,7 @@ def parse_ECG5000(N_input, N_output):
         data_train, data_dev, data_test
     )
 
+
 def create_bins(sequence, bin_size, num_bins):
     #num_bins = int(np.ceil((sequence[-1] - sequence[0]) * 1. / bin_size))
     counts = [0. for _ in range(num_bins)]
@@ -212,6 +218,7 @@ def create_bins(sequence, bin_size, num_bins):
         counts[bin_id] += 1
 
     return counts
+
 
 def parse_Taxi(N_input, N_output):
     # https://s3.amazonaws.com/nyc-tlc/trip+data/yellow_tripdata_2019-01.csv
@@ -407,6 +414,7 @@ def parse_gc_datasets(dataset_name, N_input, N_output):
         data_train, data_dev, data_test, dev_tsid_map, test_tsid_map
     )
 
+
 def parse_weather(dataset_name, N_input, N_output):
 
         csv_path = os.path.join(DATA_DIRS, 'data', 'jena_climate_2009_2016.csv')
@@ -457,14 +465,14 @@ def parse_bafu(dataset_name, N_input, N_output):
 
     data_dev, data_test = [], []
     dev_tsid_map, test_tsid_map = {}, {}
-#    for i in range(data.shape[0]):
-#        for j in range(train_len, train_len+dev_len, 1):
-#            data_dev.append(data[i, :j])
-#            dev_tsid_map[len(data_dev)-1] = i
-#    for i in range(data.shape[0]):
-#        for j in range(train_len+dev_len, n, N_output):
-#            data_test.append(data[i, :j])
-#            test_tsid_map[len(data_test)-1] = i
+    #    for i in range(data.shape[0]):
+    #        for j in range(train_len, train_len+dev_len, 1):
+    #            data_dev.append(data[i, :j])
+    #            dev_tsid_map[len(data_dev)-1] = i
+    #    for i in range(data.shape[0]):
+    #        for j in range(train_len+dev_len, n, N_output):
+    #            data_test.append(data[i, :j])
+    #            test_tsid_map[len(data_test)-1] = i
 
     for i in range(data.shape[0]):
         for j in range(train_len+N_output, train_len+dev_len+1, N_output):
@@ -588,6 +596,7 @@ def parse_azure(dataset_name, N_input, N_output, t2v_type=None):
         data_train, data_dev, data_test, dev_tsid_map, test_tsid_map,
         feats_info
     )
+
 
 def parse_ett(dataset_name, N_input, N_output, t2v_type=None):
     df = pd.read_csv(os.path.join(DATA_DIRS, 'data', 'ETT', 'ETTm1.csv'))
@@ -903,13 +912,14 @@ def parse_Solar(dataset_name, N_input, N_output, t2v_type=None):
         feats_info
     )
 
+
 def parse_etthourly(dataset_name, N_input, N_output, t2v_type=None):
 
-#    train_len = 52*168
-#    dev_len = 17*168
-#    test_len = 17*168
-#    n = train_len + dev_len + test_len
-#    df = pd.read_csv('../Informer2020/data/ETT/ETTh1.csv').iloc[:n]
+    #    train_len = 52*168
+    #    dev_len = 17*168
+    #    test_len = 17*168
+    #    n = train_len + dev_len + test_len
+    #    df = pd.read_csv('../Informer2020/data/ETT/ETTh1.csv').iloc[:n]
 
     df = pd.read_csv(os.path.join(DATA_DIRS, 'data', 'ETT', 'ETTh1.csv'))
     # Remove incomplete data from last day
@@ -1357,15 +1367,15 @@ def parse_taxi30min(dataset_name, N_input, N_output, t2v_type=None):
 def parse_Traffic911(N_input, N_output):
     call_df = pd.read_csv(os.path.join(DATA_DIRS, 'data', '911.csv'))
     call_df = call_df[call_df['zip'].isnull()==False] # Ignore calls with NaN zip codes
-#     print('Types of Emergencies')
-#     print(call_df.title.apply(lambda x: x.split(':')[0]).value_counts())
+    #     print('Types of Emergencies')
+    #     print(call_df.title.apply(lambda x: x.split(':')[0]).value_counts())
     call_df['type'] = call_df.title.apply(lambda x: x.split(':')[0])
-#     print('Subtypes')
-#     for each in call_df.type.unique():
-#         subtype_count = call_df[call_df.title.apply(lambda x: x.split(':')[0]==each)].title.value_counts()
-#         print('For', each, 'type of Emergency, we have ', subtype_count.count(), 'subtypes')
-#         print(subtype_count[subtype_count>100])
-#     print('Out of 3 types, considering only Traffic')
+    #     print('Subtypes')
+    #     for each in call_df.type.unique():
+    #         subtype_count = call_df[call_df.title.apply(lambda x: x.split(':')[0]==each)].title.value_counts()
+    #         print('For', each, 'type of Emergency, we have ', subtype_count.count(), 'subtypes')
+    #         print(subtype_count[subtype_count>100])
+    #     print('Out of 3 types, considering only Traffic')
     call_data = call_df[call_df['type']=='Traffic']
     call_data['timeStamp'] = pd.to_datetime(call_data['timeStamp'], errors='coerce')
     print("We have timeline from", call_data['timeStamp'].min(), "to", call_data['timeStamp'].max())
@@ -1450,6 +1460,7 @@ def parse_Traffic911(N_input, N_output):
         feats_info, coeffs_info
     )
 
+
 def parse_aggtest(dataset_name, N_input, N_output, t2v_type=None):
     n = 500
     data = np.expand_dims(np.arange(n), axis=0)
@@ -1520,6 +1531,7 @@ def parse_aggtest(dataset_name, N_input, N_output, t2v_type=None):
         data_train, data_dev, data_test, dev_tsid_map, test_tsid_map,
         feats_info
     )
+
 
 def parse_electricity(dataset_name, N_input, N_output, t2v_type=None):
     #df = pd.read_csv('data/electricity_load_forecasting_panama/continuous_dataset.csv')
@@ -1607,6 +1619,7 @@ def parse_electricity(dataset_name, N_input, N_output, t2v_type=None):
     return (
         data_train, data_dev, data_test, dev_tsid_map, test_tsid_map, feats_info
     )
+
 
 def parse_foodinflation(dataset_name, N_input, N_output, t2v_type=None):
     #df = pd.read_csv('data/electricity_load_forecasting_panama/continuous_dataset.csv')
@@ -1711,6 +1724,7 @@ def parse_foodinflation(dataset_name, N_input, N_output, t2v_type=None):
     return (
         data_train, data_dev, data_test, dev_tsid_map, test_tsid_map, feats_info
     )
+
 
 def parse_foodinflationmonthly(dataset_name, N_input, N_output, t2v_type=None):
     #df = pd.read_csv('data/electricity_load_forecasting_panama/continuous_dataset.csv')

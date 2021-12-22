@@ -583,7 +583,7 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
                     }
                 )
         et = time.time()
-        print(which_split, self.aggregation_type, self.K, 'total time:', et-st)
+        print(which_split, self.aggregation_type, self.K, 'total time:', f'{et-st:.3}')
 
         #if self.K>1 and which_split in ['dev']:
         #    import ipdb ; ipdb.set_trace()

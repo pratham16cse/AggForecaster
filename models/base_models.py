@@ -7,7 +7,7 @@ import numpy as np
 from torch.distributions.normal import Normal
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 
-from models import transformer_manual_attn, transformer_dual_attn
+# from models import transformer_manual_attn, transformer_dual_attn
 from models import informer
 
 class NBEATS_D(nn.Module):
@@ -2559,16 +2559,16 @@ def get_base_model(
             kernel_size=10, nkernel=32, device=args.device,
             is_signature=True
         ).to(args.device)
-    elif base_model_name in ['transm-nll-nar', 'transm-fnll-nar']:
-        net_gru = transformer_manual_attn.TransformerManualAttn(
-            N_output, feats_info, coeffs_info, estimate_type, args.use_feats,
-            args.use_coeffs, args.v_dim, kernel_size=10, nkernel=32, device=args.device
-        ).to(args.device)
-    elif base_model_name in ['transda-nll-nar', 'transda-fnll-nar']:
-        net_gru = transformer_dual_attn.TransformerDualAttn(
-            N_output, feats_info, coeffs_info, estimate_type, args.use_feats,
-            args.use_coeffs, args.v_dim, kernel_size=10, nkernel=32, device=args.device
-        ).to(args.device)
+    # elif base_model_name in ['transm-nll-nar', 'transm-fnll-nar']:
+    #     net_gru = transformer_manual_attn.TransformerManualAttn(
+    #         N_output, feats_info, coeffs_info, estimate_type, args.use_feats,
+    #         args.use_coeffs, args.v_dim, kernel_size=10, nkernel=32, device=args.device
+    #     ).to(args.device)
+    # elif base_model_name in ['transda-nll-nar', 'transda-fnll-nar']:
+    #     net_gru = transformer_dual_attn.TransformerDualAttn(
+    #         N_output, feats_info, coeffs_info, estimate_type, args.use_feats,
+    #         args.use_coeffs, args.v_dim, kernel_size=10, nkernel=32, device=args.device
+    #     ).to(args.device)
 
     elif base_model_name in ['nbeatsd-mse-nar']:
         net_gru = NBEATS_D(
@@ -2694,22 +2694,23 @@ def get_base_model_bak(
                     device=args.device
                 ).to(args.device)
         elif 'trans' in base_model_name:
-            if 'transm' in base_model_name:
-                net_gru = transformer_manual_attn.TransformerManualAttn(
-                    N_output, feats_info, coeffs_info, estimate_type, args.use_feats,
-                    args.use_coeffs, args.v_dim, kernel_size=10, nkernel=32, device=args.device
-                ).to(args.device)
-            elif 'transda' in base_model_name:
-                net_gru = transformer_dual_attn.TransformerDualAttn(
-                    N_output, feats_info, coeffs_info, estimate_type, args.use_feats,
-                    args.use_coeffs, args.v_dim, kernel_size=10, nkernel=32, device=args.device
-                ).to(args.device)
-            else:
-                net_gru = ARTransformerModel(
-                    N_output, feats_info, estimate_type, args.use_feats,
-                    args.t2v_type, args.v_dim,
-                    kernel_size=10, nkernel=32, device=args.device
-                ).to(args.device)
+            # if 1:
+            # if 'transm' in base_model_name:
+            #     net_gru = transformer_manual_attn.TransformerManualAttn(
+            #         N_output, feats_info, coeffs_info, estimate_type, args.use_feats,
+            #         args.use_coeffs, args.v_dim, kernel_size=10, nkernel=32, device=args.device
+            #     ).to(args.device)
+            # elif 'transda' in base_model_name:
+            #     net_gru = transformer_dual_attn.TransformerDualAttn(
+            #         N_output, feats_info, coeffs_info, estimate_type, args.use_feats,
+            #         args.use_coeffs, args.v_dim, kernel_size=10, nkernel=32, device=args.device
+            #     ).to(args.device)
+            # else:
+            net_gru = ARTransformerModel(
+                N_output, feats_info, estimate_type, args.use_feats,
+                args.t2v_type, args.v_dim,
+                kernel_size=10, nkernel=32, device=args.device
+            ).to(args.device)
         elif 'nbeatsd' in base_model_name:
             net_gru = NBEATS_D(
                 N_input, N_output, num_blocks=8, block_width=128, block_numlayers=4,

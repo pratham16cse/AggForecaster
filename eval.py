@@ -191,9 +191,9 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1, unnor
     metric_nll = loss_nll
 
     print('Eval dilateloss= ', metric_dilate, \
-        'mse= ', metric_mse, ' dtw= ', metric_dtw, ' tdi= ', metric_tdi,
-        'crps=', metric_crps, 'crps_parts=', metric_crps_part,
-        'nll=', metric_nll)
+        'mse= ', f"{metric_mse:.5}", ' dtw= ', metric_dtw, ' tdi= ', metric_tdi,
+        'crps=',  f"{metric_crps:.5}", 'crps_parts=', metric_crps_part,
+        'nll=', f"{metric_nll:.5}")
 
     return (
         inputs, target, pred_mu, pred_std,

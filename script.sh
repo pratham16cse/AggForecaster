@@ -4,7 +4,7 @@
 #	--N_input 336 --N_output 168 \
 #	--saved_models_dir aaai_saved_models_taxi30min_e336_d168 \
 #	--output_dir aaai_Outputs_taxi30min_e336_d168 \
-#	--device cuda:0
+#	--device cuda:6
 
 #for K in 4 6 12; do
 	#echo aaai_Outputs_ett_e384_d192_gpt_normmin_$K
@@ -14,18 +14,7 @@ python main.py ett \
 	--output_dir aaai_Outputs_ett_e384_d192_gpt_normmin \
 	--K_list 1 6 12 \
 	--cv_inf 0 \
-	--device cuda:0
-#done
-
-#for K in 2 6 12; do
-	#echo aaai_Outputs_Solar_e336_d168_2_rp_$K
-python main.py Solar \
-	--N_input 336 --N_output 168 \
-	--saved_models_dir aaai_saved_models_Solar_e336_d168_2_rp \
-	--output_dir aaai_Outputs_Solar_e336_d168_2_rp \
-	--K_list 1 6 \
-	--cv_inf 0 \
-	--device cuda:0
+	--device cuda:6 \
 #done
 
 #for K in 2 6; do
@@ -36,8 +25,23 @@ python main.py etthourly \
 	--output_dir aaai_Outputs_etthourly_e168_d168_gpt_normmin \
 	--K_list 1 6 \
 	--cv_inf 0 \
-	--device cuda:0
+	--device cuda:6
 #done
+
+exit
+
+#for K in 2 6 12; do
+	#echo aaai_Outputs_Solar_e336_d168_2_rp_$K
+python main.py Solar \
+	--N_input 336 --N_output 168 \
+	--saved_models_dir aaai_saved_models_Solar_e336_d168_2_rp \
+	--output_dir aaai_Outputs_Solar_e336_d168_2_rp \
+	--K_list 1 6 \
+	--cv_inf 0 \
+	--device cuda:6
+#done
+
+
 
 #for K in 2 6 12; do
 #	#echo aaai_Outputs_electricity_e336_d168_testprune_2_rp_$K
@@ -47,7 +51,7 @@ python main.py electricity \
 	--output_dir aaai_Outputs_electricity_e336_d168_testprune_2_rp \
 	--K_list 1 6 12 \
 	--cv_inf 0 \
-	--device cuda:0
+	--device cuda:6
 #done
 
 #python main.py foodinflation \
@@ -56,7 +60,7 @@ python main.py electricity \
 #	--output_dir Outputs_foodinflation_gpt_small_normzs_shiftmin \
 #	--K_list 1 \
 #	--cv_inf 0 \
-#	--device cuda:0
+#	--device cuda:6
 
 #python main.py foodinflationmonthly \
 #	--N_input 12 --N_output 3 \
@@ -64,7 +68,7 @@ python main.py electricity \
 #	--output_dir Outputs_foodinflationmonthly_gpt_small_normzs_shiftmin \
 #	--K_list 1 \
 #	--cv_inf 0 \
-#	--device cuda:0
+#	--device cuda:6
 
 # This dataset is used for testing/debugging
 #python main.py aggtest \
@@ -73,7 +77,7 @@ python main.py electricity \
 #	--output_dir aaai_Outputs_aggtest_e20_d20_gpt_conv_feats_nar \
 #	--K_list 1 \
 #	--cv_inf 0 \
-#	--device cuda:0
+#	--device cuda:6
 
 # Commands for Oracle and SimRetrieval
 #python main.py ett \
@@ -81,25 +85,25 @@ python main.py electricity \
 #	--saved_models_dir aaai_saved_models_ett_oracle \
 #	--output_dir aaai_Outputs_ett_oracle \
 #	--normalize same \
-#	--device cuda:0
+#	--device cuda:6
 
 #python main.py Solar \
 #	--N_input 1680 --N_output 168 \
 #	--saved_models_dir aaai_saved_models_Solar_oracle \
 #	--output_dir aaai_Outputs_Solar_oracle \
 #	--normalize same \
-#	--device cuda:0
+#	--device cuda:6
 
 #python main.py etthourly \
 #	--N_input 840 --N_output 168 \
 #	--saved_models_dir aaai_saved_models_etthourly_oracle \
 #	--output_dir aaai_Outputs_etthourly_oracle \
 #	--normalize same \
-#	--device cuda:0
+#	--device cuda:6
 #
 #python main.py electricity \
 #	--N_input 1680 --N_output 168 \
 #	--saved_models_dir aaai_saved_models_electricity_oracle \
 #	--output_dir aaai_Outputs_electricity_oracle \
 #	--normalize same \
-#	--device cuda:0
+#	--device cuda:6

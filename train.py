@@ -160,8 +160,8 @@ def train_model(
             optimizer.step()
             et = time.time()
             epoch_time += (et-st)
-            print('Time required for batch ', i, ':', \
-                  et-st, 'loss:', loss.item(), \
+            print('Time required for batch ', f"{i:03}", ':', \
+                  f'{et-st:.3f}s', 'loss:', f'{loss.item():.5f}', \
                   teacher_forcing_ratio, teacher_force, curr_patience)
             #if i>=100:
             #    break
