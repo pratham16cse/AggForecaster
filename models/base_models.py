@@ -7,7 +7,7 @@ import numpy as np
 from torch.distributions.normal import Normal
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 
-from models import transformer_manual_attn, transformer_dual_attn
+#from models import transformer_manual_attn, transformer_dual_attn
 from models import informer
 
 class NBEATS_D(nn.Module):
