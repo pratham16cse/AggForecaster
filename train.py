@@ -6,9 +6,10 @@ from loss.dilate_loss import dilate_loss
 from eval import eval_base_model, eval_index_model
 import time
 from models.base_models import get_base_model
-from utils import DataProcessor
+from utils import DataProcessor, get_a, aggregate_data
 import random
 from torch.distributions.normal import Normal
+from copy import deepcopy
 
 
 def get_optimizer(args, lr, net):
@@ -18,8 +19,13 @@ def get_optimizer(args, lr, net):
 
 
 def train_model(
-    args, model_name, net, data_dict, saved_models_path, writer, verbose=1,
+    args, model_name, net, data_dict, saved_models_path, writer, agg_method, level,
+    verbose=1, bottom_net=None, bottom_data_dict=None, sharq_step=0,
 ):
+
+    if bottom_net is None and bottom_data_dict is None:
+        bottom_net = deepcopy(net)
+        bottom_data_dict = deepcopy(data_dict)
 
     lr = args.learning_rate
     epochs = args.epochs
@@ -32,6 +38,8 @@ def train_model(
     N_output = data_dict['N_output']
     input_size = data_dict['input_size']
     output_size = data_dict['output_size']
+    bottomloader = bottom_data_dict['trainloader']
+    a = get_a('sum', level).to(args.device)
     Lambda=1
 
     optimizer, scheduler = get_optimizer(args, lr, net)
@@ -62,6 +70,7 @@ def train_model(
     curr_patience = args.patience
     curr_step = 0
     for curr_epoch in range(best_epoch+1, best_epoch+1+epochs):
+        bottomiterator = iter(bottomloader)
         epoch_loss, epoch_time = 0., 0.
         for i, data in enumerate(trainloader, 0):
             st = time.time()
@@ -131,8 +140,9 @@ def train_model(
                 loss = -torch.mean(dist.log_prob(target_shuffled))
                 #import ipdb ; ipdb.set_trace()
             elif net.estimate_type == 'variance':
-                dist = torch.distributions.normal.Normal(means, stds)
-                loss = torch.mean(-dist.log_prob(target))
+                #dist = torch.distributions.normal.Normal(means, stds)
+                #loss = torch.mean(-dist.log_prob(target))
+                loss = -torch.mean(-0.5*(target-means)**2/stds**2 - torch.log(stds))
             elif net.estimate_type in ['point']:
                 loss = mse_loss(target, means)
             elif net.estimate_type in ['bivariate']:
@@ -151,6 +161,54 @@ def train_model(
             if net.is_signature:
                 sig_loss = torch.mean(1. - cos_sim(dec_state, sig_state))
                 loss += sig_loss
+
+            if 'sharq' in model_name:
+                try:
+                    bt_data = next(bottomiterator)
+                except StopIteration:
+                    bottomiterator = iter(bottomloader)
+                    bt_data = next(bottomiterator)
+                bt_inputs, bt_target, bt_feats_in, bt_feats_tgt, _, _ = bt_data
+
+                bt_out = bottom_net(
+                    bt_feats_in.to(args.device), bt_inputs.to(args.device),
+                    bt_feats_tgt.to(args.device), bt_target.to(args.device),
+                    teacher_force=teacher_force
+                )
+
+                bt_means, bt_stds = bt_out
+                bt_means = bt_means.detach()
+                bt_stds = bt_stds.detach()
+
+                bt_means_agg = aggregate_data(
+                    bt_means.squeeze(-1), agg_method, level, False, a
+                ).unsqueeze(-1)
+
+                #if sharq_step==0:
+                if True:
+                    if bt_means_agg.shape[0] == means.shape[0]:
+                        loss += args.sharq_reg*torch.mean(torch.square(bt_means_agg-means))
+                #elif sharq_step==1:
+                if True:
+                    bt_stds_agg = aggregate_data(
+                        bt_stds.squeeze(-1)**2, agg_method, level, True, a
+                    ).unsqueeze(-1).sqrt()
+                    quantiles = torch.arange(0.1, 0.91, 0.1)
+                    if bt_means_agg.shape[0] == means.shape[0]:
+                        for q in quantiles:
+                            bt_quantile = Normal(bt_means, bt_stds).icdf(q)
+                            bt_qdiff = torch.square(bt_quantile-bt_means)
+                            bt_qdiff_agg = aggregate_data(
+                                bt_qdiff.squeeze(-1), agg_method, level, True, a
+                            ).unsqueeze(-1)
+                            quantile = Normal(means, stds).icdf(q)
+                            qdiff = torch.square(quantile-means)
+                            loss += torch.square(qdiff-bt_qdiff_agg).mean()
+                        #loss = loss.mean()
+
+                #import ipdb; ipdb.set_trace()
+
+                #raise NotImplementedError
 
 
             epoch_loss += loss.item()
@@ -219,6 +277,7 @@ def train_model(
             raise NotImplementedError
             writer.add_scalar('training_loss/DILATE', epoch_loss, curr_epoch)
         writer.add_scalar('training_time/epoch_time', epoch_time, curr_epoch)
+        writer.add_scalar('training_time/nll_train', epoch_loss, curr_epoch)
 
 
         if(verbose):

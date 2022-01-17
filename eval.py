@@ -70,7 +70,7 @@ def eval_base_model(args, model_name, net, loader, norm, gamma, verbose=1, unnor
             batch_pred_std = batch_pred_d.cpu()
             batch_pred_v = torch.ones_like(batch_pred_mu) * 1e-9
             if unnorm:
-                batch_pred_std = norm.unnormalize(batch_pred_std[..., 0], ids=ids, is_var=True).unsqueeze(-1)
+                batch_pred_std = norm.unnormalize(batch_pred_std[..., 0]**2, ids=ids, is_var=True).sqrt().unsqueeze(-1)
         else:
             batch_pred_d = torch.ones_like(batch_pred_mu) * 1e-9
             batch_pred_v = torch.ones_like(batch_pred_mu) * 1e-9
@@ -533,24 +533,24 @@ def eval_inf_model(args, net, dataset, which_split, gamma, verbose=1):
         num_batches += 1
 
     iters = {}
-    for agg_method in args.aggregate_methods:
+    for agg_method in net.aggregates:
         iters[agg_method] = {}
-        for K in args.K_list:
+        for K in net.K_list:
             iters[agg_method][K] = iter(dataset[agg_method][K][loader_str])
 
     norms = {}
-    for agg_method in args.aggregate_methods:
+    for agg_method in net.aggregates:
         norms[agg_method] = {}
-        for K in args.K_list:
+        for K in net.K_list:
             norms[agg_method][K] = dataset[agg_method][K][norm_str]
 
     inputs, mapped_ids, target, pred_mu, pred_d, pred_v, pred_std = [], [], [], [], [], [], []
     start_time = time.time()
     for i in range(num_batches):
         dataset_batch = {}
-        for agg_method in args.aggregate_methods:
+        for agg_method in net.aggregates:
             dataset_batch[agg_method] = {}
-            for K in args.K_list:
+            for K in net.K_list:
                 dataset_batch[agg_method][K] = iters[agg_method][K].next()
 
         #import ipdb ; ipdb.set_trace()

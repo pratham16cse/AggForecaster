@@ -2503,7 +2503,7 @@ def get_base_model(
             batch_size=args.batch_size,
             device=args.device
         ).to(args.device)
-    elif base_model_name in ['trans-mse-ar', 'trans-nll-ar', 'trans-fnll-ar', 'trans-bvnll-ar']:
+    elif base_model_name in ['trans-mse-ar', 'trans-nll-ar', 'trans-fnll-ar', 'trans-bvnll-ar', 'sharq-nll-nar']:
             net_gru = ARTransformerModel(
                 N_output, feats_info, estimate_type, args.use_feats,
                 args.t2v_type, args.v_dim,

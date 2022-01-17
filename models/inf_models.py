@@ -64,6 +64,8 @@ class RNNNLLNAR(torch.nn.Module):
         self.device = device
         self.is_oracle = is_oracle
         self.covariance = covariance
+        self.aggregates = base_models_dict.keys()
+        self.K_list = [1]
 
     def forward(self, dataset, norms, which_split):
         feats_in = dataset['sum'][1][2].to(self.device)
@@ -114,14 +116,12 @@ class RNNNLLNAR(torch.nn.Module):
                 raise NotImplementedError
                 pred_std = norms['sum'][1].unnormalize(pred_std[..., 0], ids=ids, is_var=True).unsqueeze(-1)
         elif mdl.estimate_type in ['variance', 'bivariate']:
-            pred_std = pred_std.cpu()
-            pred_d = pred_std**2
+            pred_std_ = pred_std.cpu()
+            pred_d = pred_std_**2
             pred_v = torch.ones_like(pred_mu) * 1e-9
             if which_split in ['test']:
-                pred_std = torch.sqrt(
-                    norms['sum'][1].unnormalize(pred_d[..., 0], ids=ids, is_var=True).unsqueeze(-1)
-                )
-                pred_d = norms['sum'][1].unnormalize(pred_d[..., 0], ids=ids, is_var=True).unsqueeze(-1)
+                pred_std = norms['sum'][1].unnormalize(pred_std_[..., 0]**2, ids=ids, is_var=True).sqrt().unsqueeze(-1)
+                pred_d = pred_std**2
         else:
             pred_d = torch.ones_like(pred_mu) * 1e-9
             pred_v = torch.ones_like(pred_mu) * 1e-9
@@ -1028,14 +1028,11 @@ class KLInferenceSGD(torch.nn.Module):
                         torch.diagonal(dist.covariance_matrix, dim1=-2, dim2=-1).unsqueeze(dim=-1)
                     )
                 elif model.estimate_type in ['variance', 'bivariate']:
-                    stds = stds.cpu()
-                    d = stds**2
+                    stds_ = stds.cpu()
                     v = torch.ones_like(means) * 1e-9
                     if not self.opt_normspace:
-                        stds = torch.sqrt(
-                            norms[agg][level].unnormalize(d[..., 0], ids=ids, is_var=True).unsqueeze(-1)
-                        )
-                        d = norms['sum'][1].unnormalize(d[..., 0], ids=ids, is_var=True).unsqueeze(-1)
+                        stds = norms[agg][level].unnormalize(stds_[..., 0]**2, ids=ids, is_var=True).sqrt().unsqueeze(-1)
+                        d = stds**2
                 else:
                     d = torch.ones_like(means) * 1e-9
                     v = torch.ones_like(means) * 1e-9
@@ -1132,7 +1129,11 @@ class KLInferenceSGD(torch.nn.Module):
         #import ipdb ; ipdb.set_trace()
         self.x_mu = torch.nn.Parameter(torch.clone(base_mu).squeeze(-1))
         self.x_d = torch.nn.Parameter(torch.clone(base_sigma).squeeze(-1)**2)
-        x_v = torch.ones((base_mu.shape[0], base_mu.shape[1], 4), dtype=torch.float) * 1e-2
+        #x_v = torch.ones((base_mu.shape[0], base_mu.shape[1], 4), dtype=torch.float) * 1e-2
+        x_v = torch.normal(
+            torch.zeros((base_mu.shape[0], base_mu.shape[1], 4), dtype=torch.float) * 1e-2,
+            torch.ones((base_mu.shape[0], base_mu.shape[1], 4), dtype=torch.float) * 1e-2
+        )
         if self.covariance:
             self.x_v = torch.nn.Parameter(x_v)
         else:
@@ -1189,6 +1190,8 @@ class KLInferenceSGD(torch.nn.Module):
             a_dict[agg] = {}
             for K in self.K_list:
                 a_dict[agg][K] = utils.get_a(agg, K)
+
+        w_dict = {'sum':10., 'slope':0.5}
 
         if self.solve_std:
             opt_bs = bs
@@ -1247,7 +1250,7 @@ class KLInferenceSGD(torch.nn.Module):
 
                                 #import ipdb ; ipdb.set_trace()
                                 for idx, _ in enumerate(range(0, N, lvl)):
-                                    opt_loss += self.KL_loss(
+                                    opt_loss += w_dict[agg]*self.KL_loss(
                                         x_mu_dict[agg][lvl][idx],
                                         x_var_dict[agg][lvl][idx],
                                         params[0][bch:bch+opt_bs, idx:idx+1, 0].detach(),

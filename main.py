@@ -21,6 +21,7 @@ import shutil
 import properscoring as ps
 import scipy.stats
 import itertools
+from collections import OrderedDict
 
 from functools import partial
 
@@ -164,6 +165,10 @@ parser.add_argument('--cv_inf', type=int, default=-1,
 parser.add_argument('--lr_inf', type=float, default=-1.,
                     help='Learning rate for SGD-based inference model')
 
+# Regularization for SHARQ
+parser.add_argument('--sharq_reg', type=float, default=1.,
+                    help='Regularization Parameter for SHARQ')
+
 
 
 args = parser.parse_args()
@@ -188,11 +193,11 @@ args.base_model_names = [
 #    'rnn-nll-ar',
 #    'trans-mse-ar',
     'trans-nll-ar',
-#    'gpt-nll-ar',
+    'gpt-nll-ar',
 #    'gpt-mse-ar',
 #    'gpt-nll-nar',
 #    'gpt-mse-nar',
-#    'informer-mse-nar',
+    'informer-mse-nar',
 #    'trans-bvnll-ar',
 #    'trans-nll-atr',
 #    'trans-fnll-ar',
@@ -206,6 +211,7 @@ args.base_model_names = [
 #    'oracle',
 #    'oracleforecast'
 #    'transsig-nll-nar',
+    'sharq-nll-nar',
 ]
 args.aggregate_methods = [
     'sum',
@@ -310,8 +316,8 @@ if 'trans-nll-ar' in args.base_model_names:
     args.inference_model_names.append('trans-nll-ar_covkl-st')
 if 'gpt-nll-ar' in args.base_model_names:
     args.inference_model_names.append('GPT-NLL-AR')
-    args.inference_model_names.append('gpt-nll-ar_opt-st')
-    args.inference_model_names.append('gpt-nll-ar_kl-st')
+    #args.inference_model_names.append('gpt-nll-ar_opt-st')
+    #args.inference_model_names.append('gpt-nll-ar_kl-st')
 if 'gpt-mse-ar' in args.base_model_names:
     args.inference_model_names.append('GPT-MSE-AR')
 if 'gpt-nll-nar' in args.base_model_names:
@@ -354,8 +360,16 @@ if 'oracleforecast' in args.base_model_names:
     args.inference_model_names.append('SimRetrieval')
 if 'transsig-nll-nar' in args.base_model_names:
     args.inference_model_names.append('TRANSSIG-NLL-NAR')
+if 'sharq-nll-nar' in args.base_model_names:
+    args.inference_model_names.append('SHARQ-NLL-NAR')
 
 
+args.bm2info = OrderedDict({
+    'informer-mse-nar':{'aggregate_methods': ['sum'], 'K_list':[1]},
+    'gpt-nll-ar':{'aggregate_methods':['sum'], 'K_list':[1]},
+    'trans-nll-ar':{},
+    'sharq-nll-nar':{'aggregate_methods':['sum']}
+})
 
 
 if args.dataset_name in ['Traffic']:
@@ -377,9 +391,9 @@ if args.dataset_name == 'ett':
     if args.K_list == []: args.K_list = []
     #args.K_list = [6]
     if args.saved_models_dir is None:
-        args.saved_models_dir = 'saved_models_ett_d192_b24_e192_corrshuffle_bs128_seplayers_nodeczeros_nodecconv_t2v_usefeats_t2vglobal_idx_val20'
+        args.saved_models_dir = 'saved_models_ett'
     if args.output_dir is None:
-        args.output_dir = 'Outputs_ett_d192_klnorm_b24_e192_corrshuffle_bs128_seplayers_nodeczeros_nodecconv_t2v_usefeats_t2vglobal_idx_val20'
+        args.output_dir = 'Outputs_ett'
     #if args.normalize is None: args.normalize = 'zscore_per_series'
     if args.normalize is None: args.normalize = 'min_per_series'
     if args.learning_rate == -1.: args.learning_rate = 0.00001
@@ -395,8 +409,13 @@ if args.dataset_name == 'ett':
     if args.lr_inf == -1: args.lr_inf = 0.01
     if args.kernel_size == -1: args.kernel_size = 10
     if args.nkernel == -1: args.nkernel = 32
-    #python main.py ett --epochs 20 --N_input 192 --N_output 192 --K_list 6 --saved_models_dir saved_models_ett_d192 --output_dir Outputs_ett_d192_klnorm --normalize zscore_per_series --learning_rate 0.0001 --batch_size 64 --hidden_size 128 --num_grulstm_layers 1 --device cuda:0
     args.freq = '15min'
+    if 'trans-nll-ar' in args.base_model_names:
+        args.bm2info['trans-nll-ar'] = {
+            'aggregate_methods':['sum','slope'], 'K_list':[1,12]
+        }
+    if 'sharq-nll-nar' in args.base_model_names:
+        args.bm2info['sharq-nll-nar']['K_list'] = [1,2,3,4,6,8,12,24]
 
 elif args.dataset_name == 'taxi30min':
     if args.epochs == -1: args.epochs = 20
@@ -405,9 +424,9 @@ elif args.dataset_name == 'taxi30min':
     #args.K_list = [12]
     if args.K_list == []: args.K_list = []
     if args.saved_models_dir is None:
-        args.saved_models_dir = 'saved_models_taxi30min_d168_b48_pefix_e336_corrshuffle_bs128_seplayers_nodeczeros_nodecconv_t2vglobal_mdh_parti'
+        args.saved_models_dir = 'saved_models_taxi30min'
     if args.output_dir is None:
-        args.output_dir = 'Outputs_taxi30min_d168_klnorm_b48_pefix_e336_corrshuffle_bs128_seplayers_nodeczeros_nodecconv_t2vglobal_mdh_parti'
+        args.output_dir = 'Outputs_taxi30min'
     if args.normalize is None: args.normalize = 'zscore_per_series'
     if args.learning_rate == -1.: args.learning_rate = 0.0001
     if args.batch_size == -1: args.batch_size = 128
@@ -429,9 +448,9 @@ elif args.dataset_name == 'etthourly':
     #args.K_list = [12]
     if args.K_list == []: args.K_list = []
     if args.saved_models_dir is None:
-        args.saved_models_dir = 'saved_models_etthourly_noextrafeats_d168_b24_pefix_e168_val20_corrshuffle_seplayers_nodeczeros_nodecconv_t2v'
+        args.saved_models_dir = 'saved_models_etthourly'
     if args.output_dir is None:
-        args.output_dir = 'Outputs_etthourly_noextrafeats_d168_klnorm_b24_pefix_e168_val20_corrshuffle_seplayers_nodeczeros_nodecconv_t2v'
+        args.output_dir = 'Outputs_etthourly'
     #if args.normalize is None: args.normalize = 'zscore_per_series'
     if args.normalize is None: args.normalize = 'min_per_series'
     if args.learning_rate == -1.: args.learning_rate = 0.00001
@@ -448,6 +467,12 @@ elif args.dataset_name == 'etthourly':
     if args.kernel_size == -1: args.kernel_size = 10
     if args.nkernel == -1: args.nkernel = 32
     args.freq = 'h'
+    if 'trans-nll-ar' in args.base_model_names:
+        args.bm2info['trans-nll-ar'] = {
+            'aggregate_methods':['sum','slope'], 'K_list':[1,6]
+        }
+    if 'sharq-nll-nar' in args.base_model_names:
+        args.bm2info['sharq-nll-nar']['K_list'] = [1,2,3,4,6,8,12,24]
 
 elif args.dataset_name == 'azure':
     if args.epochs == -1: args.epochs = 20
@@ -456,9 +481,9 @@ elif args.dataset_name == 'azure':
     #args.K_list = [60]
     if args.K_list == []: args.K_list = []
     if args.saved_models_dir is None:
-        args.saved_models_dir = 'saved_models_azure_d360_e720_usefeats_bs128_normsame'
+        args.saved_models_dir = 'saved_models_azure'
     if args.output_dir is None:   
-        args.output_dir = 'Outputs_azure_d360_e720_usefeats_bs128_normsame'
+        args.output_dir = 'Outputs_azure'
     #args.normalize = 'zscore_per_series'
     if args.normalize is None: args.normalize = 'same'
     if args.learning_rate == -1: args.learning_rate = 0.0001
@@ -481,9 +506,9 @@ elif args.dataset_name == 'Solar':
     #args.K_list = [12]
     if args.K_list == []: args.K_list = []
     if args.saved_models_dir is None:
-        args.saved_models_dir = 'saved_models_Solar_d168_b4_e336_corrshuffle_seplayers_nodeczeros_nodecconv_t2v'
+        args.saved_models_dir = 'saved_models_Solar'
     if args.output_dir is None:
-        args.output_dir = 'Outputs_Solar_d168_normzscore_klnorm_b4_e336_corrshuffle_seplayers_nodeczeros_nodecconv_t2v'
+        args.output_dir = 'Outputs_Solar'
     if args.normalize is None: args.normalize = 'zscore_per_series'
     #if args.normalize is None: args.normalize = 'min_per_series'
     if args.learning_rate == -1: args.learning_rate = 0.0001
@@ -499,6 +524,13 @@ elif args.dataset_name == 'Solar':
     if args.kernel_size == -1: args.kernel_size = 10
     if args.nkernel == -1: args.nkernel = 32
     args.freq = 'h'
+    #args.patience = 5 # Only for sharq model
+    if 'trans-nll-ar' in args.base_model_names:
+        args.bm2info['trans-nll-ar'] = {
+            'aggregate_methods':['sum','slope'], 'K_list':[1,6]
+        }
+    if 'sharq-nll-nar' in args.base_model_names:
+        args.bm2info['sharq-nll-nar']['K_list'] = [1,2,3,4,6,8,12,24]
 
 elif args.dataset_name == 'electricity':
     if args.epochs == -1: args.epochs = 20
@@ -525,6 +557,16 @@ elif args.dataset_name == 'electricity':
     if args.kernel_size == -1: args.kernel_size = 10
     if args.nkernel == -1: args.nkernel = 32
     args.freq = 'h'
+    args.sharq_reg = 0.5 # For K=2,3
+    args.sharq_reg = 0.1 # For K=4,6,8,12 24
+    #args.patience = 50 # For sharq, K=2,3
+    #args.patience = 5 # For sharq, K=4,6,8,12,24
+    if 'trans-nll-ar' in args.base_model_names:
+        args.bm2info['trans-nll-ar'] = {
+            'aggregate_methods':['sum','slope'], 'K_list':[1,6,12]
+        }
+    if 'sharq-nll-nar' in args.base_model_names:
+        args.bm2info['sharq-nll-nar']['K_list'] = [1,2,3,4,6,8,12,24]
 
 elif args.dataset_name == 'aggtest':
     if args.epochs == -1: args.epochs = 20
@@ -556,8 +598,8 @@ elif args.dataset_name == 'Traffic911':
     args.N_input = 336
     args.N_output = 168
     args.K_list = [6]
-    args.saved_models_dir = 'saved_models_Traffic911_d168'
-    args.output_dir = 'Outputs_Traffic911_d168'
+    args.saved_models_dir = 'saved_models_Traffic911'
+    args.output_dir = 'Outputs_Traffic911'
     args.normalize = 'zscore_per_series'
     args.learning_rate = 0.0001
     args.batch_size = 128
@@ -619,6 +661,13 @@ elif args.dataset_name == 'foodinflationmonthly':
 if 1 not in args.K_list:
     args.K_list = [1] + args.K_list
 
+def merge_info(info_arg):
+    all_info = list(itertools.chain(*[bm[info_arg] for bm in args.bm2info.values()]))
+    all_info = sorted(set(all_info),key=all_info.index)
+    return all_info
+all_agg_methods = merge_info('aggregate_methods')
+all_K_list = merge_info('K_list')
+
 print('Command Line Arguments:')
 print(args)
 
@@ -651,9 +700,9 @@ data_processor = utils.DataProcessor(args)
 # ----- Start: Load all datasets ----- #
 
 dataset = {}
-for agg_method in args.aggregate_methods:
+for agg_method in all_agg_methods:
     dataset[agg_method] = {}
-    for level in args.K_list:
+    for level in all_K_list:
         if level==1 and agg_method is not 'sum':
             dataset[agg_method][level] = dataset['sum'][1]
         else:
@@ -666,8 +715,8 @@ for base_model_name in args.base_model_names:
     base_models[base_model_name] = {}
     base_models_preds[base_model_name] = {}
 
-    levels = args.K_list
-    aggregate_methods = args.aggregate_methods
+    levels = args.bm2info[base_model_name]['K_list']
+    aggregate_methods = args.bm2info[base_model_name]['aggregate_methods']
     if base_model_name in ['seq2seqdilate']:
         levels = [1]
         aggregate_methods = ['sum']
@@ -706,7 +755,8 @@ for base_model_name in args.base_model_names:
                 'seq2seqnll', 'convnll', 'trans-q-nar', 'rnn-q-nar', 'rnn-q-ar',
                 'rnn-nll-nar', 'rnn-nll-ar', 'rnn-aggnll-nar', 'trans-nll-ar',
                 'gpt-nll-ar', 'gpt-nll-nar',
-                'transm-nll-nar', 'transda-nll-nar', 'transsig-nll-nar', 'trans-nll-atr'
+                'transm-nll-nar', 'transda-nll-nar', 'transsig-nll-nar', 'trans-nll-atr',
+                'sharq-nll-nar',
             ]:
                 estimate_type = 'variance'
             elif base_model_name in [
@@ -738,12 +788,34 @@ for base_model_name in args.base_model_names:
                 base_models[base_model_name][agg_method][level] = base_models[base_model_name]['sum'][1]
             else:
                 if base_model_name not in ['oracle', 'oracleforecast']:
-                    train_model(
-                        args, base_model_name, net_gru,
-                        level2data, saved_models_path, writer, verbose=1
-                    )
+                    if 'sharq' in base_model_name and level==1:
+                        base_models[base_model_name][agg_method][level] = base_models['trans-nll-ar'][agg_method][level]
+                    else:
+                        if 'sharq' in base_model_name and level!=1:
+                            train_model(
+                                args, base_model_name, net_gru,
+                                level2data, saved_models_path, writer, agg_method, level,
+                                verbose=1,
+                                bottom_net=base_models[base_model_name][agg_method][1],
+                                bottom_data_dict=dataset[agg_method][1],
+                                sharq_step=0
+                            )
+                            #train_model(
+                            #    args, base_model_name, net_gru,
+                            #    level2data, saved_models_path, writer, agg_method, level,
+                            #    verbose=1,
+                            #    bottom_net=base_models[base_model_name][agg_method][1],
+                            #    bottom_data_dict=dataset[agg_method][1],
+                            #    sharq_step=1
+                            #)
+                        else:
+                            train_model(
+                                args, base_model_name, net_gru,
+                                level2data, saved_models_path, writer, agg_method, level,
+                                verbose=1
+                            )
 
-                base_models[base_model_name][agg_method][level] = net_gru
+                        base_models[base_model_name][agg_method][level] = net_gru
 
             writer.flush()
 
@@ -894,8 +966,7 @@ writer.close()
 # ----- Start: Inference models for bottom level----- #
 print('\n Starting Inference Models')
 
-#import ipdb
-#ipdb.set_trace()
+#import ipdb ; ipdb.set_trace()
 
 
 def run_inference_model(
@@ -1044,10 +1115,16 @@ def run_inference_model(
         base_models_dict = base_models['trans-nll-ar']
         inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device)
 
+    elif inf_model_name in ['SHARQ-NLL-NAR']:
+        base_models_dict = base_models['sharq-nll-nar']
+        inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device)
+
     elif inf_model_name in ['trans-nll-ar_opt-sum']:
-        base_models_dict = base_models['trans-nll-ar']
+        bm = 'trans-nll-ar'
+        base_models_dict = base_models[bm]
         agg_method = ['sum'] if agg_method is None else agg_method
-        K_list = args.K_list if K is None else K
+        K_list = args.bm2info[bm]['K_list'] if K is None else K
+        #import ipdb ; ipdb.set_trace()
         inf_net = inf_models.KLInferenceSGD(
             K_list, base_models_dict, agg_method, args.lr_inf, device=args.device,
             solve_mean=True, solve_std=False, opt_normspace=False,
@@ -1087,43 +1164,47 @@ def run_inference_model(
         )
 
     elif inf_model_name in ['trans-nll-ar_opt-slope']:
-        base_models_dict = base_models['trans-nll-ar']
+        bm = 'trans-nll-ar'
+        base_models_dict = base_models[bm]
         agg_method = ['slope'] if agg_method is None else agg_method
-        K_list = args.K_list if K is None else K
+        K_list = args.bm2info[bm]['K_list'] if K is None else K
         inf_net = inf_models.DualTPP(K_list, base_models_dict, agg_method, device=args.device)
 
     elif inf_model_name in ['trans-nll-ar_opt-st']:
-        base_models_dict = base_models['trans-nll-ar']
+        bm = 'trans-nll-ar'
+        base_models_dict = base_models[bm]
         agg_method = ['sum', 'slope'] if agg_method is None else agg_method
-        K_list = args.K_list if K is None else K
-        #inf_net = inf_models.DualTPP(K_list, base_models_dict, agg_method, device=args.device)
+        K_list = args.bm2info[bm]['K_list'] if K is None else K
         inf_net = inf_models.KLInferenceSGD(
             K_list, base_models_dict, agg_method, args.lr_inf, device=args.device,
             solve_mean=True, solve_std=False, opt_normspace=False,
         )
 
     elif inf_model_name in ['trans-nll-ar_kl-sum']:
-        base_models_dict = base_models['trans-nll-ar']
+        bm = 'trans-nll-ar'
+        base_models_dict = base_models[bm]
         agg_method = ['sum'] if agg_method is None else agg_method
-        K_list = args.K_list if K is None else K
+        K_list = args.bm2info[bm]['K_list'] if K is None else K
         inf_net = inf_models.KLInferenceSGD(
             K_list, base_models_dict, agg_method, args.lr_inf, device=args.device,
             solve_mean=True, solve_std=True, opt_normspace=False, kldirection='qp'
         )
 
     elif inf_model_name in ['trans-nll-ar_kl-st']:
+        bm = 'trans-nll-ar'
         base_models_dict = base_models['trans-nll-ar']
         agg_method = ['sum', 'slope'] if agg_method is None else agg_method
-        K_list = args.K_list if K is None else K
+        K_list = args.bm2info[bm]['K_list'] if K is None else K
         inf_net = inf_models.KLInferenceSGD(
             K_list, base_models_dict, agg_method, args.lr_inf, device=args.device,
             solve_mean=True, solve_std=True, opt_normspace=False, kldirection='qp'
         )
 
     elif inf_model_name in ['trans-nll-ar_covkl-sum']:
-        base_models_dict = base_models['trans-nll-ar']
+        bm = 'trans-nll-ar'
+        base_models_dict = base_models[bm]
         agg_method = ['sum'] if agg_method is None else agg_method
-        K_list = args.K_list if K is None else K
+        K_list = args.bm2info[bm]['K_list'] if K is None else K
         inf_net = inf_models.KLInferenceSGD(
             K_list, base_models_dict, agg_method, args.lr_inf, device=args.device,
             solve_mean=True, solve_std=True, opt_normspace=False, kldirection='qp',
@@ -1131,12 +1212,10 @@ def run_inference_model(
         )
 
     elif inf_model_name in ['trans-nll-ar_covkl-st']:
-        base_models_dict = base_models['trans-nll-ar']
+        bm = 'trans-nll-ar'
+        base_models_dict = base_models[bm]
         agg_method = ['sum', 'slope'] if agg_method is None else agg_method
-        K_list = args.K_list if K is None else K
-        #inf_net = inf_models.KLInference(
-        #    K_list, base_models_dict, agg_method, device=args.device, opt_normspace=opt_normspace
-        #)
+        K_list = args.bm2info[bm]['K_list'] if K is None else K
         inf_net = inf_models.KLInferenceSGD(
             K_list, base_models_dict, agg_method, args.lr_inf, device=args.device,
             solve_mean=True, solve_std=True, opt_normspace=False, kldirection='qp',
@@ -1407,6 +1486,7 @@ def run_inference_model(
         inf_test_targets_dict = None
 
     inf_net.eval()
+    #import ipdb ; ipdb.set_trace()
     (
         inputs, target, pred_mu, pred_std, pred_d, pred_v,
         metric_mse, metric_dtw, metric_tdi, metric_crps, metric_mae, metric_smape,
@@ -1545,8 +1625,10 @@ with open(os.path.join(args.output_dir, 'results_'+args.dataset_name+'.json'), '
 
 model2metrics = {}
 for base_model_name in args.base_model_names:
-    for agg_method in args.aggregate_methods:
-        for K in args.K_list:
+
+    for agg_method in args.bm2info[base_model_name]['aggregate_methods']:
+
+        for K in args.bm2info[base_model_name]['K_list']:
 
             print('Base Model', base_model_name,'for', agg_method, K)
     

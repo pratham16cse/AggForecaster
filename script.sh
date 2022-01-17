@@ -8,47 +8,79 @@
 
 #for K in 4 6 12; do
 	#echo aaai_Outputs_ett_e384_d192_gpt_normmin_$K
+#	--K_list 1 12 \
+#python main.py ett \
+#	--N_input 384 --N_output 192 \
+#	--saved_models_dir aaai_saved_models_ett_e384_d192_gpt_normmin_sharqall \
+#	--output_dir aaai_Outputs_ett_e384_d192_gpt_normmin_sharqall \
+#	--K_list 1 2 3 4 6 8 12 24 \
+#	--cv_inf 0 \
+#	--device cuda:0
+#done
+
 python main.py ett \
 	--N_input 384 --N_output 192 \
-	--saved_models_dir aaai_saved_models_ett_e384_d192_gpt_normmin \
-	--output_dir aaai_Outputs_ett_e384_d192_gpt_normmin \
-	--K_list 1 6 12 \
+	--saved_models_dir ijcai_saved_models_ett \
+	--output_dir ijcai_Outputs_ett \
 	--cv_inf 0 \
-	--device cuda:0
-#done
+	--device cuda:1
 
 #for K in 2 6 12; do
 	#echo aaai_Outputs_Solar_e336_d168_2_rp_$K
+#	--K_list 1 6 \
+#python main.py Solar \
+#	--N_input 336 --N_output 168 \
+#	--saved_models_dir aaai_saved_models_Solar_e336_d168_2_rp_sharqall \
+#	--output_dir aaai_Outputs_Solar_e336_d168_2_rp_sharqall \
+#	--K_list 1 2 3 4 6 8 12 24 \
+#	--cv_inf 0 \
+#	--device cuda:1
+#done
+
 python main.py Solar \
 	--N_input 336 --N_output 168 \
-	--saved_models_dir aaai_saved_models_Solar_e336_d168_2_rp \
-	--output_dir aaai_Outputs_Solar_e336_d168_2_rp \
-	--K_list 1 6 \
+	--saved_models_dir ijcai_saved_models_Solar \
+	--output_dir ijcai_Outputs_Solar \
 	--cv_inf 0 \
-	--device cuda:0
-#done
+	--device cuda:1
 
 #for K in 2 6; do
 	#echo aaai_Outputs_etthourly_e168_d168_gpt_normmin_$K
+#	--K_list 1 6 \
+#python main.py etthourly \
+#	--N_input 168 --N_output 168 \
+#	--saved_models_dir aaai_saved_models_etthourly_e168_d168_gpt_normmin_sharqall \
+#	--output_dir aaai_Outputs_etthourly_e168_d168_gpt_normmin_sharqall \
+#	--K_list 1 2 3 4 6 8 12 24 \
+#	--cv_inf 0 \
+#	--device cuda:2
+#done
+
 python main.py etthourly \
 	--N_input 168 --N_output 168 \
-	--saved_models_dir aaai_saved_models_etthourly_e168_d168_gpt_normmin \
-	--output_dir aaai_Outputs_etthourly_e168_d168_gpt_normmin \
-	--K_list 1 6 \
+	--saved_models_dir ijcai_saved_models_etthourly \
+	--output_dir ijcai_Outputs_etthourly \
 	--cv_inf 0 \
-	--device cuda:0
-#done
+	--device cuda:1
 
 #for K in 2 6 12; do
 #	#echo aaai_Outputs_electricity_e336_d168_testprune_2_rp_$K
+#	--K_list 1 6 12 \
+#python main.py electricity \
+#	--N_input 336 --N_output 168 \
+#	--saved_models_dir aaai_saved_models_electricity_e336_d168_testprune_2_rp_sharqall \
+#	--output_dir aaai_Outputs_electricity_e336_d168_testprune_2_sharqall \
+#	--K_list 1 2 3 4 6 8 12 24 \
+#	--cv_inf 0 \
+#	--device cuda:1
+#done
+
 python main.py electricity \
 	--N_input 336 --N_output 168 \
-	--saved_models_dir aaai_saved_models_electricity_e336_d168_testprune_2_rp \
-	--output_dir aaai_Outputs_electricity_e336_d168_testprune_2_rp \
-	--K_list 1 6 12 \
+	--saved_models_dir ijcai_saved_models_electricity \
+	--output_dir ijcai_Outputs_electricity \
 	--cv_inf 0 \
-	--device cuda:0
-#done
+	--device cuda:1
 
 #python main.py foodinflation \
 #	--N_input 90 --N_output 30 \
