@@ -5,6 +5,16 @@ This is the code produced as part of the paper _Long Range Probabilistic Forecas
 > 
 > Prathamesh Deshpande and Sunita Sarawagi. [arXiv:2111.03394v1](https://arxiv.org/pdf/2111.03394v1).
 
+## Package Dependencies / Requirements
+- Python 3.7.9 (recommended).
+- All the requirements are specified in [requirements.txt](requirements.txt).
+
+## Run
+```
+./script.sh
+```
+
+
 ## How to work with Command Line Arguments?
 - If an optional argument is not passed, it's value will be extracted from configuration specified in the file `main.py` (based on `dataset_name`, `model_name`).
 - If a valid argument value is passed through command line arguments, the code will use it further. That is, it will ignore the value assigned in the configuration.
