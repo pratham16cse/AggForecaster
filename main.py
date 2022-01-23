@@ -979,13 +979,7 @@ def run_inference_model(
     if inf_model_name in ['DILATE']:
         base_models_dict = base_models['seq2seqdilate']['sum']
         inf_net = inf_models.DILATE(base_models_dict, device=args.device)
-        inf_test_inputs_dict = test_inputs_dict['sum']
-        inf_test_targets_dict = test_targets_dict_leak['sum']
-        inf_test_norm_dict = test_norm_dict['sum']
-        inf_test_targets = test_targets_dict['sum'][1]
-        inf_norm = test_norm_dict['sum'][1]
-        inf_test_feats_in_dict = test_feats_in_dict['sum']
-        inf_test_feats_tgt_dict = test_feats_tgt_dict['sum']
+        raise NotImplementedError
 
     elif inf_model_name in ['RNN-MSE-NAR']:
         base_models_dict = base_models['rnn-mse-nar']
@@ -1392,15 +1386,7 @@ def run_inference_model(
     elif inf_model_name in ['RNN-AGGNLL-NAR']:
         base_models_dict = base_models['rnn-aggnll-nar']['sum']
         inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device)
-        inf_test_inputs_dict = test_inputs_dict['sum']
-        inf_test_targets_dict = test_targets_dict_leak['sum']
-        #inf_test_norm_dict = test_norm_dict['sum']
-        inf_test_norm_dict = None
-        inf_test_targets = test_targets_dict['sum'][1]
-        #inf_norm = test_norm_dict['sum'][1]
-        inf_norm = lvl_data['test_norm']
-        inf_test_feats_in_dict = test_feats_in_dict['sum']
-        inf_test_feats_tgt_dict = test_feats_tgt_dict['sum']
+        raise NotImplementedError
 
     elif inf_model_name in ['RNN-Q-NAR']:
         base_models_dict = base_models['rnn-q-nar']['sum']
@@ -1435,52 +1421,22 @@ def run_inference_model(
     elif inf_model_name in ['NBEATS-MSE-NAR']:
         base_models_dict = base_models['nbeats-mse-nar']['sum']
         inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device)
-        inf_test_inputs_dict = test_inputs_dict['sum']
-        inf_test_targets_dict = test_targets_dict_leak['sum']
-        #inf_test_norm_dict = test_norm_dict['sum']
-        inf_test_norm_dict = None
-        inf_test_targets = test_targets_dict['sum'][1]
-        #inf_norm = test_norm_dict['sum'][1]
-        inf_norm = lvl_data['test_norm']
-        inf_test_feats_in_dict = test_feats_in_dict['sum']
-        inf_test_feats_tgt_dict = test_feats_tgt_dict['sum']
-        inf_test_coeffs_in_dict = test_coeffs_in_dict['sum']
+        raise NotImplementedError
 
     elif inf_model_name in ['NBEATSD-MSE-NAR']:
         base_models_dict = base_models['nbeatsd-mse-nar']['sum']
         inf_net = inf_models.RNNNLLNAR(base_models_dict, device=args.device)
-        inf_test_inputs_dict = test_inputs_dict['sum']
-        inf_test_targets_dict = test_targets_dict_leak['sum']
-        #inf_test_norm_dict = test_norm_dict['sum']
-        inf_test_norm_dict = None
-        inf_test_targets = test_targets_dict['sum'][1]
-        #inf_norm = test_norm_dict['sum'][1]
-        inf_norm = lvl_data['test_norm']
-        inf_test_feats_in_dict = test_feats_in_dict['sum']
-        inf_test_feats_tgt_dict = test_feats_tgt_dict['sum']
-        inf_test_coeffs_in_dict = test_coeffs_in_dict['sum']
+        raise NotImplementedError
 
     elif inf_model_name in ['rnn-mse-nar_dualtpp']:
         base_models_dict = base_models['rnn-mse-nar']['sum']
         inf_net = inf_models.DualTPP(args.K_list, base_models_dict, device=args.device)
-        inf_test_inputs_dict = test_inputs_dict['sum']
-        inf_test_targets_dict = test_targets_dict_leak['sum']
-        inf_test_norm_dict = test_norm_dict['sum']
-        inf_test_targets = test_targets_dict['sum'][1]
-        inf_norm = test_norm_dict['sum'][1]
-        inf_test_feats_in_dict = test_feats_in_dict['sum']
-        inf_test_feats_tgt_dict = test_feats_tgt_dict['sum']
+        raise NotImplementedError
 
     elif inf_model_name in ['rnn-mse-nar_dualtpp_cf']:
         base_models_dict = base_models['rnn-mse-nar']['sum']
         inf_net = inf_models.DualTPP_CF(args.K_list, base_models_dict, device=args.device)
-        inf_test_inputs_dict = test_inputs_dict['sum']
-        inf_test_targets_dict = test_targets_dict_leak['sum']
-        inf_test_norm_dict = test_norm_dict['sum']
-        inf_test_targets = test_targets_dict['sum'][1]
-        inf_norm = test_norm_dict['sum'][1]
-        inf_test_feats_in_dict = test_feats_in_dict['sum']
-        inf_test_feats_tgt_dict = test_feats_tgt_dict['sum']
+        raise NotImplementedError
 
     if not args.leak_agg_targets:
         inf_test_targets_dict = None
@@ -1685,27 +1641,3 @@ with open(os.path.join(args.output_dir, 'results_base_'+args.dataset_name+'.json
 # ----- Start: Aggreagation of Inference model outputs for all aggreagations and levels --- #
 
 # ----- End: Aggreagation of Inference model outputs for all aggreagations and levels --- #
-
-
-# Visualize results
-
-if args.plot_anecdotes:
-    for ind in range(1,51):
-        plt.figure()
-        plt.rcParams['figure.figsize'] = (16.0,8.0)
-        k = 1
-        for inf_mdl_name, pred_mu in infmodel2preds.items():
-
-            input = test_inputs_dict['sum'][1].detach().cpu().numpy()[ind,:,:]
-            target = test_targets_dict['sum'][1].detach().cpu().numpy()[ind,:,:]
-            pred_mu = pred_mu.detach().cpu().numpy()[ind,:,:]
-
-            plt.subplot(len(inference_models),1,k)
-            plt.plot(range(0,args.N_input) ,input,label='input',linewidth=3)
-            plt.plot(range(args.N_input-1,args.N_input+args.N_output), np.concatenate([ input[args.N_input-1:args.N_input], target ]) ,label='target',linewidth=3)
-            plt.plot(range(args.N_input-1,args.N_input+args.N_output),  np.concatenate([ input[args.N_input-1:args.N_input], pred_mu ])  ,label=inf_mdl_name,linewidth=3)
-            plt.xticks(range(0,40,2))
-            plt.legend()
-            k = k+1
-
-        plt.show()
