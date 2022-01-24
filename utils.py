@@ -810,11 +810,6 @@ class TimeSeriesDatasetOfflineAggregate(torch.utils.data.Dataset):
         coeffs = coeffs[-(K-1)]
         return coeffs
 
-    def get_time_features(self, start, seqlen):
-        end = shift_timestamp(start, seqlen)
-        full_date_range = pd.date_range(start, end, freq=start.freq)
-        chunk_range = full_date_range[ pos_id : pos_id+self._base_enc_len ]
-
     def get_avg_date(self, date_range):
         return date_range.mean(axis=0)
 
