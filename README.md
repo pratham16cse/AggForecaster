@@ -1,9 +1,9 @@
-# Long Range Probabilistic Forecasting in Time-Series using High Order Statistics
-This is the code produced as part of the paper _Long Range Probabilistic Forecasting in Time-Series using High Order Statistics_ 
+# Coherent Probabilistic Aggregate Queries on Long-horizon Forecasts
+This is the code produced as part of the paper _Coherent Probabilistic Aggregate Queries on Long-horizon Forecasts_ 
 
 > Long Range Probabilistic Forecasting in Time-Series using High Order Statistics.
 > 
-> Prathamesh Deshpande and Sunita Sarawagi. [arXiv:2111.03394v1](https://arxiv.org/pdf/2111.03394v1).
+> Prathamesh Deshpande and Sunita Sarawagi. IJCAI 2022. [arXiv:2111.03394v1](https://arxiv.org/pdf/2111.03394v1).
 
 ## Package Dependencies / Requirements
 - Python 3.7.9 (recommended).
