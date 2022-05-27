@@ -1,7 +1,7 @@
 # Coherent Probabilistic Aggregate Queries on Long-horizon Forecasts
 This is the code produced as part of the paper _Coherent Probabilistic Aggregate Queries on Long-horizon Forecasts_ 
 
-> Long Range Probabilistic Forecasting in Time-Series using High Order Statistics.
+> Coherent Probabilistic Aggregate Queries on Long-horizon Forecasts.
 > 
 > Prathamesh Deshpande and Sunita Sarawagi. IJCAI 2022. [arXiv:2111.03394v1](https://arxiv.org/pdf/2111.03394v1).
 
